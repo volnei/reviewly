@@ -151,3 +151,55 @@ jobs:
           else
             echo "No installers found to upload."
           fi
+
+  # Give the release assets clear, OS-first names (Reviewly-<ver>-macos.dmg,
+  # …-windows-setup.exe, …-linux.AppImage, …) instead of Tauri's arch-based
+  # defaults, then rewrite the updater manifest's URLs to match. Runs once,
+  # after every platform has uploaded. Leaves the updater bundle
+  # (*.app.tar.gz), the *.sig files, and latest.json's signatures untouched.
+  rename-assets:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rename installers & fix the updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          rid=$(gh api "repos/$REPO/releases" --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)
+          echo "release $rid ($TAG)"
+          declare -A MAP
+          while IFS=$'\t' read -r id name; do
+            case "$name" in
+              *.dmg)       new="Reviewly-$VER-macos.dmg" ;;
+              *-setup.exe) new="Reviewly-$VER-windows-setup.exe" ;;
+              *.msi)       new="Reviewly-$VER-windows.msi" ;;
+              *.AppImage)  new="Reviewly-$VER-linux.AppImage" ;;
+              *.deb)       new="Reviewly-$VER-linux.deb" ;;
+              *.rpm)       new="Reviewly-$VER-linux.rpm" ;;
+              *) continue ;;  # leave *.app.tar.gz, *.sig, latest.json
+            esac
+            [ "$name" = "$new" ] && continue
+            gh api -X PATCH "repos/$REPO/releases/assets/$id" -f name="$new" >/dev/null
+            MAP["$name"]="$new"
+            echo "renamed $name -> $new"
+          done < <(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | "\(.id)\t\(.name)"')
+          # The updater manifest points at the installers by URL — rewrite those
+          # to the new names so auto-update keeps working (Windows/Linux use the
+          # installer directly; macOS uses the untouched *.app.tar.gz).
+          if [ "${#MAP[@]}" -gt 0 ] && gh release download "$TAG" --repo "$REPO" --pattern latest.json --dir . --clobber 2>/dev/null; then
+            changed=0
+            for old in "${!MAP[@]}"; do
+              if grep -qF "$old" latest.json; then
+                python3 -c "import sys; p='latest.json'; open(p,'w').write(open(p).read().replace(sys.argv[1], sys.argv[2]))" "$old" "${MAP[$old]}"
+                changed=1
+              fi
+            done
+            if [ "$changed" = 1 ]; then
+              gh release upload "$TAG" --repo "$REPO" --clobber latest.json
+              echo "latest.json updated to renamed installers"
+            fi
+          fi
