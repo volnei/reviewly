@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- macOS template image: solid black on transparent; the system recolors it.
+       Gem silhouette with facet seams knocked out, echoing the app icon. -->
+  <mask id="m">
+    <path d="M23 21 L41 21 L51 33 L32 49 L13 33 Z" fill="#ffffff"/>
+    <g stroke="#000000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M23 21 L32 33 L41 21"/>
+      <path d="M13 33 L51 33"/>
+      <path d="M32 33 L32 49"/>
+    </g>
+  </mask>
+  <rect width="64" height="64" fill="#000000" mask="url(#m)"/>
+</svg>

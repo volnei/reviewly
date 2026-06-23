@@ -1,0 +1,153 @@
+name: release
+
+# Builds installers for macOS, Linux, and Windows and publishes them to a
+# GitHub Release. Triggered by pushing a version tag (e.g. `v0.2.0`), or
+# manually from the Actions tab (provide the tag to create).
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# macOS builds on your self-hosted Mac (free, no 10x macOS billing); Linux and
+# Windows build on GitHub-hosted runners (1x / 2x). The release is created as a
+# DRAFT — review the assets, then publish it.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build and release (e.g. v0.2.0). Created on the current commit if it doesn't exist."
+        required: true
+
+# tauri-action needs write access to create the release and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # GitHub-hosted Mac (Apple Silicon), universal (arm64 + x86_64).
+          # Hosted runners have a real security session, so signing +
+          # notarization with APPLE_CERTIFICATE work reliably (self-hosted
+          # background runners hit errSecInternalComponent). Release builds are
+          # infrequent, so the 10x macOS billing stays well within the free tier.
+          - platform: macos
+            runner: macos-latest
+            args: "--target universal-apple-darwin"
+          - platform: linux
+            runner: ubuntu-22.04
+            args: ""
+          - platform: windows
+            runner: windows-latest
+            args: ""
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Linux system dependencies (GitHub-hosted only) ---
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            patchelf \
+            build-essential \
+            file
+
+      # --- Toolchains (all runners are GitHub-hosted) ---
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS universal targets
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater artifact signing (all platforms). `createUpdaterArtifacts`
+          # is on, so every build signs the update bundle with this minisign key
+          # — its public half lives in tauri.conf.json → plugins.updater.pubkey.
+          # Without these the build fails at the bundling step.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code signing + notarization. Used only by the macOS job
+          # (Linux/Windows ignore these). All read from repo secrets, so the
+          # build stays unsigned until you add them — then it signs+notarizes
+          # automatically with no further changes.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # The cert + private key as a base64 .p12. Tauri imports these into a
+          # fresh temporary keychain it unlocks itself — so signing does NOT
+          # depend on the runner's (background LaunchAgent) login keychain,
+          # which it can't unlock (errSecInternalComponent).
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # Notarization — method A: Apple ID + app-specific password.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Notarization — method B (recommended): App Store Connect API key.
+          # Whichever set you fill in gets used; the .p8 lives on your Mac and
+          # APPLE_API_KEY_PATH is its absolute path.
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Reviewly ${{ inputs.tag || github.ref_name }}"
+          releaseBody: "Download the installer for your platform below."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      # Mirror the built installers to the PUBLIC site repo (volnei/reviewly-app)
+      # so the landing-page download links work for everyone — this repo is
+      # private. Needs a fine-grained PAT with Contents:write on reviewly-app,
+      # stored as the SITE_RELEASE_TOKEN secret. Inert (skips) until that exists.
+      # Creates a DRAFT release there so you publish it on launch.
+      - name: Publish installers to the public site repo
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SITE_RELEASE_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          SITE_REPO: volnei/reviewly-app
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "SITE_RELEASE_TOKEN not set — skipping public mirror."
+            exit 0
+          fi
+          gh release view "$TAG" --repo "$SITE_REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$SITE_REPO" \
+                 --title "Reviewly $TAG" \
+                 --notes "Download the installer for your platform below." \
+                 --draft || true
+          files=$(find src-tauri/target -type f \( \
+            -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.msi" \
+            -o -name "*-setup.exe" -o -name "*.AppImage" -o -name "*.deb" \
+            -o -name "*.rpm" \) 2>/dev/null)
+          if [ -n "$files" ]; then
+            echo "Uploading to $SITE_REPO@$TAG:"; echo "$files"
+            gh release upload "$TAG" --repo "$SITE_REPO" --clobber $files
+          else
+            echo "No installers found to upload."
+          fi

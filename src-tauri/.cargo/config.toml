@@ -1,0 +1,5 @@
+# Build-time env vars for reviewly. The GitHub OAuth client_id is *public* —
+# safe to commit. Set via the OAuth App registered at
+# https://github.com/settings/applications/3634295.
+[env]
+REVIEWLY_GITHUB_CLIENT_ID = "Ov23liPjbSQOlCpgsmO7"

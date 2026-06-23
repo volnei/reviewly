@@ -1,0 +1,819 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Cal Sans Text (variable, 300–700) from the official @calcom package — UI font */
+@import "@calcom/cal-sans-ui/text.css";
+/* JetBrains Mono for code/data */
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.625rem; /* 10px — Raycast-ish generous */
+
+  /* Base palette — warm stone, ready for vibrancy */
+  --background: oklch(0.165 0.008 65);
+  --foreground: oklch(0.97 0.005 75);
+
+  /* Surfaces — lightly translucent over the dark tint so vibrancy peeks through */
+  --card: oklch(0.215 0.008 65 / 0.78);
+  --card-foreground: oklch(0.97 0.005 75);
+  --popover: oklch(0.195 0.008 65 / 0.92);
+  --popover-foreground: oklch(0.98 0.005 75);
+
+  /* Accent: premium indigo / violet */
+  --primary: oklch(0.6 0.19 268);
+  --primary-foreground: oklch(0.98 0.012 268);
+
+  --secondary: oklch(0.255 0.008 65 / 0.7);
+  --secondary-foreground: oklch(0.97 0.005 75);
+
+  --muted: oklch(0.225 0.008 65 / 0.5);
+  --muted-foreground: oklch(0.68 0.008 65);
+
+  --accent: oklch(0.27 0.008 65 / 0.6);
+  --accent-foreground: oklch(0.98 0.005 75);
+
+  --destructive: oklch(0.66 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --success: oklch(0.7 0.16 145);
+  --success-foreground: oklch(0.92 0.1 145);
+  --warning: oklch(0.78 0.14 75);
+  --warning-foreground: oklch(0.92 0.1 75);
+  --info: oklch(0.7 0.16 240);
+  --info-foreground: oklch(0.92 0.1 240);
+
+  --border: oklch(0.38 0.008 65 / 0.55);
+  /* Ultra-subtle divider — the only hairline we use for structure. */
+  --hairline: oklch(0.4 0.008 65 / 0.14);
+  --input: oklch(0.32 0.008 65 / 0.6);
+  --ring: oklch(0.6 0.19 268 / 0.55);
+
+  /* Sidebar — slightly different surface */
+  --sidebar: oklch(0.18 0.008 65 / 0.72);
+  --sidebar-foreground: oklch(0.85 0.008 75);
+  --sidebar-border: oklch(0.3 0.008 65 / 0.35);
+  --sidebar-accent: oklch(0.28 0.008 65 / 0.6);
+  --sidebar-accent-foreground: oklch(0.98 0.005 75);
+  --sidebar-primary: oklch(0.6 0.19 268);
+  --sidebar-primary-foreground: oklch(0.98 0.012 268);
+  --sidebar-ring: oklch(0.6 0.19 268 / 0.55);
+
+  --font-sans: "Cal Sans Text", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter",
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Light theme — `<html class="light">`. Higher specificity than :root so it
+ * wins. Depth comes from a soft gradient backdrop (see html.light body) that
+ * the translucent, backdrop-blurred surfaces frost against — the light-mode
+ * analog of the dark theme's vibrancy. Background is a warm off-white; cards
+ * are near-white and translucent so the blur reads. */
+:root.light {
+  color-scheme: light;
+
+  /* Base = soft warm grey so near-white cards lift off it. */
+  --background: oklch(0.955 0.005 80);
+  --foreground: oklch(0.24 0.012 60);
+
+  /* Translucent white surfaces → backdrop-blur frosts the gradient behind. */
+  --card: oklch(1 0 0 / 0.66);
+  --card-foreground: oklch(0.24 0.012 60);
+  --popover: oklch(1 0 0 / 0.86);
+  --popover-foreground: oklch(0.22 0.012 60);
+
+  --primary: oklch(0.55 0.2 268);
+  --primary-foreground: oklch(0.99 0.01 268);
+
+  --secondary: oklch(1 0 0 / 0.6);
+  --secondary-foreground: oklch(0.3 0.012 60);
+
+  --muted: oklch(0.9 0.006 80 / 0.6);
+  --muted-foreground: oklch(0.5 0.014 60);
+
+  --accent: oklch(0.92 0.008 80 / 0.7);
+  --accent-foreground: oklch(0.26 0.012 60);
+
+  --destructive: oklch(0.56 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 25);
+  --success: oklch(0.55 0.15 150);
+  --success-foreground: oklch(0.98 0.02 150);
+  --warning: oklch(0.62 0.14 70);
+  --warning-foreground: oklch(0.99 0.02 70);
+  --info: oklch(0.54 0.16 245);
+  --info-foreground: oklch(0.98 0.02 245);
+
+  /* Light needs slightly more present structure than dark. */
+  --border: oklch(0.5 0.012 70 / 0.45);
+  --hairline: oklch(0.5 0.012 70 / 0.18);
+  --input: oklch(0.6 0.01 70 / 0.45);
+  --ring: oklch(0.55 0.2 268 / 0.5);
+
+  --sidebar: oklch(1 0 0 / 0.5);
+  --sidebar-foreground: oklch(0.32 0.012 60);
+  --sidebar-border: oklch(0.5 0.012 70 / 0.22);
+  --sidebar-accent: oklch(1 0 0 / 0.7);
+  --sidebar-accent-foreground: oklch(0.24 0.012 60);
+  --sidebar-primary: oklch(0.55 0.2 268);
+  --sidebar-primary-foreground: oklch(0.99 0.01 268);
+  --sidebar-ring: oklch(0.55 0.2 268 / 0.5);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+
+  --radius-xs: calc(var(--radius) - 6px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 6px);
+
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  --animate-caret-blink: 1s ease-out infinite caret-blink;
+  /* Guided-tour intro: a scan line sweeps the emblem ("reading the diff"). */
+  --animate-tile-scan: tile-scan 1.9s ease-in-out infinite;
+  @keyframes skeleton {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes tile-scan {
+    0% {
+      top: -12%;
+      opacity: 0;
+    }
+    18%,
+    82% {
+      opacity: 0.9;
+    }
+    100% {
+      top: 100%;
+      opacity: 0;
+    }
+  }
+  @keyframes caret-blink {
+    0%,
+    70%,
+    to {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+/* Faint blueprint dot-grid for the guided-tour backdrop — a subtle "labs"
+   texture, radial-masked so it pools toward the emblem and fades out. */
+.lab-grid {
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--color-foreground) 9%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(closest-side at 50% 40%, #000 0%, transparent 76%);
+  mask-image: radial-gradient(closest-side at 50% 40%, #000 0%, transparent 76%);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    /* Opaque fallback for non-vibrancy platforms (linux/win10) */
+    background: oklch(0.17 0.008 65);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 0.875rem; /* 14px @ root=16, scales with html font-size for zoom */
+    font-weight: 300;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-optical-sizing: auto;
+    color: var(--color-foreground);
+    user-select: none;
+    background: radial-gradient(
+        ellipse 60% 55% at 0% 0%,
+        rgba(255, 255, 255, 0.09),
+        transparent 60%
+      ), var(--color-background);
+  }
+
+  /* Default headings to a lighter weight than browser default */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 500;
+  }
+  strong,
+  b {
+    font-weight: 500;
+  }
+
+  /* On macOS the NSVisualEffectView lives behind the webview. The body keeps
+     a dark, semi-translucent tint so colors stay consistent and the UI doesn't
+     get washed out by light desktops while still letting some life through. */
+  html.has-vibrancy {
+    background: transparent;
+  }
+  html.has-vibrancy body {
+    background: radial-gradient(
+        ellipse 60% 55% at 0% 0%,
+        rgba(255, 255, 255, 0.09),
+        transparent 60%
+      ), color-mix(in oklch, oklch(0.165 0.008 65) 88%, transparent);
+  }
+
+  /* Light theme: paint an OPAQUE light background so the dark macOS vibrancy
+     material behind the webview is fully covered. Without this, the many
+     low-opacity `bg-card/30` surfaces sit over a dark backdrop and the whole
+     UI reads dark. Higher specificity (.light.has-vibrancy) wins over the
+     vibrancy rules above. */
+  html.light,
+  html.light.has-vibrancy {
+    background: var(--color-background);
+  }
+  /* Soft, premium gradient mesh: a warm highlight from the top-left and a
+     faint indigo wash from the bottom-right give the light theme atmosphere
+     and something for the frosted (backdrop-blur) surfaces to pick up. */
+  html.light body,
+  html.light.has-vibrancy body {
+    background: radial-gradient(
+        ellipse 90% 70% at 8% -5%,
+        oklch(0.99 0.025 90 / 0.8),
+        transparent 55%
+      ), radial-gradient(ellipse 80% 80% at 100% 105%, oklch(0.7 0.13 268 / 0.16), transparent 60%),
+      var(--color-background);
+    background-attachment: fixed;
+  }
+
+  input,
+  textarea,
+  [contenteditable] {
+    user-select: text;
+  }
+
+  /* Light mode gets depth from soft shadows (dark gets it from vibrancy).
+     A gentle, layered drop-shadow on translucent/blurred panels lifts them
+     off the gradient backdrop. */
+  html.light [class*="backdrop-blur"] {
+    box-shadow: 0 1px 2px oklch(0.4 0.02 70 / 0.06), 0 8px 24px -12px oklch(0.4 0.02 70 / 0.18);
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-primary) 45%, transparent);
+  }
+
+  /* Light theme: the foreground is dark and translucent over white reads too
+     muddy for selected text — push the primary mix higher for legible contrast. */
+  :root.light ::selection {
+    background: color-mix(in oklch, var(--color-primary) 58%, transparent);
+  }
+
+  /* Slim scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--color-foreground) 16%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--color-foreground) 32%, transparent);
+    background-clip: padding-box;
+  }
+
+  /* Light theme: the foreground-tinted thumb gets heavy on white — use a
+     softer warm-grey thumb that darkens a touch on hover. */
+  :root.light ::-webkit-scrollbar-thumb {
+    background: oklch(0.5 0.012 70 / 0.3);
+    background-clip: padding-box;
+  }
+  :root.light ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.5 0.012 70 / 0.45);
+    background-clip: padding-box;
+  }
+}
+
+@utility font-mono-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Markdown rendering styles for AI responses (react-markdown). */
+.prose-reviewly {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--color-foreground);
+  letter-spacing: -0.003em;
+  /* Narrow surfaces (AI chat is ~26rem): wrap long words/URLs instead of
+     forcing horizontal overflow on the whole conversation. */
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.prose-reviewly > * + * {
+  margin-top: 0.85rem;
+}
+.prose-reviewly > * + h1,
+.prose-reviewly > * + h2,
+.prose-reviewly > * + h3 {
+  margin-top: 1.4rem;
+}
+
+.prose-reviewly h1,
+.prose-reviewly h2,
+.prose-reviewly h3,
+.prose-reviewly h4,
+.prose-reviewly h5,
+.prose-reviewly h6 {
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--color-foreground);
+}
+.prose-reviewly h1 {
+  font-size: 1.1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 70%, transparent);
+}
+.prose-reviewly h2 {
+  font-size: 1.02rem;
+}
+.prose-reviewly h3 {
+  font-size: 0.95rem;
+}
+
+.prose-reviewly p {
+  color: color-mix(in oklch, var(--color-foreground) 92%, transparent);
+}
+
+.prose-reviewly a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--color-primary) 40%, transparent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color 120ms ease-out;
+}
+.prose-reviewly a:hover {
+  text-decoration-color: var(--color-primary);
+}
+
+.prose-reviewly strong,
+.prose-reviewly b {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+/* Images: cap to viewport, treat anchor-children as small button badges. */
+.prose-reviewly img {
+  max-width: 100%;
+  max-height: 360px;
+  height: auto;
+  border-radius: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.prose-reviewly a img {
+  max-height: 28px;
+  border-radius: 4px;
+  margin-right: 0.25em;
+  margin-top: 0.4rem;
+}
+.prose-reviewly p > img:only-child {
+  margin: 0.5rem 0;
+  display: block;
+}
+
+/* Inline code */
+.prose-reviewly code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: color-mix(in oklch, var(--color-primary) 12%, transparent);
+  color: color-mix(in oklch, var(--color-primary) 80%, var(--color-foreground));
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  border: 1px solid color-mix(in oklch, var(--color-primary) 18%, transparent);
+  /* Long unbroken tokens like @GetUser("metadata") must wrap, not overflow. */
+  overflow-wrap: anywhere;
+}
+
+/* Block code wrapper (created by our custom CodeBlock component). */
+.prose-code-block {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: oklch(0.135 0.008 65);
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+.prose-code-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 80%, transparent);
+  background: color-mix(in oklch, var(--color-card) 50%, transparent);
+}
+.prose-code-block-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+  text-transform: lowercase;
+}
+.prose-code-block-copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+  background: transparent;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms ease-out, background 120ms ease-out;
+}
+.prose-code-block-copy:hover {
+  color: var(--color-foreground);
+  background: color-mix(in oklch, var(--color-foreground) 5%, transparent);
+}
+.prose-code-block pre {
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.85rem 0.95rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.prose-code-block pre code {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: var(--color-foreground);
+}
+
+/* Fallback for bare <pre> (when content is not in our wrapper). */
+.prose-reviewly pre:not(.prose-code-block pre) {
+  background: oklch(0.135 0.008 65);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.85rem 0.95rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.prose-reviewly pre:not(.prose-code-block pre) code {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.prose-reviewly ul,
+.prose-reviewly ol {
+  padding-left: 1.4rem;
+  list-style-position: outside;
+}
+.prose-reviewly ul {
+  list-style: none;
+}
+.prose-reviewly ul > li {
+  position: relative;
+}
+.prose-reviewly ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9rem;
+  top: 0.65em;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  opacity: 0.7;
+}
+.prose-reviewly ol {
+  list-style: decimal;
+}
+.prose-reviewly ol::marker {
+  color: var(--color-muted-foreground);
+}
+.prose-reviewly li + li {
+  margin-top: 0.3rem;
+}
+.prose-reviewly li p {
+  margin: 0;
+}
+
+.prose-reviewly blockquote {
+  border-left: 2px solid var(--color-primary);
+  padding: 0.2rem 0 0.2rem 0.85rem;
+  color: var(--color-muted-foreground);
+  background: color-mix(in oklch, var(--color-primary) 5%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+
+.prose-reviewly table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.prose-reviewly thead {
+  background: color-mix(in oklch, var(--color-card) 70%, transparent);
+}
+.prose-reviewly th {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--color-muted-foreground);
+}
+.prose-reviewly td {
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 60%, transparent);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+}
+.prose-reviewly tr:last-child td {
+  border-bottom: 0;
+}
+
+.prose-reviewly hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1.25rem 0;
+}
+
+/* ─────────── Collapsible <details> blocks ─────────── */
+.prose-reviewly details {
+  border: 1px solid color-mix(in oklch, var(--color-border) 80%, transparent);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  background: color-mix(in oklch, var(--color-card) 35%, transparent);
+  margin-top: 0.6rem;
+}
+.prose-reviewly details > summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--color-muted-foreground);
+  padding-left: 1.1rem;
+  position: relative;
+  transition: color 120ms ease-out;
+  user-select: none;
+}
+.prose-reviewly details > summary::-webkit-details-marker {
+  display: none;
+}
+.prose-reviewly details > summary::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--color-muted-foreground);
+  transition: transform 120ms ease-out;
+  display: inline-block;
+}
+.prose-reviewly details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.prose-reviewly details > summary:hover {
+  color: var(--color-foreground);
+}
+.prose-reviewly details[open] > summary {
+  margin-bottom: 0.5rem;
+  color: var(--color-foreground);
+}
+.prose-reviewly details > *:not(summary) + *:not(summary) {
+  margin-top: 0.5rem;
+}
+
+/* ─────────── Prism syntax tokens (warm-dark palette) ─────────── */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: oklch(0.55 0.012 65);
+  font-style: italic;
+}
+.token.punctuation {
+  color: oklch(0.72 0.008 65);
+}
+.token.namespace {
+  opacity: 0.7;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: oklch(0.76 0.14 35);
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: oklch(0.78 0.13 145);
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: oklch(0.82 0.06 75);
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: oklch(0.74 0.15 285);
+}
+
+.token.function,
+.token.class-name {
+  color: oklch(0.8 0.13 75);
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: oklch(0.78 0.14 75);
+}
+
+.token.important,
+.token.bold {
+  font-weight: 500;
+}
+.token.italic {
+  font-style: italic;
+}
+
+/* Light theme: the warm-dark palette washes out on a white surface, so darken
+   + saturate each token category (same hues, lower lightness) for real contrast. */
+:root.light {
+  .token.comment,
+  .token.prolog,
+  .token.doctype,
+  .token.cdata {
+    color: oklch(0.52 0.02 250);
+  }
+  .token.punctuation {
+    color: oklch(0.45 0.01 65);
+  }
+  .token.property,
+  .token.tag,
+  .token.boolean,
+  .token.number,
+  .token.constant,
+  .token.symbol,
+  .token.deleted {
+    color: oklch(0.5 0.18 35);
+  }
+  .token.selector,
+  .token.attr-name,
+  .token.string,
+  .token.char,
+  .token.builtin,
+  .token.inserted {
+    color: oklch(0.46 0.15 150);
+  }
+  .token.operator,
+  .token.entity,
+  .token.url,
+  .language-css .token.string,
+  .style .token.string {
+    color: oklch(0.5 0.1 70);
+  }
+  .token.atrule,
+  .token.attr-value,
+  .token.keyword {
+    color: oklch(0.5 0.2 290);
+  }
+  .token.function,
+  .token.class-name {
+    color: oklch(0.52 0.15 60);
+  }
+  .token.regex,
+  .token.important,
+  .token.variable {
+    color: oklch(0.5 0.15 70);
+  }
+}
+
+/* ─────────── Diff viewer ─────────── */
+/* Word-level highlights within a changed line */
+.diff-word-add {
+  background: color-mix(in oklch, var(--color-success) 32%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.diff-word-del {
+  background: color-mix(in oklch, var(--color-destructive) 32%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Transient highlight when the guided tour jumps to a specific line. */
+.diff-line-flash {
+  animation: diff-line-flash 1.6s ease-out;
+}
+@keyframes diff-line-flash {
+  0%,
+  20% {
+    background-color: color-mix(in oklch, var(--color-primary) 30%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
