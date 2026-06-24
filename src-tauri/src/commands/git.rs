@@ -1,6 +1,9 @@
 use crate::error::{AppError, AppResult};
+use base64::Engine;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -620,4 +623,414 @@ pub async fn git_branch_changes(path: String) -> AppResult<BranchChanges> {
         }
     }
     Ok(BranchChanges { base: Some(base), files })
+}
+
+#[derive(Clone, Copy)]
+struct EditorCandidate {
+    id: &'static str,
+    label: &'static str,
+    apps: &'static [&'static str],
+    commands: &'static [&'static str],
+    aliases: &'static [&'static str],
+    default_candidate: bool,
+}
+
+const EDITOR_CANDIDATES: &[EditorCandidate] = &[
+    EditorCandidate {
+        id: "cursor",
+        label: "Cursor",
+        apps: &["Cursor"],
+        commands: &["cursor"],
+        aliases: &["cursor"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "zed",
+        label: "Zed",
+        apps: &["Zed"],
+        commands: &["zed"],
+        aliases: &["zed"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "finder",
+        label: "Finder",
+        apps: &["Finder"],
+        commands: &[],
+        aliases: &["finder"],
+        default_candidate: false,
+    },
+    EditorCandidate {
+        id: "terminal",
+        label: "Terminal",
+        apps: &["Terminal"],
+        commands: &[],
+        aliases: &["terminal"],
+        default_candidate: false,
+    },
+    EditorCandidate {
+        id: "ghostty",
+        label: "Ghostty",
+        apps: &["Ghostty"],
+        commands: &["ghostty"],
+        aliases: &["ghostty"],
+        default_candidate: false,
+    },
+    EditorCandidate {
+        id: "xcode",
+        label: "Xcode",
+        apps: &["Xcode"],
+        commands: &["xed"],
+        aliases: &["xcode", "xed"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "code",
+        label: "VS Code",
+        apps: &["Visual Studio Code", "Code"],
+        commands: &["code"],
+        aliases: &["code", "vscode", "visual studio code"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "windsurf",
+        label: "Windsurf",
+        apps: &["Windsurf"],
+        commands: &["windsurf"],
+        aliases: &["windsurf"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "sublime",
+        label: "Sublime Text",
+        apps: &["Sublime Text"],
+        commands: &["subl", "sublime"],
+        aliases: &["subl", "sublime", "sublime text"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "webstorm",
+        label: "WebStorm",
+        apps: &["WebStorm"],
+        commands: &["webstorm"],
+        aliases: &["webstorm"],
+        default_candidate: true,
+    },
+    EditorCandidate {
+        id: "intellij",
+        label: "IntelliJ IDEA",
+        apps: &["IntelliJ IDEA"],
+        commands: &["idea", "intellij"],
+        aliases: &["idea", "intellij", "intellij idea"],
+        default_candidate: true,
+    },
+];
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalEditorTarget {
+    pub id: String,
+    pub label: String,
+    pub app_name: Option<String>,
+    pub command: Option<String>,
+    pub icon_data_url: Option<String>,
+    pub is_default: bool,
+    pub source: Option<String>,
+}
+
+async fn command_available(bin: &str) -> bool {
+    Command::new("which")
+        .arg(bin)
+        .output()
+        .await
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+async fn app_available(app: &str) -> bool {
+    cfg!(target_os = "macos")
+        && (app_path(app).is_some()
+            || Command::new("open")
+                .arg("-Ra")
+                .arg(app)
+                .output()
+                .await
+                .map(|out| out.status.success())
+                .unwrap_or(false))
+}
+
+fn app_path(app: &str) -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let home = env::var("HOME").ok();
+    let mut roots = vec![
+        PathBuf::from("/Applications"),
+        PathBuf::from("/System/Applications"),
+        PathBuf::from("/System/Applications/Utilities"),
+        PathBuf::from("/System/Library/CoreServices"),
+    ];
+    if let Some(home) = home {
+        roots.push(PathBuf::from(home).join("Applications"));
+    }
+    for root in roots {
+        let path = root.join(format!("{app}.app"));
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+async fn plist_icon_name(app: &PathBuf) -> Option<String> {
+    let info = app.join("Contents/Info.plist");
+    Command::new("/usr/libexec/PlistBuddy")
+        .arg("-c")
+        .arg("Print :CFBundleIconFile")
+        .arg(info)
+        .output()
+        .await
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .filter(|name| !name.is_empty())
+}
+
+async fn app_icon_data_url(app_name: Option<&str>) -> Option<String> {
+    let app = app_name.and_then(app_path)?;
+    let resources = app.join("Contents/Resources");
+    let icon_name = plist_icon_name(&app).await.unwrap_or_default();
+    let icon_file = if icon_name.is_empty() {
+        None
+    } else {
+        let name = if icon_name.ends_with(".icns") {
+            icon_name
+        } else {
+            format!("{icon_name}.icns")
+        };
+        Some(resources.join(name))
+    };
+    let icon_path = icon_file
+        .filter(|path| path.exists())
+        .or_else(|| std::fs::read_dir(resources).ok()?.flatten().map(|e| e.path()).find(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
+        }))?;
+
+    let out_path = env::temp_dir().join(format!(
+        "reviewly-editor-icon-{}-{}.png",
+        std::process::id(),
+        app.file_stem()?.to_string_lossy().replace(' ', "-")
+    ));
+    let out = Command::new("sips")
+        .arg("-Z")
+        .arg("64")
+        .arg("-s")
+        .arg("format")
+        .arg("png")
+        .arg(&icon_path)
+        .arg("--out")
+        .arg(&out_path)
+        .output()
+        .await
+        .ok()
+        .filter(|out| out.status.success())?;
+    drop(out);
+
+    let bytes = std::fs::read(&out_path).ok()?;
+    let _ = std::fs::remove_file(out_path);
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn editor_key(raw: &str) -> String {
+    let first = raw
+        .trim()
+        .trim_matches(['"', '\''])
+        .split_whitespace()
+        .next()
+        .unwrap_or("");
+    let basename = first.rsplit('/').next().unwrap_or(first);
+    basename.trim_end_matches(".app").to_lowercase()
+}
+
+fn candidate_matches(c: EditorCandidate, key: &str) -> bool {
+    c.aliases.iter().any(|alias| *alias == key)
+        || c.commands.iter().any(|cmd| *cmd == key)
+        || c.apps.iter().any(|app| app.to_lowercase() == key)
+}
+
+fn process_env_editor() -> Option<(String, String)> {
+    env::var("EDITOR")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| ("EDITOR".to_string(), v))
+        .or_else(|| {
+            env::var("VISUAL")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .map(|v| ("VISUAL".to_string(), v))
+        })
+}
+
+fn parse_shell_editor_output(out: &[u8]) -> Option<(String, String)> {
+    let text = String::from_utf8_lossy(out);
+    let mut editor = None;
+    let mut visual = None;
+    for line in text.lines() {
+        if let Some(value) = line.strip_prefix("__REVIEWLY_EDITOR__") {
+            if !value.trim().is_empty() {
+                editor = Some(value.trim().to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("__REVIEWLY_VISUAL__") {
+            if !value.trim().is_empty() {
+                visual = Some(value.trim().to_string());
+            }
+        }
+    }
+    editor.map(|v| ("EDITOR".to_string(), v)).or_else(|| visual.map(|v| ("VISUAL".to_string(), v)))
+}
+
+async fn shell_env_editor(interactive: bool) -> Option<(String, String)> {
+    let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let flag = if interactive { "-ic" } else { "-lc" };
+    let script = "printf '__REVIEWLY_EDITOR__%s\n__REVIEWLY_VISUAL__%s\n' \"$EDITOR\" \"$VISUAL\"";
+    Command::new(shell)
+        .arg(flag)
+        .arg(script)
+        .output()
+        .await
+        .ok()
+        .and_then(|out| parse_shell_editor_output(&out.stdout))
+}
+
+async fn env_editor() -> Option<(String, String)> {
+    if let Some(choice) = process_env_editor() {
+        return Some(choice);
+    }
+    if let Some(choice) = shell_env_editor(false).await {
+        return Some(choice);
+    }
+    shell_env_editor(true).await
+}
+
+async fn target_for_candidate(c: EditorCandidate) -> Option<LocalEditorTarget> {
+    let mut command = None;
+    for cmd in c.commands {
+        if command_available(cmd).await {
+            command = Some((*cmd).to_string());
+            break;
+        }
+    }
+
+    let mut app_name = None;
+    for app in c.apps {
+        if app_available(app).await {
+            app_name = Some((*app).to_string());
+            break;
+        }
+    }
+
+    if command.is_none() && app_name.is_none() {
+        return None;
+    }
+
+    Some(LocalEditorTarget {
+        id: c.id.to_string(),
+        label: c.label.to_string(),
+        icon_data_url: app_icon_data_url(app_name.as_deref()).await,
+        app_name,
+        command,
+        is_default: false,
+        source: None,
+    })
+}
+
+#[tauri::command]
+pub async fn local_editor_targets() -> AppResult<Vec<LocalEditorTarget>> {
+    let mut targets = Vec::new();
+    let env_choice = env_editor().await;
+    let env_key = env_choice.as_ref().map(|(_, raw)| editor_key(raw));
+
+    for c in EDITOR_CANDIDATES {
+        if let Some(mut target) = target_for_candidate(*c).await {
+            if env_key.as_deref().is_some_and(|key| candidate_matches(*c, key)) {
+                target.is_default = true;
+                target.source = env_choice.as_ref().map(|(name, _)| format!("${name}"));
+            }
+            targets.push(target);
+        }
+    }
+
+    if let Some((name, raw)) = env_choice {
+        let key = editor_key(&raw);
+        let matched_known = EDITOR_CANDIDATES.iter().any(|c| candidate_matches(*c, &key));
+        let already_listed = targets.iter().any(|t| t.command.as_deref() == Some(key.as_str()));
+        if !matched_known && !already_listed && command_available(&key).await {
+            targets.insert(
+                0,
+                LocalEditorTarget {
+                    id: format!("env-{key}"),
+                    label: key.clone(),
+                    app_name: None,
+                    command: Some(key),
+                    icon_data_url: None,
+                    is_default: true,
+                    source: Some(format!("${name}")),
+                },
+            );
+        }
+    }
+
+    if !targets.iter().any(|target| target.is_default) {
+        let default_idx = targets
+            .iter()
+            .position(|target| {
+                EDITOR_CANDIDATES
+                    .iter()
+                    .find(|c| c.id == target.id)
+                    .is_some_and(|c| c.default_candidate)
+            })
+            .or(if targets.is_empty() { None } else { Some(0) });
+        if let Some(idx) = default_idx {
+            targets[idx].is_default = true;
+            targets[idx].source = Some("installed".to_string());
+        }
+    }
+
+    let mut seen = HashSet::new();
+    targets.retain(|target| seen.insert(target.id.clone()));
+    Ok(targets)
+}
+
+#[tauri::command]
+pub async fn open_local_editor(path: String, target_id: String) -> AppResult<()> {
+    let target = local_editor_targets()
+        .await?
+        .into_iter()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| AppError::Other("editor is not installed".into()))?;
+
+    if let Some(cmd) = target.command {
+        Command::new(cmd)
+            .arg(path)
+            .spawn()
+            .map_err(|e| AppError::Other(format!("failed to open editor: {e}")))?;
+        return Ok(());
+    }
+
+    if let Some(app) = target.app_name {
+        Command::new("open")
+            .arg("-a")
+            .arg(app)
+            .arg(path)
+            .spawn()
+            .map_err(|e| AppError::Other(format!("failed to open editor: {e}")))?;
+        return Ok(());
+    }
+
+    Err(AppError::Other("editor is not installed".into()))
 }
