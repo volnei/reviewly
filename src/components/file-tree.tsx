@@ -1,5 +1,4 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import { HIDE_LABEL, type HideReason, classify } from "@/lib/focus";
 import type { PullFile } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -322,13 +321,7 @@ export function FileTree({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-1 p-2">
-        {[...Array(6)].map((_, i) => (
-          <Skeleton key={i} className="h-6 w-full rounded" />
-        ))}
-      </div>
-    );
+    return <FileTreePlaceholder />;
   }
 
   const total = classified.length;
@@ -489,6 +482,55 @@ export function FileTree({
         </ul>
       )}
     </ScrollArea>
+  );
+}
+
+function FileTreePlaceholder() {
+  const rows = [
+    { depth: 0, width: 118, folder: true },
+    { depth: 1, width: 156 },
+    { depth: 1, width: 132 },
+    { depth: 0, width: 96, folder: true },
+    { depth: 1, width: 144 },
+    { depth: 1, width: 104 },
+    { depth: 0, width: 174 },
+    { depth: 0, width: 128 },
+  ];
+
+  return (
+    <div className="h-full border-r border-hairline">
+      <div className="px-3 py-2">
+        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground/55">
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="size-3 opacity-55" strokeWidth={2} />
+            <span className="h-3 w-20 rounded bg-foreground/[0.045]" />
+          </span>
+          <span className="h-3 w-10 rounded bg-foreground/[0.045]" />
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.045]">
+          <div className="h-full w-1/4 rounded-full bg-foreground/[0.08]" />
+        </div>
+      </div>
+      <div className="border-t border-hairline/60 px-2 py-1">
+        {rows.map((row, i) => (
+          <div
+            key={`${row.width}-${i}`}
+            className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-muted-foreground/55"
+            style={{ paddingLeft: `${row.depth * 14 + 6}px` }}
+          >
+            {row.folder ? (
+              <ChevronRight className="size-3.5 opacity-55" />
+            ) : (
+              <span className="ml-1 size-1.5 rounded-full bg-foreground/[0.12]" />
+            )}
+            <span className="h-3 rounded bg-foreground/[0.055]" style={{ width: row.width }} />
+            {!row.folder && i % 3 === 1 && (
+              <span className="ml-auto h-3 w-4 rounded bg-foreground/[0.045]" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
