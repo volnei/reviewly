@@ -199,7 +199,13 @@ jobs:
               fi
             done
             if [ "$changed" = 1 ]; then
-              gh release upload "$TAG" --repo "$REPO" --clobber latest.json
+              # Replace the manifest robustly: gh's --clobber can delete the old
+              # asset and then fail the re-upload on a transient "Bad
+              # Content-Length", leaving no latest.json at all. Delete via the
+              # API, then upload fresh.
+              aid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json") | .id')
+              [ -n "$aid" ] && gh api -X DELETE "repos/$REPO/releases/assets/$aid" >/dev/null || true
+              gh release upload "$TAG" --repo "$REPO" latest.json
               echo "latest.json updated to renamed installers"
             fi
           fi
