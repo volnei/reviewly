@@ -19,6 +19,7 @@ import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
 import { useLocalRepos } from "@/stores/local-repos";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { Bot, ExternalLink, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
@@ -236,10 +237,18 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
     onError: (e) => toast.error(`AI fix failed — ${pkg}`, { description: String(e) }),
   });
 
-  function runAiFix() {
-    if (!local || !fix) return;
-    const ok = window.confirm(
+  async function runAiFix() {
+    if (!fix) return;
+    if (!local) {
+      toast.error(`Clone ${repo} locally first`, {
+        description: "Add it in the Repositories tab (Clone or Locate…) so the AI can work in your checkout.",
+      });
+      return;
+    }
+    // Tauri's WebView ignores window.confirm — use the dialog plugin.
+    const ok = await confirmDialog(
       `Let AI fix “${pkg}” (→ ${fix}) and open a draft PR?\n\nIt will work in your local clone:\n${local.path}\n\nThe agent edits files, runs your build/tests, pushes a branch, and opens a DRAFT PR for you to review.`,
+      { title: "Fix with AI", kind: "warning" },
     );
     if (ok) aiFix.mutate();
   }
@@ -258,16 +267,10 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
               label={
                 local
                   ? "Let AI bump it, run the build/tests, and open a draft PR"
-                  : "Clone this repo locally (Repositories tab) to enable AI fix"
+                  : "Needs a local clone — click for how"
               }
             >
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={!local}
-                loading={aiFix.isPending}
-                onClick={runAiFix}
-              >
+              <Button size="xs" variant="ghost" loading={aiFix.isPending} onClick={runAiFix}>
                 <Bot className="size-3.5" />
                 Fix with AI
               </Button>
