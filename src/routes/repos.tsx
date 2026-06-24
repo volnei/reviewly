@@ -21,6 +21,7 @@ import {
   DownloadCloud,
   FolderGit2,
   FolderOpen,
+  FolderSearch,
   GitBranch,
   Github,
   Plus,
@@ -157,6 +158,7 @@ export function ReposPage() {
                 cloning={cloningSlug === item.slug}
                 onToggleWatch={() => toggleWatch(item.slug)}
                 onClone={() => clone(item.slug)}
+                onLocate={associate}
                 onRemoveClone={() => item.local && removeLocal(item.local.path)}
               />
             ))}
@@ -271,12 +273,14 @@ function RepoCard({
   cloning,
   onToggleWatch,
   onClone,
+  onLocate,
   onRemoveClone,
 }: {
   item: RepoItem;
   cloning: boolean;
   onToggleWatch: () => void;
   onClone: () => void;
+  onLocate: () => void;
   onRemoveClone: () => void;
 }) {
   const navigate = useNavigate();
@@ -366,16 +370,31 @@ function RepoCard({
             </span>
           )
         ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            loading={cloning}
-            onClick={onClone}
-            className="pointer-events-auto relative z-10 h-6 shrink-0 px-2 text-[11px]"
-          >
-            <DownloadCloud className="size-3.5" />
-            Clone
-          </Button>
+          <div className="pointer-events-auto relative z-10 flex shrink-0 items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              loading={cloning}
+              onClick={onClone}
+              className="h-6 px-2 text-[11px]"
+            >
+              <DownloadCloud className="size-3.5" />
+              Clone
+            </Button>
+            {/* Already cloned outside the app? Point it at the existing folder
+                instead of cloning a duplicate. */}
+            <TooltipFor label="Already cloned? Link the existing folder">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onLocate}
+                className="h-6 px-2 text-[11px] text-muted-foreground"
+              >
+                <FolderSearch className="size-3.5" />
+                Locate…
+              </Button>
+            </TooltipFor>
+          </div>
         )}
 
         <div className="flex shrink-0 items-center gap-0.5">
