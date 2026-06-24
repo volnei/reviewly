@@ -19,9 +19,9 @@ import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
 import { useLocalRepos } from "@/stores/local-repos";
-import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { Bot, ExternalLink, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -241,7 +241,8 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
     if (!fix) return;
     if (!local) {
       toast.error(`Clone ${repo} locally first`, {
-        description: "Add it in the Repositories tab (Clone or Locate…) so the AI can work in your checkout.",
+        description:
+          "Add it in the Repositories tab (Clone or Locate…) so the AI can work in your checkout.",
       });
       return;
     }
