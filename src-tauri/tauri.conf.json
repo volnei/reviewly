@@ -43,7 +43,13 @@
     ],
     "macOS": {
       "minimumSystemVersion": "10.15",
-      "signingIdentity": "Developer ID Application"
+      "signingIdentity": "Developer ID Application",
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 175 },
+        "applicationFolderPosition": { "x": 480, "y": 175 }
+      }
     }
   },
   "plugins": {
