@@ -141,6 +141,19 @@ export function DashboardPage() {
   );
   const oldest = incoming[0] ? shortAge(incoming[0].updatedAt).label : null;
 
+  // Review backlog bucketed by how long it's been waiting — the hero chart.
+  const ageBuckets = useMemo(() => {
+    const b = [0, 0, 0, 0]; // ≤1d · 2–3d · 4–7d · >7d
+    for (const i of incoming) {
+      const days = Math.floor((Date.now() - +new Date(i.updatedAt)) / DAY);
+      if (days <= 1) b[0] += 1;
+      else if (days <= 3) b[1] += 1;
+      else if (days <= 7) b[2] += 1;
+      else b[3] += 1;
+    }
+    return b;
+  }, [incoming]);
+
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 30_000);
@@ -200,16 +213,14 @@ export function DashboardPage() {
         ) : (
           <>
             {hasData && (
-              <div className="grid grid-cols-2 gap-2 px-6 pt-1 pb-2 sm:grid-cols-4">
-                <Stat label="Waiting on you" value={incoming.length} tone="primary" />
-                <Stat label="Aging" value={agingCount} tone="destructive" />
-                <Stat label="Ready to merge" value={buckets.ready.length} tone="success" />
-                <Stat
-                  label="Needs fixing"
-                  value={buckets.needsAttention.length}
-                  tone="destructive"
-                />
-              </div>
+              <InboxHero
+                waiting={incoming.length}
+                oldest={oldest}
+                aging={agingCount}
+                ready={buckets.ready.length}
+                needsFixing={buckets.needsAttention.length}
+                ageBuckets={ageBuckets}
+              />
             )}
             <div className="px-3 pb-8">
               <Section
@@ -288,19 +299,107 @@ const TONE: Record<Tone, string> = {
 
 const SECTION_LIMIT = 10;
 
-/** A compact metric tile for the top-of-inbox stats strip. */
-function Stat({ label, value, tone }: { label: string; value: number; tone: Tone }) {
+const DOT: Record<Tone, string> = {
+  primary: "bg-primary",
+  success: "bg-success",
+  destructive: "bg-destructive",
+  muted: "bg-muted-foreground",
+};
+
+/** The inbox hero: headline metric, secondary stats as (zero-hiding) chips, and
+ * an animated "backlog by age" bar chart. */
+function InboxHero({
+  waiting,
+  oldest,
+  aging,
+  ready,
+  needsFixing,
+  ageBuckets,
+}: {
+  waiting: number;
+  oldest: string | null;
+  aging: number;
+  ready: number;
+  needsFixing: number;
+  ageBuckets: number[];
+}) {
   return (
-    <div className="rounded-xl border border-hairline bg-card/40 px-3 py-2.5">
-      <p
-        className={cn(
-          "font-display text-2xl leading-none tabular-nums",
-          value > 0 ? TONE[tone] : "text-muted-foreground/40",
-        )}
-      >
-        {value}
-      </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
+    <div className="relative mx-6 mb-4 overflow-hidden rounded-2xl border border-hairline bg-gradient-to-br from-primary/[0.07] via-card/20 to-transparent px-5 py-5">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-primary/15 blur-3xl"
+      />
+      <div className="relative flex items-center justify-between gap-6">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Your review queue
+          </p>
+          <h2 className="mt-1.5 font-display text-[28px] leading-none tracking-tight text-foreground">
+            <span className="bg-gradient-to-r from-primary to-info bg-clip-text tabular-nums text-transparent">
+              {waiting}
+            </span>{" "}
+            {waiting === 1 ? "PR waiting" : "PRs waiting"} on you
+          </h2>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {waiting === 0
+              ? "Inbox zero — nothing waiting. 🎉"
+              : oldest
+                ? `Oldest has waited ${oldest}`
+                : "Fresh off the queue"}
+          </p>
+          <div className="mt-3.5 flex flex-wrap items-center gap-2">
+            <Chip tone="destructive" value={aging} label="aging" />
+            <Chip tone="success" value={ready} label="ready to merge" />
+            <Chip tone="destructive" value={needsFixing} label="needs fixing" />
+          </div>
+        </div>
+        <AgeChart buckets={ageBuckets} />
+      </div>
+    </div>
+  );
+}
+
+function Chip({ tone, value, label }: { tone: Tone; value: number; label: string }) {
+  if (value === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2.5 py-1 text-xs">
+      <span className={cn("size-1.5 rounded-full", DOT[tone])} />
+      <span className="font-medium tabular-nums text-foreground">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </span>
+  );
+}
+
+/** "Backlog by age" bars that grow in on mount. */
+function AgeChart({ buckets }: { buckets: number[] }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const max = Math.max(1, ...buckets);
+  const labels = ["≤1d", "2–3d", "4–7d", ">7d"];
+  return (
+    <div
+      className="hidden shrink-0 items-end gap-2.5 sm:flex"
+      role="img"
+      aria-label="Backlog by age"
+    >
+      {buckets.map((v, i) => (
+        <div key={labels[i]} className="flex w-9 flex-col items-center gap-1.5">
+          <span className="h-3 text-[11px] tabular-nums text-muted-foreground/80">{v || ""}</span>
+          <div className="relative flex h-20 w-full items-end overflow-hidden rounded-md bg-foreground/[0.04]">
+            <div
+              className={cn(
+                "w-full rounded-md transition-[height] duration-700 ease-out",
+                i === 3 ? "bg-destructive/70" : "bg-primary/55",
+              )}
+              style={{ height: mounted ? `${Math.max(v ? 8 : 0, (v / max) * 100)}%` : "0%" }}
+            />
+          </div>
+          <span className="text-[10px] tabular-nums text-muted-foreground/60">{labels[i]}</span>
+        </div>
+      ))}
     </div>
   );
 }
