@@ -300,6 +300,8 @@ pub fn run() {
             commands::git::git_grep,
             commands::git::git_file_activity,
             commands::git::git_branch_changes,
+            commands::git::local_editor_targets,
+            commands::git::open_local_editor,
             // reviews
             commands::reviews::gh_list_reviews,
             commands::reviews::gh_submit_review,
