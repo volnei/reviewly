@@ -13,7 +13,6 @@ import { ReactionsBar } from "@/components/reactions-bar";
 import { ReviewSubmitPopover, reviewStateToEvent } from "@/components/review-submit-dialog";
 import { ReviewThreadGroup } from "@/components/review-thread";
 import { Segmented } from "@/components/segmented";
-import { SkeletonList } from "@/components/skeleton-list";
 import { StackRail } from "@/components/stack-rail";
 import { TooltipFor } from "@/components/tooltip-for";
 import {
@@ -61,7 +60,7 @@ import { useReviewDraft } from "@/stores/review-draft";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useUi } from "@/stores/ui";
 import { useViewedFiles, viewedKey } from "@/stores/viewed-files";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -87,7 +86,15 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 type DetailTab = "files" | "conversation" | "commits" | "checks";
@@ -356,6 +363,23 @@ export function PRDetailPage() {
     },
   });
 
+  // Warm the adjacent tabs once the PR shell is open. These are small,
+  // PR-scoped reads; prefetching them keeps tab switches feeling local instead
+  // of replacing the page with fresh loading chrome.
+  useEffect(() => {
+    if (!headSha) return;
+    void qc.prefetchQuery({
+      queryKey: ["pull-commits", owner, repo, number],
+      queryFn: () => invoke<CommitItem[]>("gh_list_commits", { owner, repo, number }),
+      staleTime: 60_000,
+    });
+    void qc.prefetchQuery({
+      queryKey: ["pull-issue-comments", owner, repo, number],
+      queryFn: () => invoke<IssueComment[]>("gh_list_issue_comments", { owner, repo, number }),
+      staleTime: 30_000,
+    });
+  }, [headSha, owner, repo, number, qc]);
+
   // Which checks are *required* by branch protection — so an optional failure
   // doesn't read as a broken PR, and a required-but-missing check reads pending.
   const requiredChecks = useQuery({
@@ -595,6 +619,7 @@ export function PRDetailPage() {
       }),
     enabled: !!headSha && !!current,
     staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const submit = useMutation({
@@ -685,11 +710,7 @@ export function PRDetailPage() {
   );
 
   if (detail.isLoading) {
-    return (
-      <div className="p-6">
-        <SkeletonList />
-      </div>
-    );
+    return <PRDetailLoading />;
   }
   if (detail.error || !detail.data) {
     return (
@@ -1076,7 +1097,7 @@ export function PRDetailPage() {
                 files={fileList}
                 active={current}
                 onSelect={setActiveFile}
-                loading={files.isLoading}
+                loading={files.isLoading && fileList.length === 0}
                 viewedKey={vk}
                 commentCounts={commentCounts}
               />
@@ -1096,7 +1117,11 @@ export function PRDetailPage() {
                     number={number}
                     reviewThreads={reviewThreadsGql.data ?? []}
                     viewerLogin={viewerLogin}
-                    fileLines={fileContent.data ? fileContent.data.split("\n") : undefined}
+                    fileLines={
+                      fileContent.data && fileContent.dataUpdatedAt > 0
+                        ? fileContent.data.split("\n")
+                        : undefined
+                    }
                     autoMarkViewed={autoMarkViewed}
                     onReachedEnd={() => {
                       if (vk && current) setViewedFile(vk, current, true);
@@ -1106,7 +1131,7 @@ export function PRDetailPage() {
                     focusNonce={focusNonce}
                     headSha={headSha}
                     viewedKey={vk}
-                    fileLinesLoading={fileContent.isLoading}
+                    fileLinesLoading={fileContent.isLoading && fileContent.dataUpdatedAt === 0}
                   />
                 ) : (
                   <EmptyState
@@ -1312,6 +1337,105 @@ export function PRDetailPage() {
   );
 }
 
+function PRDetailLoading() {
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex flex-col gap-y-3 border-b border-hairline px-6 py-4">
+        <div className="flex items-start gap-3">
+          <PlaceholderBox className="mt-1 size-5 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <PlaceholderBox className="h-5 w-[min(32rem,62%)]" />
+              <PlaceholderBox className="h-3.5 w-28" />
+            </div>
+            <div className="flex items-center gap-2">
+              <PlaceholderBox className="size-5 rounded-full" />
+              <PlaceholderBox className="h-3 w-20" />
+              <PlaceholderBox className="h-3 w-32" />
+              <PlaceholderBox className="h-3 w-24" />
+            </div>
+            <div className="flex items-center gap-2">
+              {[56, 72, 64].map((width) => (
+                <PlaceholderBox key={width} className="h-5 rounded-full" style={{ width }} />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <PlaceholderBox className="h-7 w-16 rounded-lg" />
+            <PlaceholderBox className="h-7 w-14 rounded-lg" />
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {[64, 96, 72, 68].map((width) => (
+            <PlaceholderBox key={width} className="h-7 rounded-md" style={{ width }} />
+          ))}
+        </div>
+      </header>
+      <div className="flex min-h-0 flex-1">
+        <div className="w-[22%] min-w-52 space-y-1 border-r border-hairline p-2">
+          {[0.86, 0.68, 0.78, 0.54, 0.72, 0.62, 0.48].map((width, i) => (
+            <div key={i} className="flex h-6 items-center gap-2 rounded px-1.5">
+              <PlaceholderBox className="size-3 shrink-0 rounded-sm" />
+              <PlaceholderBox className="h-3 min-w-0" style={{ width: `${width * 100}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2 p-4">
+          <PlaceholderBox className="h-5 w-64" />
+          {[0.94, 0.88, 0.96, 0.7, 0.84, 0.92, 0.62].map((width, i) => (
+            <PlaceholderBox key={i} className="h-4" style={{ width: `${width * 100}%` }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderBox({ className, ...props }: ComponentProps<"div">): ReactElement {
+  return <div className={cn("rounded-md bg-foreground/[0.055]", className)} {...props} />;
+}
+
+function CommitsPlaceholder() {
+  const rows = [
+    { width: "56%", meta: "22%" },
+    { width: "72%", meta: "18%" },
+    { width: "48%", meta: "24%" },
+    { width: "64%", meta: "20%" },
+  ];
+
+  return (
+    <div className="px-3 py-2">
+      {rows.map((row, i) => (
+        <div key={i} className="flex h-8 items-center gap-3 rounded-lg px-3">
+          <GitCommit className="size-3.5 shrink-0 text-muted-foreground/45" />
+          <PlaceholderBox className="h-3.5 min-w-0" style={{ width: row.width }} />
+          <PlaceholderBox className="ml-auto h-3.5 shrink-0" style={{ width: row.meta }} />
+          <code className="h-3.5 w-12 shrink-0 rounded bg-foreground/[0.045]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChecksPlaceholder() {
+  const rows = ["58%", "66%", "44%", "72%", "52%", "62%"];
+
+  return (
+    <div className="px-2 py-1.5">
+      <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">
+        Required
+      </div>
+      {rows.map((width, i) => (
+        <div key={i} className="flex h-8 items-center gap-2 rounded-lg px-2">
+          <span className="size-3.5 shrink-0 rounded-full border border-border/50 bg-foreground/[0.035]" />
+          <PlaceholderBox className="h-3.5 min-w-0" style={{ width }} />
+          <PlaceholderBox className="ml-auto h-3.5 w-16 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Conversation({
   owner,
   repo,
@@ -1343,6 +1467,7 @@ function Conversation({
   const issueComments = useQuery({
     queryKey: ["pull-issue-comments", owner, repo, number],
     queryFn: () => invoke<IssueComment[]>("gh_list_issue_comments", { owner, repo, number }),
+    staleTime: 30_000,
   });
   const comments = issueComments.data ?? [];
 
@@ -1352,6 +1477,7 @@ function Conversation({
   const reviewThreads = useQuery({
     queryKey: ["pull-review-threads-gql", owner, repo, number],
     queryFn: () => invoke<ReviewThreadGraphQL[]>("gh_list_review_threads", { owner, repo, number }),
+    staleTime: 30_000,
   });
   const gqlThreads = reviewThreads.data ?? [];
   const commentById = new Map(threads.map((t) => [t.id, t]));
@@ -1540,10 +1666,11 @@ function CommitsTab({ owner, repo, number }: { owner: string; repo: string; numb
   const q = useQuery({
     queryKey: ["pull-commits", owner, repo, number],
     queryFn: () => invoke<CommitItem[]>("gh_list_commits", { owner, repo, number }),
+    staleTime: 60_000,
   });
 
   if (q.isLoading) {
-    return <Skeleton className="m-4 h-32" />;
+    return <CommitsPlaceholder />;
   }
   if (!q.data || q.data.length === 0) {
     return <p className="p-6 text-xs text-muted-foreground">No commits.</p>;
@@ -1597,13 +1724,7 @@ function ChecksTab({
   }, [runs, requiredNames]);
 
   if (loading) {
-    return (
-      <div className="space-y-1 p-4">
-        {[...Array(6)].map((_, i) => (
-          <Skeleton key={i} className="h-7 w-full rounded-md" />
-        ))}
-      </div>
-    );
+    return <ChecksPlaceholder />;
   }
   if (runs.length === 0) {
     return (
