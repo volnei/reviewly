@@ -25,6 +25,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,6 +59,7 @@ import { invoke } from "@/lib/tauri";
 import { safeOpenUrl, toastError, toastRetry } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
+import { useEditorPrefs } from "@/stores/editor-prefs";
 import { useLocalRepos } from "@/stores/local-repos";
 import { usePinboard } from "@/stores/pinboard";
 import { usePrView } from "@/stores/pr-view";
@@ -66,13 +73,14 @@ import {
   ArrowRight,
   CheckCheck,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  Code2,
   Columns2,
   Download,
   ExternalLink,
   Files,
   Focus,
-  FolderGit2,
   GitCommit,
   GitPullRequest,
   MessageSquare,
@@ -808,18 +816,6 @@ export function PRDetailPage() {
               {localRepo && (
                 <>
                   <span className="text-muted-foreground/60">·</span>
-                  <TooltipFor label={`Open local clone · ${localRepo.path}`}>
-                    <button
-                      type="button"
-                      aria-label="Open local clone"
-                      onClick={() =>
-                        navigate({ to: "/repos/$owner/$repo", params: { owner, repo } })
-                      }
-                      className="text-primary transition-colors hover:text-primary/80"
-                    >
-                      <FolderGit2 className="size-3.5" />
-                    </button>
-                  </TooltipFor>
                   <TooltipFor label="Check out this PR in the local clone">
                     <button
                       type="button"
@@ -870,6 +866,12 @@ export function PRDetailPage() {
                 <RotateCw className={cn("size-3.5", refreshing && "animate-spin")} />
               </Button>
             </TooltipFor>
+            <LocalOpenMenu
+              owner={owner}
+              repo={repo}
+              path={localRepo?.path ?? null}
+              fallbackUrl={d.html_url}
+            />
             <TooltipFor label="Open on GitHub">
               <Button
                 size="icon-sm"
@@ -1335,6 +1337,149 @@ export function PRDetailPage() {
       </div>
     </div>
   );
+}
+
+interface LocalEditorTarget {
+  id: string;
+  label: string;
+  appName: string | null;
+  command: string | null;
+  iconDataUrl: string | null;
+  isDefault: boolean;
+}
+
+function LocalOpenMenu({
+  owner,
+  repo,
+  path,
+  fallbackUrl,
+}: {
+  owner: string;
+  repo: string;
+  path: string | null;
+  fallbackUrl: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const lastTargetId = useEditorPrefs((s) => s.lastTargetId);
+  const setLastTargetId = useEditorPrefs((s) => s.setLastTargetId);
+  const editors = useQuery({
+    queryKey: ["local-editor-targets"],
+    queryFn: () => invoke<LocalEditorTarget[]>("local_editor_targets"),
+    staleTime: 60_000,
+  });
+  const targets = editors.data ?? [];
+  const defaultTarget =
+    targets.find((target) => target.id === lastTargetId) ??
+    targets.find((target) => target.isDefault) ??
+    targets[0] ??
+    null;
+
+  const openTarget = async (target: LocalEditorTarget | null) => {
+    if (!path) {
+      toast.info("Add a local clone to open this repo in an app", {
+        description: "Use Repositories to connect a folder for this GitHub repo.",
+      });
+      return;
+    }
+    if (!target) {
+      toast.info("No supported editor found", {
+        description: "Install Zed, VS Code, Cursor, or set $EDITOR to an installed editor.",
+      });
+      return;
+    }
+    try {
+      await invoke("open_local_editor", { path, targetId: target.id });
+      setLastTargetId(target.id);
+    } catch {
+      toast.error(`Couldn't open ${target.label}`, {
+        description: "The editor may have been removed or renamed.",
+      });
+    }
+  };
+  const triggerLabel = defaultTarget?.label ?? "Editor";
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <div
+        className={cn(
+          "inline-flex h-7 overflow-hidden rounded-lg border text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
+          open ? "border-border/70 bg-foreground/[0.06] text-foreground" : "border-transparent",
+        )}
+      >
+        <TooltipFor label={path ? `Open in ${triggerLabel}` : "Open on GitHub"}>
+          <button
+            type="button"
+            aria-label={path ? `Open in ${triggerLabel}` : "Open on GitHub"}
+            onClick={() => (path ? void openTarget(defaultTarget) : safeOpenUrl(fallbackUrl))}
+            className="inline-flex w-9 items-center justify-center hover:bg-foreground/[0.05]"
+          >
+            <EditorIcon target={defaultTarget} />
+          </button>
+        </TooltipFor>
+        <DropdownMenuTrigger
+          aria-label="Choose app to open local clone"
+          className="inline-flex w-7 items-center justify-center border-l border-border/40 outline-none hover:bg-foreground/[0.05]"
+        >
+          <ChevronDown className="size-3.5 shrink-0" />
+        </DropdownMenuTrigger>
+      </div>
+      <DropdownMenuContent align="end" className="w-44">
+        {!path && (
+          <p className="px-2 py-1.5 text-xs leading-snug text-muted-foreground">
+            No local clone for {owner}/{repo}.
+          </p>
+        )}
+        {targets.length > 0 ? (
+          targets.map((target) => (
+            <OpenTargetItem
+              key={target.id}
+              target={target}
+              onClick={() => {
+                void openTarget(target);
+                setOpen(false);
+              }}
+            />
+          ))
+        ) : (
+          <p className="px-2 py-1.5 text-xs leading-snug text-muted-foreground">
+            No supported editors found. Install Zed, VS Code, Cursor, Windsurf, Sublime Text,
+            WebStorm, IntelliJ IDEA, Xcode, or set $EDITOR.
+          </p>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function OpenTargetItem({
+  target,
+  onClick,
+}: {
+  target: LocalEditorTarget;
+  onClick: () => void;
+}) {
+  return (
+    <DropdownMenuItem onClick={onClick}>
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        <EditorIcon target={target} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{target.label}</span>
+    </DropdownMenuItem>
+  );
+}
+
+function EditorIcon({ target }: { target: LocalEditorTarget | null }) {
+  if (target?.iconDataUrl) {
+    return (
+      <img
+        src={target.iconDataUrl}
+        alt=""
+        className="size-4 shrink-0 rounded-[3px]"
+        draggable={false}
+      />
+    );
+  }
+  return <Code2 className="size-4 shrink-0 text-muted-foreground/70" strokeWidth={1.75} />;
 }
 
 function PRDetailLoading() {
