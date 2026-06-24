@@ -1,8 +1,10 @@
+import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { PageHeader } from "@/components/page-header";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime } from "@/lib/format";
+import { ciMeta, reviewMeta } from "@/lib/status";
 import type { Dashboard, MinePr, PullSummary } from "@/lib/tauri";
 import { invoke, parseRepoUrl } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -12,14 +14,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  Check,
+  CheckCheck,
   ChevronRight,
   Clock,
   FilePen,
   GitMerge,
   GitPullRequest,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -155,6 +156,12 @@ export function DashboardPage() {
   const loadingIn = reviewRequested.isLoading;
   const loadingOut = dashboard.isLoading;
   const hasData = !loadingIn && !loadingOut;
+  const totalMine =
+    buckets.needsAttention.length +
+    buckets.ready.length +
+    buckets.awaiting.length +
+    buckets.drafts.length;
+  const allEmpty = hasData && incoming.length === 0 && totalMine === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -182,52 +189,76 @@ export function DashboardPage() {
           <IconButton label="Refresh" icon={RefreshCw} loading={refreshing} onClick={refreshAll} />
         </div>
 
-        <div className="px-3 pb-8">
-          <Section
-            title="Needs your review"
-            count={incoming.length}
-            icon={GitPullRequest}
-            tone="primary"
-            badge={agingCount > 0 ? `${agingCount} aging` : undefined}
-            loading={loadingIn}
-            alwaysShow
-            emptyText="Inbox zero — nothing waiting on you. 🎉"
-            items={incoming}
-          />
-          <Section
-            title="Needs your attention"
-            count={buckets.needsAttention.length}
-            icon={AlertTriangle}
-            tone="destructive"
-            loading={loadingOut}
-            items={buckets.needsAttention}
-          />
-          <Section
-            title="Ready to merge"
-            count={buckets.ready.length}
-            icon={GitMerge}
-            tone="success"
-            loading={loadingOut}
-            items={buckets.ready}
-          />
-          <Section
-            title="Awaiting review"
-            count={buckets.awaiting.length}
-            icon={Clock}
-            tone="muted"
-            loading={loadingOut}
-            items={buckets.awaiting}
-          />
-          <Section
-            title="Drafts"
-            count={buckets.drafts.length}
-            icon={FilePen}
-            tone="muted"
-            loading={loadingOut}
-            defaultOpen={false}
-            items={buckets.drafts}
-          />
-        </div>
+        {allEmpty ? (
+          <div className="px-6 py-16">
+            <EmptyState
+              icon={CheckCheck}
+              title="You're all caught up"
+              description="No reviews waiting on you, and nothing of yours needs attention. Enjoy the quiet. 🎉"
+            />
+          </div>
+        ) : (
+          <>
+            {hasData && (
+              <div className="grid grid-cols-2 gap-2 px-6 pt-1 pb-2 sm:grid-cols-4">
+                <Stat label="Waiting on you" value={incoming.length} tone="primary" />
+                <Stat label="Aging" value={agingCount} tone="destructive" />
+                <Stat label="Ready to merge" value={buckets.ready.length} tone="success" />
+                <Stat
+                  label="Needs fixing"
+                  value={buckets.needsAttention.length}
+                  tone="destructive"
+                />
+              </div>
+            )}
+            <div className="px-3 pb-8">
+              <Section
+                title="Needs your review"
+                count={incoming.length}
+                icon={GitPullRequest}
+                tone="primary"
+                badge={agingCount > 0 ? `${agingCount} aging` : undefined}
+                loading={loadingIn}
+                alwaysShow
+                emptyText="Inbox zero — nothing waiting on you. 🎉"
+                items={incoming}
+              />
+              <Section
+                title="Needs your attention"
+                count={buckets.needsAttention.length}
+                icon={AlertTriangle}
+                tone="destructive"
+                loading={loadingOut}
+                items={buckets.needsAttention}
+              />
+              <Section
+                title="Ready to merge"
+                count={buckets.ready.length}
+                icon={GitMerge}
+                tone="success"
+                loading={loadingOut}
+                items={buckets.ready}
+              />
+              <Section
+                title="Awaiting review"
+                count={buckets.awaiting.length}
+                icon={Clock}
+                tone="muted"
+                loading={loadingOut}
+                items={buckets.awaiting}
+              />
+              <Section
+                title="Drafts"
+                count={buckets.drafts.length}
+                icon={FilePen}
+                tone="muted"
+                loading={loadingOut}
+                defaultOpen={false}
+                items={buckets.drafts}
+              />
+            </div>
+          </>
+        )}
       </ScrollArea>
     </div>
   );
@@ -256,6 +287,23 @@ const TONE: Record<Tone, string> = {
 };
 
 const SECTION_LIMIT = 10;
+
+/** A compact metric tile for the top-of-inbox stats strip. */
+function Stat({ label, value, tone }: { label: string; value: number; tone: Tone }) {
+  return (
+    <div className="rounded-xl border border-hairline bg-card/40 px-3 py-2.5">
+      <p
+        className={cn(
+          "font-display text-2xl leading-none tabular-nums",
+          value > 0 ? TONE[tone] : "text-muted-foreground/40",
+        )}
+      >
+        {value}
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
+    </div>
+  );
+}
 
 function Section({
   title,
@@ -357,7 +405,11 @@ function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 pl-10 text-left transition-colors hover:bg-foreground/[0.04]"
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-lg px-3 py-2 pl-10 text-left transition-colors hover:bg-foreground/[0.04]",
+        // PRs that have been waiting on you for over a week get a faint accent.
+        age.aging && "bg-destructive/[0.035]",
+      )}
     >
       {item.avatar ? (
         <img src={item.avatar} alt="" className="size-5 shrink-0 rounded-full" />
@@ -386,26 +438,23 @@ function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
 }
 
 function ReviewBadge({ review }: { review?: string | null }) {
-  if (review === "APPROVED")
-    return (
-      <Check className="size-3.5 shrink-0 text-success" strokeWidth={2.5} aria-label="Approved" />
-    );
-  if (review === "CHANGES_REQUESTED")
-    return (
-      <X
-        className="size-3.5 shrink-0 text-destructive"
-        strokeWidth={2.5}
-        aria-label="Changes requested"
-      />
-    );
-  return null;
+  const m = reviewMeta(review);
+  if (!m) return null;
+  const Icon = m.icon;
+  return (
+    <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
+  );
 }
 
 function CiIcon({ ci }: { ci?: InboxItem["ci"] }) {
-  if (!ci || ci === "none") return null;
-  if (ci === "success")
-    return <Check className="size-3.5 shrink-0 text-success/70" aria-label="CI passing" />;
-  if (ci === "failure")
-    return <X className="size-3.5 shrink-0 text-destructive" aria-label="CI failing" />;
-  return <Clock className="size-3.5 shrink-0 text-warning" aria-label="CI pending" />;
+  const m = ciMeta(ci);
+  if (!m) return null;
+  const Icon = m.icon;
+  // A passing check is dimmed; failing/pending stay full strength.
+  return (
+    <Icon
+      className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-70")}
+      aria-label={m.label}
+    />
+  );
 }

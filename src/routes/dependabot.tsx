@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime } from "@/lib/format";
+import { severityTone } from "@/lib/status";
 import type { DependabotAlert } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
 import { safeOpenUrl } from "@/lib/ui";
@@ -27,19 +28,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"] as const;
-
-function severityTone(sev: string): string {
-  switch (sev.toLowerCase()) {
-    case "critical":
-      return "bg-destructive text-destructive-foreground ring-1 ring-destructive/40";
-    case "high":
-      return "bg-destructive/15 text-destructive";
-    case "medium":
-      return "bg-warning/20 font-semibold text-warning";
-    default:
-      return "bg-foreground/[0.1] text-foreground/70";
-  }
-}
 
 export function DependabotPage() {
   const repo = useDependabotRepo((s) => s.repo);
