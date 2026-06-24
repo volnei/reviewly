@@ -2,6 +2,15 @@ import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { PageHeader } from "@/components/page-header";
 import { TooltipFor } from "@/components/tooltip-for";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -22,7 +31,6 @@ import { useDependabotRepo } from "@/stores/dependabot";
 import { useLocalRepos } from "@/stores/local-repos";
 import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { Bot, ExternalLink, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -225,7 +233,8 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
     onError: (e) => toast.error(`AI fix failed — ${pkg}`, { description: String(e) }),
   });
 
-  async function runAiFix() {
+  const [confirmFix, setConfirmFix] = useState(false);
+  function runAiFix() {
     if (!fix) return;
     if (!local) {
       toast.error(`Clone ${repo} locally first`, {
@@ -234,12 +243,7 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
       });
       return;
     }
-    // Tauri's WebView ignores window.confirm — use the dialog plugin.
-    const ok = await confirmDialog(
-      `Let AI fix “${pkg}” (→ ${fix}) and open a draft PR?\n\nIt will work in your local clone:\n${local.path}\n\nThe agent edits files, runs your build/tests, pushes a branch, and opens a DRAFT PR for you to review.`,
-      { title: "Fix with AI", kind: "warning" },
-    );
-    if (ok) aiFix.mutate();
+    setConfirmFix(true);
   }
 
   return (
@@ -283,6 +287,39 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
           {fix && ` · fixed in ${fix}`}
         </p>
       )}
+
+      <AlertDialog open={confirmFix} onOpenChange={setConfirmFix}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fix with AI?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Let AI bump <span className="font-mono text-foreground">{pkg}</span> to{" "}
+              <span className="font-mono text-foreground">{fix}</span>, run your build &amp; tests,
+              push a branch, and open a DRAFT PR for you to review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {local && (
+            <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
+              {local.path}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button
+              size="sm"
+              onClick={() => {
+                setConfirmFix(false);
+                aiFix.mutate();
+              }}
+            >
+              <Bot className="size-3.5" />
+              Fix with AI
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </li>
   );
 }

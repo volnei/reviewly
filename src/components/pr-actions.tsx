@@ -17,7 +17,6 @@ import { cn } from "@/lib/utils";
 import { useLocalRepos } from "@/stores/local-repos";
 import { type MergeMethod, useMergePrefs } from "@/stores/merge-prefs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
   Bot,
   Check,
@@ -172,18 +171,15 @@ export function PrActions({ owner, repo, number, pr, nodeId }: Props) {
     },
     onError: (e) => toast.error("AI couldn't resolve the conflicts", { description: String(e) }),
   });
-  async function runResolveConflicts() {
+  const [confirmResolve, setConfirmResolve] = useState(false);
+  function runResolveConflicts() {
     if (!localRepo) {
       toast.error(`Clone ${owner}/${repo} locally first`, {
         description: "Add it in the Repositories tab so the AI can work in your checkout.",
       });
       return;
     }
-    const ok = await confirmDialog(
-      `Let AI resolve the conflicts in this PR and push?\n\nIt works in your local clone:\n${localRepo.path}\n\nThe agent merges the base, resolves every conflict, runs your build/tests, commits the merge, and pushes to the PR branch.`,
-      { title: "Resolve conflicts with AI", kind: "warning" },
-    );
-    if (ok) resolveConflicts.mutate();
+    setConfirmResolve(true);
   }
 
   return (
@@ -429,6 +425,39 @@ export function PrActions({ owner, repo, number, pr, nodeId }: Props) {
             >
               <GitMerge className="size-3.5" />
               Merge now
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+
+      <AlertDialog open={confirmResolve} onOpenChange={setConfirmResolve}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resolve conflicts with AI?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The agent works in your local clone, merges{" "}
+              <span className="font-mono text-foreground">{pr.base.ref}</span>, resolves every
+              conflict, runs your build &amp; tests, commits the merge, and pushes to the PR branch.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {localRepo && (
+            <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
+              {localRepo.path}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button
+              size="sm"
+              onClick={() => {
+                setConfirmResolve(false);
+                resolveConflicts.mutate();
+              }}
+            >
+              <Bot className="size-3.5" />
+              Resolve with AI
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
