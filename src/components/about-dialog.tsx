@@ -83,10 +83,11 @@ export function AboutDialog() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-hairline p-4">
+        <div className="flex flex-col gap-1.5 border-t border-hairline p-4">
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
+            className="w-full shadow-sm"
             onClick={() => {
               setOpen(false);
               void checkForUpdates();
@@ -98,10 +99,11 @@ export function AboutDialog() {
           <Button
             variant="ghost"
             size="sm"
+            className="w-full text-muted-foreground hover:text-foreground"
             onClick={() => safeOpenUrl("https://github.com/volnei/reviewly")}
           >
             <Github className="size-3.5" />
-            GitHub
+            View on GitHub
           </Button>
         </div>
 
