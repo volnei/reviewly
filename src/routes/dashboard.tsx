@@ -329,8 +329,8 @@ function useCountUp(target: number, ms = 1000): number {
   return val;
 }
 
-/** The inbox hero — a dark aurora spotlight: a big count-up gradient metric,
- * secondary stats as (zero-hiding) glass chips, and an animated backlog chart. */
+/** The inbox hero — sober and typographic: an oversized count-up number leads,
+ * the rest is muted. No colour beyond small semantic dots. */
 function InboxHero({
   waiting,
   oldest,
@@ -348,30 +348,27 @@ function InboxHero({
 }) {
   const n = useCountUp(waiting);
   return (
-    <div className="relative mx-6 mb-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b14] px-6 py-7">
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-28 -left-16 size-80 rounded-full bg-indigo-500/40 blur-[60px] animate-aurora-a" />
-        <div className="absolute -top-32 -right-12 size-80 rounded-full bg-fuchsia-500/30 blur-[60px] animate-aurora-b" />
-        <div className="absolute -bottom-24 left-1/3 size-80 rounded-full bg-sky-500/30 blur-[60px] animate-aurora-c" />
-      </div>
+    <div className="relative mx-6 mb-4 overflow-hidden rounded-2xl border border-hairline bg-card/40 px-8 py-9">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
+        className="pointer-events-none absolute -top-32 right-0 size-72 rounded-full bg-foreground/[0.035] blur-3xl"
       />
-      <div className="relative flex items-end justify-between gap-6">
+      <div className="relative flex items-end justify-between gap-8">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/45">
-            Your review queue
+          <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground/60">
+            Waiting on your review
           </p>
-          <h2 className="mt-2.5 font-display text-[42px] font-medium leading-[1.02] tracking-tight">
-            <span className="bg-gradient-to-r from-indigo-300 via-violet-300 to-sky-300 bg-clip-text tabular-nums text-transparent">
+          <div className="mt-3 flex items-baseline gap-3">
+            <span className="font-display text-[76px] font-medium leading-[0.85] tracking-tighter text-foreground tabular-nums">
               {n}
             </span>
-            <span className="text-white"> {waiting === 1 ? "PR" : "PRs"} waiting on you</span>
-          </h2>
-          <p className="mt-2.5 text-xs text-white/55">
+            <span className="pb-1.5 text-base text-muted-foreground">
+              {waiting === 1 ? "pull request" : "pull requests"}
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
             {waiting === 0
-              ? "Inbox zero — nothing waiting. 🎉"
+              ? "Inbox zero — nothing waiting."
               : oldest
                 ? `Oldest has waited ${oldest}`
                 : "Fresh off the queue"}
@@ -391,15 +388,15 @@ function InboxHero({
 function Chip({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   if (value === 0) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs backdrop-blur-sm">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2.5 py-1 text-xs">
       <span className={cn("size-1.5 rounded-full", DOT[tone])} />
-      <span className="font-medium tabular-nums text-white">{value}</span>
-      <span className="text-white/55">{label}</span>
+      <span className="font-medium tabular-nums text-foreground">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
     </span>
   );
 }
 
-/** "Backlog by age" bars that grow in on mount, gradient-filled. */
+/** "Backlog by age" bars that grow in on mount — muted, single-tone. */
 function AgeChart({ buckets }: { buckets: number[] }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -409,26 +406,20 @@ function AgeChart({ buckets }: { buckets: number[] }) {
   const max = Math.max(1, ...buckets);
   const labels = ["≤1d", "2–3d", "4–7d", ">7d"];
   return (
-    <div
-      className="hidden shrink-0 items-end gap-2.5 sm:flex"
-      role="img"
-      aria-label="Backlog by age"
-    >
+    <div className="hidden shrink-0 items-end gap-2.5 sm:flex" role="img" aria-label="Backlog by age">
       {buckets.map((v, i) => (
         <div key={labels[i]} className="flex w-9 flex-col items-center gap-1.5">
-          <span className="h-3 text-[11px] tabular-nums text-white/70">{v || ""}</span>
-          <div className="relative flex h-20 w-full items-end overflow-hidden rounded-md bg-white/[0.06]">
+          <span className="h-3 text-[11px] tabular-nums text-muted-foreground/70">{v || ""}</span>
+          <div className="relative flex h-20 w-full items-end overflow-hidden rounded-md bg-foreground/[0.05]">
             <div
               className={cn(
                 "w-full rounded-md transition-[height] duration-1000 ease-out",
-                i === 3
-                  ? "bg-gradient-to-t from-rose-500/80 to-rose-400"
-                  : "bg-gradient-to-t from-indigo-500/70 to-violet-400",
+                i === 3 ? "bg-destructive/45" : "bg-foreground/25",
               )}
               style={{ height: mounted ? `${Math.max(v ? 10 : 0, (v / max) * 100)}%` : "0%" }}
             />
           </div>
-          <span className="text-[10px] tabular-nums text-white/45">{labels[i]}</span>
+          <span className="text-[10px] tabular-nums text-muted-foreground/55">{labels[i]}</span>
         </div>
       ))}
     </div>
