@@ -2,6 +2,7 @@ import { AiReview } from "@/components/ai-review";
 import { checkRowIcon, summarizeChecks } from "@/components/check-badge";
 import { CommentByline } from "@/components/comment-byline";
 import { Composer } from "@/components/composer";
+import { DiffFindBar } from "@/components/diff-find-bar";
 import { DiffViewer } from "@/components/diff-viewer";
 import { EmptyState } from "@/components/empty-state";
 import { FileTree } from "@/components/file-tree";
@@ -178,6 +179,10 @@ export function PRDetailPage() {
   };
   const [chatOpen, setChatOpen] = useState(false);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  // Review-screen search: Cmd+F find-in-diff, Cmd+P filter the file tree.
+  const [findOpen, setFindOpen] = useState(false);
+  const [fileFilter, setFileFilter] = useState("");
+  const fileFilterRef = useRef<HTMLInputElement>(null);
   // Toggle button for the floating AI panel, so closing it (Escape) can return
   // focus there (item 89).
   const chatToggleRef = useRef<HTMLButtonElement>(null);
@@ -412,6 +417,10 @@ export function PRDetailPage() {
   const fileList = files.data ?? [];
   const current = activeFile ?? fileList[0]?.filename ?? null;
   const currentFile = fileList.find((f) => f.filename === current) ?? null;
+  // Cmd+P filter — narrows the file tree by filename (case-insensitive).
+  const visibleFiles = fileFilter.trim()
+    ? fileList.filter((f) => f.filename.toLowerCase().includes(fileFilter.trim().toLowerCase()))
+    : fileList;
   const filteredThreads = threads.data ?? [];
 
   // Viewed-files state, also used to drive "mark viewed & next".
@@ -537,6 +546,32 @@ export function PRDetailPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [tab, fileList, current, viewedMap, vk, setViewedFile, commentCounts]);
+
+  // Review-screen search: Cmd/Ctrl+F opens find-in-diff; Cmd/Ctrl+P jumps to the
+  // file-tree filter. Both pull you to the Files tab first. Cmd+P also overrides
+  // the WebView's print dialog.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only stable setters/refs are used
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "f") {
+        e.preventDefault();
+        setTab("files");
+        setFindOpen(true);
+      } else if (k === "p") {
+        e.preventDefault();
+        setTab("files");
+        setFindOpen(false);
+        requestAnimationFrame(() => {
+          fileFilterRef.current?.focus();
+          fileFilterRef.current?.select();
+        });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Tab-switch shortcuts (item 19): 1–4 jump to Files / Conversation / Commits /
   // Checks. Ignored while typing or with modifiers, so they don't fight text
@@ -1095,54 +1130,79 @@ export function PRDetailPage() {
         {tab === "files" && view !== "guided" && (
           <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
             <ResizablePanel defaultSize={22} minSize={15}>
-              <FileTree
-                files={fileList}
-                active={current}
-                onSelect={setActiveFile}
-                loading={files.isLoading && fileList.length === 0}
-                viewedKey={vk}
-                commentCounts={commentCounts}
-              />
+              <div className="flex h-full flex-col">
+                <div className="border-b border-hairline p-1.5">
+                  <input
+                    ref={fileFilterRef}
+                    value={fileFilter}
+                    onChange={(e) => setFileFilter(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setFileFilter("");
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    placeholder="Filter files… (⌘P)"
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    className="h-7 w-full rounded-md bg-foreground/[0.04] px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:bg-foreground/[0.07]"
+                  />
+                </div>
+                <div className="min-h-0 flex-1">
+                  <FileTree
+                    files={visibleFiles}
+                    active={current}
+                    onSelect={setActiveFile}
+                    loading={files.isLoading && fileList.length === 0}
+                    viewedKey={vk}
+                    commentCounts={commentCounts}
+                  />
+                </div>
+              </div>
             </ResizablePanel>
             <ResizableHandle />
             <ResizablePanel>
-              <ScrollArea className="h-full">
-                {currentFile ? (
-                  <DiffViewer
-                    path={currentFile.filename}
-                    patch={currentFile.patch}
-                    view={view === "split" ? "split" : "unified"}
-                    threads={filteredThreads.filter((t) => t.path === currentFile.filename)}
-                    onAddComment={(c) => addComment(prKey, c)}
-                    owner={owner}
-                    repo={repo}
-                    number={number}
-                    reviewThreads={reviewThreadsGql.data ?? []}
-                    viewerLogin={viewerLogin}
-                    fileLines={
-                      fileContent.data && fileContent.dataUpdatedAt > 0
-                        ? fileContent.data.split("\n")
-                        : undefined
-                    }
-                    autoMarkViewed={autoMarkViewed}
-                    onReachedEnd={() => {
-                      if (vk && current) setViewedFile(vk, current, true);
-                    }}
-                    density={diffDensity}
-                    focusLine={focusLine}
-                    focusNonce={focusNonce}
-                    headSha={headSha}
-                    viewedKey={vk}
-                    fileLinesLoading={fileContent.isLoading && fileContent.dataUpdatedAt === 0}
-                  />
-                ) : (
-                  <EmptyState
-                    icon={Files}
-                    title="No file selected"
-                    description="Pick a file from the tree."
-                  />
-                )}
-              </ScrollArea>
+              <div className="relative h-full">
+                {findOpen && <DiffFindBar onClose={() => setFindOpen(false)} />}
+                <ScrollArea className="h-full">
+                  {currentFile ? (
+                    <DiffViewer
+                      path={currentFile.filename}
+                      patch={currentFile.patch}
+                      view={view === "split" ? "split" : "unified"}
+                      threads={filteredThreads.filter((t) => t.path === currentFile.filename)}
+                      onAddComment={(c) => addComment(prKey, c)}
+                      owner={owner}
+                      repo={repo}
+                      number={number}
+                      reviewThreads={reviewThreadsGql.data ?? []}
+                      viewerLogin={viewerLogin}
+                      fileLines={
+                        fileContent.data && fileContent.dataUpdatedAt > 0
+                          ? fileContent.data.split("\n")
+                          : undefined
+                      }
+                      autoMarkViewed={autoMarkViewed}
+                      onReachedEnd={() => {
+                        if (vk && current) setViewedFile(vk, current, true);
+                      }}
+                      density={diffDensity}
+                      focusLine={focusLine}
+                      focusNonce={focusNonce}
+                      headSha={headSha}
+                      viewedKey={vk}
+                      fileLinesLoading={fileContent.isLoading && fileContent.dataUpdatedAt === 0}
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={Files}
+                      title="No file selected"
+                      description="Pick a file from the tree."
+                    />
+                  )}
+                </ScrollArea>
+              </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
