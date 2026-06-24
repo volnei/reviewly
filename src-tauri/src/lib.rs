@@ -312,6 +312,7 @@ pub fn run() {
             commands::comments::gh_reply_review_comment,
             commands::comments::gh_create_review_comment,
             // notifications
+            commands::notifications::set_notifications_enabled,
             commands::notifications::gh_list_notifications,
             commands::notifications::gh_mark_notification_read,
             commands::actions::gh_mark_all_notifications_read,

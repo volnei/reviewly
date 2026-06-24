@@ -12,10 +12,12 @@ import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { type AiProvider, CLI_PROVIDERS, useAiProvider } from "@/stores/ai";
 import { useAuth } from "@/stores/auth";
+import { useNotifSettings } from "@/stores/notif-settings";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useTheme } from "@/stores/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Bell,
   Check,
   Eye,
   Github,
@@ -134,6 +136,10 @@ export function SettingsPage() {
           <Separator />
 
           <CodeReviewSection />
+
+          <Separator />
+
+          <NotificationsSection />
         </div>
       </ScrollArea>
     </div>
@@ -293,6 +299,24 @@ function CodeReviewSection() {
             onChange={setDiffDensity}
           />
         </div>
+      </Card>
+    </section>
+  );
+}
+
+function NotificationsSection() {
+  const desktopEnabled = useNotifSettings((s) => s.desktopEnabled);
+  const setDesktopEnabled = useNotifSettings((s) => s.setDesktopEnabled);
+  return (
+    <section>
+      <SectionHeader title="Notifications" icon={Bell} />
+      <Card>
+        <SettingToggle
+          label="Desktop notifications"
+          description="Get an OS alert when a pull request requests your review. Asks for notification permission the first time it's on."
+          checked={desktopEnabled}
+          onChange={setDesktopEnabled}
+        />
       </Card>
     </section>
   );

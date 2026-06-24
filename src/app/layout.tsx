@@ -7,6 +7,7 @@ import { useClipboardSniff } from "@/app/use-clipboard-sniff";
 import { useGlobalShortcuts } from "@/app/use-global-shortcuts";
 import { useGuidedEvents } from "@/app/use-guided-events";
 import { useNativeChrome } from "@/app/use-native-chrome";
+import { useNotifSync } from "@/app/use-notif-sync";
 import { usePrSync } from "@/app/use-pr-sync";
 import { useRealtimeEvents } from "@/app/use-realtime-events";
 import { useUpdater } from "@/app/use-updater";
@@ -45,6 +46,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   usePrSync();
   useGuidedEvents();
   useNativeChrome();
+  useNotifSync();
   useUpdater();
   const theme = useAppliedTheme();
 

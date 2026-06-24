@@ -1,6 +1,7 @@
 use dashmap::DashMap;
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
@@ -25,6 +26,9 @@ pub struct AppState {
     /// Running guided-tour task handles, keyed by PR — so a generation can be
     /// canceled (aborting the task kills the spawned AI CLI via kill_on_drop).
     pub ai_tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    /// Whether the poller shows desktop notifications. Mirrors the Settings
+    /// toggle (pushed from the frontend via `set_notifications_enabled`).
+    pub notify_enabled: AtomicBool,
 }
 
 impl AppState {
@@ -73,6 +77,7 @@ impl AppState {
             watched_repos: Arc::new(RwLock::new(Vec::new())),
             ai_inflight: Arc::new(Mutex::new(HashSet::new())),
             ai_tasks: Arc::new(Mutex::new(HashMap::new())),
+            notify_enabled: AtomicBool::new(true),
         }
     }
 }

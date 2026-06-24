@@ -70,19 +70,26 @@ pub async fn run(app: AppHandle) {
         }
 
         if !new_ids.is_empty() {
-            for p in changed.iter().filter(|p| new_ids.contains(&p.id)) {
-                let repo = repo_full_name(p).unwrap_or_default();
-                let body = if repo.is_empty() {
-                    p.title.clone()
-                } else {
-                    format!("{repo} · {}", p.title)
-                };
-                let _ = app
-                    .notification()
-                    .builder()
-                    .title(format!("Review requested · @{}", p.user.login))
-                    .body(body)
-                    .show();
+            // Desktop alerts are gated by the Settings toggle; the UI refresh
+            // (`pr:new`) fires regardless.
+            if state
+                .notify_enabled
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                for p in changed.iter().filter(|p| new_ids.contains(&p.id)) {
+                    let repo = repo_full_name(p).unwrap_or_default();
+                    let body = if repo.is_empty() {
+                        p.title.clone()
+                    } else {
+                        format!("{repo} · {}", p.title)
+                    };
+                    let _ = app
+                        .notification()
+                        .builder()
+                        .title(format!("Review requested · @{}", p.user.login))
+                        .body(body)
+                        .show();
+                }
             }
             let _ = app.emit("pr:new", &new_ids);
         }
