@@ -406,7 +406,11 @@ function AgeChart({ buckets }: { buckets: number[] }) {
   const max = Math.max(1, ...buckets);
   const labels = ["≤1d", "2–3d", "4–7d", ">7d"];
   return (
-    <div className="hidden shrink-0 items-end gap-2.5 sm:flex" role="img" aria-label="Backlog by age">
+    <div
+      className="hidden shrink-0 items-end gap-2.5 sm:flex"
+      role="img"
+      aria-label="Backlog by age"
+    >
       {buckets.map((v, i) => (
         <div key={labels[i]} className="flex w-9 flex-col items-center gap-1.5">
           <span className="h-3 text-[11px] tabular-nums text-muted-foreground/70">{v || ""}</span>
