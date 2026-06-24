@@ -47,6 +47,61 @@ fn apply_cwd(cmd: &mut Command, cwd: Option<&str>) {
     }
 }
 
+/// PATH augmented with the locations CLIs are commonly installed to. A macOS app
+/// launched from Finder/Dock inherits only a minimal PATH (`/usr/bin:/bin:…`),
+/// so Homebrew's `/opt/homebrew/bin`, npm-global, and `~/.local/bin` are absent
+/// — which makes an installed `claude`/`codex`/`gemini` look "not installed" and
+/// breaks spawning it. We merge those dirs into whatever PATH we already have.
+/// Computed once.
+fn cli_path() -> &'static str {
+    use std::sync::OnceLock;
+    static PATH: OnceLock<String> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut dirs: Vec<String> = Vec::new();
+        let add = |d: String, dirs: &mut Vec<String>| {
+            if !d.is_empty() && !dirs.iter().any(|x| *x == d) {
+                dirs.push(d);
+            }
+        };
+        if let Ok(p) = std::env::var("PATH") {
+            for d in p.split(':') {
+                add(d.to_string(), &mut dirs);
+            }
+        }
+        for d in [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/usr/bin",
+            "/bin",
+        ] {
+            add(d.to_string(), &mut dirs);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            for d in [
+                ".local/bin",
+                ".cargo/bin",
+                ".bun/bin",
+                ".deno/bin",
+                ".npm-global/bin",
+                ".claude/local",
+            ] {
+                add(format!("{home}/{d}"), &mut dirs);
+            }
+        }
+        dirs.join(":")
+    })
+}
+
+/// A `Command` for a CLI tool, with PATH widened to the usual install dirs so it
+/// resolves even when the app was launched from Finder/Dock (see `cli_path`).
+fn cli_command(bin: &str) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.env("PATH", cli_path());
+    cmd
+}
+
 /// True when the selected provider's CLI is available in PATH. The OpenAI-
 /// compatible provider has no binary — it's gated on a configured base URL in
 /// the UI — so report it as available here.
@@ -55,7 +110,7 @@ pub async fn ai_available(provider: String) -> bool {
     if provider == "openai" {
         return true;
     }
-    Command::new(provider_bin(&provider))
+    cli_command(provider_bin(&provider))
         .arg("--version")
         .output()
         .await
@@ -171,7 +226,7 @@ pub fn ai_inflight(state: State<'_, AppState>) -> Vec<String> {
 }
 
 async fn run_claude(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
-    let mut cmd = Command::new("claude");
+    let mut cmd = cli_command("claude");
     cmd.arg("-p")
         .arg(prompt)
         .arg("--output-format")
@@ -218,7 +273,7 @@ async fn run_codex(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
 
     // Pass the prompt over stdin (`-`): avoids OS arg-length limits and codex's
     // "reading additional input from stdin" hang when a prompt arg is given.
-    let mut cmd = Command::new("codex");
+    let mut cmd = cli_command("codex");
     cmd.arg("exec")
         .arg("--skip-git-repo-check")
         .arg("-s")
@@ -273,7 +328,7 @@ async fn run_codex(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
 /// Gemini CLI in non-interactive mode (`gemini -p`). Drop-in like Claude/Codex;
 /// runs inside the PR clone when present so it can read the repo.
 async fn run_gemini(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
-    let mut cmd = Command::new("gemini");
+    let mut cmd = cli_command("gemini");
     cmd.arg("-p")
         .arg(prompt)
         .stdin(Stdio::null())
@@ -470,7 +525,7 @@ async fn stream_claude(
     prompt: &str,
     cwd: Option<&str>,
 ) -> AppResult<(String, Option<f64>)> {
-    let mut cmd = Command::new("claude");
+    let mut cmd = cli_command("claude");
     cmd.arg("-p")
         .arg(prompt)
         .arg("--output-format")
