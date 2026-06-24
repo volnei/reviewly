@@ -9,6 +9,14 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* The Cal Sans UI font reads heavy, so dial the prominent weights down a
+   notch app-wide — `font-semibold` (titles) and `font-bold` lose a little
+   weight while `font-medium` is untouched. */
+@theme {
+  --font-weight-semibold: 550;
+  --font-weight-bold: 600;
+}
+
 :root {
   --radius: 0.625rem; /* 10px — Raycast-ish generous */
 
