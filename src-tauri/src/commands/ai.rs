@@ -261,6 +261,47 @@ async fn run_claude(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Run the Claude CLI in *apply* mode — full edit + shell access — inside `cwd`,
+/// so the agent can actually implement a change (bump a dependency, update the
+/// lockfile, run the build/tests and fix fallout). Powers the Dependabot AI-fix
+/// flow. Long timeout: install + build + test can take several minutes.
+///
+/// `--dangerously-skip-permissions` lets it edit files and run shell commands
+/// without prompting; only ever pointed at the user's own local clone.
+pub async fn apply_with_claude(prompt: &str, cwd: &str) -> AppResult<String> {
+    const APPLY_TIMEOUT: Duration = Duration::from_secs(600);
+    let mut cmd = cli_command("claude");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--dangerously-skip-permissions")
+        .arg("--output-format")
+        .arg("text")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    apply_cwd(&mut cmd, Some(cwd));
+    let child = cmd
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn claude: {e}")))?;
+    let output = match tokio::time::timeout(APPLY_TIMEOUT, child.wait_with_output()).await {
+        Ok(res) => res.map_err(|e| AppError::Other(format!("wait claude: {e}")))?,
+        Err(_) => {
+            return Err(AppError::Other(
+                "The AI fix took longer than 10 minutes and was stopped.".into(),
+            ))
+        }
+    };
+    if !output.status.success() {
+        return Err(AppError::Other(format!(
+            "claude exited {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 async fn run_codex(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
     // Write only the agent's final message to a temp file so we get clean
     // markdown back instead of the interleaved progress log on stdout.

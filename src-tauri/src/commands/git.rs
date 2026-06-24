@@ -228,6 +228,74 @@ pub async fn gh_pr_create(
     gh(&path, &args).await
 }
 
+/// Let the AI implement a Dependabot security fix end-to-end: branch off HEAD,
+/// run Claude (edit + shell) in the clone to bump the dependency / update the
+/// lockfile / build + test / fix fallout, commit, push, and open a DRAFT PR.
+/// Returns the PR URL. The clone path is the user's own local repo.
+#[tauri::command]
+pub async fn gh_dependabot_ai_fix(
+    path: String,
+    package: String,
+    fixed_version: String,
+    manifest_path: Option<String>,
+    advisory: String,
+    base: Option<String>,
+) -> AppResult<String> {
+    let safe = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect()
+    };
+    let branch = format!("reviewly/fix-{}-{}", safe(&package), safe(&fixed_version));
+    // Fresh branch off the current HEAD (reset if it already exists).
+    git(&path, &["checkout", "-B", &branch]).await?;
+
+    let manifest_clause = match manifest_path.as_deref() {
+        Some(m) if !m.is_empty() => format!(" (manifest: {m})"),
+        _ => String::new(),
+    };
+    let prompt = format!(
+        "A Dependabot security alert reports a vulnerability in the \"{package}\" dependency{manifest_clause}.\n\
+         Advisory: {advisory}\n\n\
+         Upgrade \"{package}\" to version {fixed_version} (or the nearest version that resolves the advisory), \
+         update the dependency manifest and the lockfile, then run the project's install, build and test commands \
+         to verify nothing broke and fix any fallout you introduce. Make NO unrelated changes. \
+         Do not create a git branch or commit — just leave the fix applied in the working tree."
+    );
+    let summary = crate::commands::ai::apply_with_claude(&prompt, &path).await?;
+
+    if git(&path, &["status", "--porcelain"]).await?.trim().is_empty() {
+        return Err(AppError::Other(
+            "The AI didn't change any files — nothing to open a PR for.".into(),
+        ));
+    }
+    git(&path, &["add", "-A"]).await?;
+    let commit_msg = format!(
+        "fix(deps): bump {package} to {fixed_version}\n\nResolves a Dependabot security advisory."
+    );
+    git(&path, &["commit", "-m", &commit_msg]).await?;
+    git_net(&path, &["push", "-u", "origin", &branch]).await?;
+
+    let title = format!("fix(deps): bump {package} to {fixed_version}");
+    let body = format!(
+        "Automated security fix opened by Reviewly (AI).\n\n**Advisory:** {advisory}\n\n**What the agent did:**\n\n{summary}"
+    );
+    let mut args: Vec<&str> = vec![
+        "pr", "create", "--draft", "--head", &branch, "--title", &title, "--body", &body,
+    ];
+    if let Some(b) = base.as_deref() {
+        args.push("--base");
+        args.push(b);
+    }
+    gh(&path, &args).await
+}
+
 /// Check out an existing PR into the local clone (`gh pr checkout <n>`).
 #[tauri::command]
 pub async fn gh_pr_checkout(path: String, number: u64) -> AppResult<()> {

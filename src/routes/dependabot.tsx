@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { PageHeader } from "@/components/page-header";
+import { TooltipFor } from "@/components/tooltip-for";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -17,9 +18,12 @@ import { invoke } from "@/lib/tauri";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
+import { useLocalRepos } from "@/stores/local-repos";
+import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { Bot, ExternalLink, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"] as const;
 
@@ -195,7 +199,7 @@ export function DependabotPage() {
         ) : (
           <ul className="space-y-2 px-3 py-3">
             {list.map((a) => (
-              <AlertRow key={a.number} alert={a} />
+              <AlertRow key={a.number} alert={a} repo={repo} />
             ))}
           </ul>
         )}
@@ -204,12 +208,42 @@ export function DependabotPage() {
   );
 }
 
-function AlertRow({ alert }: { alert: DependabotAlert }) {
+function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
   const sev = alert.security_advisory.severity;
   const pkg = alert.dependency.package?.name ?? "unknown package";
   const ecosystem = alert.dependency.package?.ecosystem;
   const range = alert.security_vulnerability?.vulnerable_version_range;
   const fix = alert.security_vulnerability?.first_patched_version?.identifier;
+  const manifest = alert.dependency.manifest_path;
+
+  // The AI fix runs in your local clone of this repo, if you have one.
+  const local = useLocalRepos((s) => s.repos.find((r) => `${r.owner}/${r.repo}` === repo));
+
+  const aiFix = useMutation({
+    mutationFn: () =>
+      invoke<string>("gh_dependabot_ai_fix", {
+        path: local?.path ?? "",
+        package: pkg,
+        fixedVersion: fix ?? "",
+        manifestPath: manifest ?? null,
+        advisory: alert.security_advisory.summary,
+      }),
+    onSuccess: (url) =>
+      toast.success(`Draft PR opened — ${pkg}`, {
+        description: "Review the changes on GitHub before merging.",
+        action: { label: "Open PR", onClick: () => safeOpenUrl(url) },
+      }),
+    onError: (e) => toast.error(`AI fix failed — ${pkg}`, { description: String(e) }),
+  });
+
+  function runAiFix() {
+    if (!local || !fix) return;
+    const ok = window.confirm(
+      `Let AI fix “${pkg}” (→ ${fix}) and open a draft PR?\n\nIt will work in your local clone:\n${local.path}\n\nThe agent edits files, runs your build/tests, pushes a branch, and opens a DRAFT PR for you to review.`,
+    );
+    if (ok) aiFix.mutate();
+  }
+
   return (
     <li className="group rounded-lg border border-hairline p-3 transition-colors hover:border-border hover:bg-foreground/[0.02]">
       <div className="flex items-center gap-2 text-xs">
@@ -218,14 +252,36 @@ function AlertRow({ alert }: { alert: DependabotAlert }) {
         </span>
         <span className="font-mono text-foreground">{pkg}</span>
         {ecosystem && <span className="text-muted-foreground">{ecosystem}</span>}
-        <button
-          type="button"
-          onClick={() => safeOpenUrl(alert.html_url)}
-          className="ml-auto inline-flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
-        >
-          <ExternalLink className="size-3" />
-          Open
-        </button>
+        <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {fix && (
+            <TooltipFor
+              label={
+                local
+                  ? "Let AI bump it, run the build/tests, and open a draft PR"
+                  : "Clone this repo locally (Repositories tab) to enable AI fix"
+              }
+            >
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={!local}
+                loading={aiFix.isPending}
+                onClick={runAiFix}
+              >
+                <Bot className="size-3.5" />
+                Fix with AI
+              </Button>
+            </TooltipFor>
+          )}
+          <button
+            type="button"
+            onClick={() => safeOpenUrl(alert.html_url)}
+            className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ExternalLink className="size-3" />
+            Open
+          </button>
+        </div>
       </div>
       <p className="mt-1 text-xs text-foreground/90">{alert.security_advisory.summary}</p>
       {(range || fix || alert.dependency.manifest_path) && (
