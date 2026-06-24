@@ -199,13 +199,19 @@ jobs:
               fi
             done
             if [ "$changed" = 1 ]; then
-              # Replace the manifest robustly: gh's --clobber can delete the old
-              # asset and then fail the re-upload on a transient "Bad
-              # Content-Length", leaving no latest.json at all. Delete via the
-              # API, then upload fresh.
+              # Replace the manifest. `gh release upload` (with or without
+              # --clobber) intermittently fails here with HTTP 400 "Bad
+              # Content-Length", which can leave the release without any
+              # latest.json. Delete the old asset via the API, then upload the
+              # new one with curl straight to the uploads endpoint — curl sets
+              # Content-Length from the file, sidestepping the gh bug.
               aid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json") | .id')
               [ -n "$aid" ] && gh api -X DELETE "repos/$REPO/releases/assets/$aid" >/dev/null || true
-              gh release upload "$TAG" --repo "$REPO" latest.json
+              curl -sS --fail-with-body -X POST \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data-binary @latest.json \
+                "https://uploads.github.com/repos/$REPO/releases/$rid/assets?name=latest.json" >/dev/null
               echo "latest.json updated to renamed installers"
             fi
           fi
