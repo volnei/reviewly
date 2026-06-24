@@ -6,6 +6,7 @@ import { useAuthBootstrap } from "@/app/use-auth-bootstrap";
 import { useClipboardSniff } from "@/app/use-clipboard-sniff";
 import { useGlobalShortcuts } from "@/app/use-global-shortcuts";
 import { useGuidedEvents } from "@/app/use-guided-events";
+import { useNativeChrome } from "@/app/use-native-chrome";
 import { usePrSync } from "@/app/use-pr-sync";
 import { useRealtimeEvents } from "@/app/use-realtime-events";
 import { useUpdater } from "@/app/use-updater";
@@ -43,6 +44,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useRealtimeEvents();
   usePrSync();
   useGuidedEvents();
+  useNativeChrome();
   useUpdater();
   const theme = useAppliedTheme();
 

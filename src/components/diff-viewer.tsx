@@ -463,6 +463,7 @@ export function DiffViewer({
       {toolbar}
       <div
         ref={rootRef}
+        data-selectable
         className={cn(
           "font-mono text-xs",
           density === "compact" ? "leading-[1.3]" : "leading-[1.55]",

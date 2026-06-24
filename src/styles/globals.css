@@ -318,6 +318,17 @@
     user-select: text;
   }
 
+  /* Re-enable selection on the content you'd actually copy — diff code (the
+     [data-selectable] roots), rendered markdown/comments (.prose-reviewly),
+     and check output — while the rest of the chrome stays native (none).
+     Set on the container only and let `user-select` inherit, so an explicit
+     `select-none` (e.g. the diff's drag-to-comment gutter) still wins. */
+  [data-selectable],
+  .prose-reviewly {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   /* Light mode gets depth from soft shadows (dark gets it from vibrancy).
      A gentle, layered drop-shadow on translucent/blurred panels lifts them
      off the gradient backdrop. */

@@ -2063,7 +2063,7 @@ function CheckDetail({ run, owner, repo }: { run: CheckRun; owner: string; repo:
   const text = run.output?.text?.trim();
 
   return (
-    <div className="space-y-3 border-t border-hairline py-3 pl-9 pr-3">
+    <div data-selectable className="space-y-3 border-t border-hairline py-3 pl-9 pr-3">
       {run.output?.title && (
         <p className="text-xs font-medium text-foreground">{run.output.title}</p>
       )}
