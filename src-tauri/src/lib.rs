@@ -282,6 +282,7 @@ pub fn run() {
             commands::git::git_worktrees,
             commands::git::gh_pr_create,
             commands::git::gh_dependabot_ai_fix,
+            commands::git::gh_resolve_conflicts_ai,
             commands::git::gh_pr_checkout,
             commands::git::git_status,
             commands::git::git_stage,

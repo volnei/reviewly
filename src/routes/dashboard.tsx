@@ -37,6 +37,7 @@ interface InboxItem {
   updatedAt: string;
   ci?: MinePr["ci"];
   review?: string | null;
+  conflicting?: boolean;
 }
 
 function fromSummary(p: PullSummary): InboxItem | null {
@@ -67,6 +68,7 @@ function fromMine(m: MinePr): InboxItem {
     updatedAt: m.updatedAt ?? m.createdAt ?? "",
     ci: m.ci,
     review: m.reviewDecision,
+    conflicting: m.conflicting,
   };
 }
 
@@ -118,7 +120,11 @@ export function DashboardPage() {
     for (const { raw, item } of mine) {
       if (raw.isDraft) {
         drafts.push(item);
-      } else if (raw.reviewDecision === "CHANGES_REQUESTED" || raw.ci === "failure") {
+      } else if (
+        raw.reviewDecision === "CHANGES_REQUESTED" ||
+        raw.ci === "failure" ||
+        raw.conflicting
+      ) {
         needsAttention.push(item);
       } else if (raw.reviewDecision === "APPROVED") {
         ready.push(item);
@@ -140,6 +146,7 @@ export function DashboardPage() {
     [incoming],
   );
   const oldest = incoming[0] ? shortAge(incoming[0].updatedAt).label : null;
+  const conflictingCount = buckets.needsAttention.filter((i) => i.conflicting).length;
 
   // Review backlog bucketed by how long it's been waiting — the hero chart.
   const ageBuckets = useMemo(() => {
@@ -219,6 +226,7 @@ export function DashboardPage() {
                 aging={agingCount}
                 ready={buckets.ready.length}
                 needsFixing={buckets.needsAttention.length}
+                conflicting={conflictingCount}
                 ageBuckets={ageBuckets}
               />
             )}
@@ -337,6 +345,7 @@ function InboxHero({
   aging,
   ready,
   needsFixing,
+  conflicting,
   ageBuckets,
 }: {
   waiting: number;
@@ -344,6 +353,7 @@ function InboxHero({
   aging: number;
   ready: number;
   needsFixing: number;
+  conflicting: number;
   ageBuckets: number[];
 }) {
   const n = useCountUp(waiting);
@@ -374,6 +384,7 @@ function InboxHero({
                 : "Fresh off the queue"}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Chip tone="destructive" value={conflicting} label="with conflicts" />
             <Chip tone="destructive" value={aging} label="aging" />
             <Chip tone="success" value={ready} label="ready to merge" />
             <Chip tone="destructive" value={needsFixing} label="needs fixing" />
@@ -548,6 +559,11 @@ function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
           {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
         </p>
       </div>
+      {item.conflicting && (
+        <span title="Has merge conflicts" className="shrink-0">
+          <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
+        </span>
+      )}
       <ReviewBadge review={item.review} />
       <CiIcon ci={item.ci} />
       <span

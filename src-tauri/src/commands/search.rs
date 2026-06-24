@@ -154,6 +154,8 @@ pub struct MinePr {
     pub review_decision: Option<String>,
     /// "success" | "failure" | "pending" | "none".
     pub ci: String,
+    /// The PR has merge conflicts against its base (GraphQL `mergeable=CONFLICTING`).
+    pub conflicting: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -187,6 +189,7 @@ struct StatsNode {
     is_draft: bool,
     #[serde(rename = "reviewDecision")]
     review_decision: Option<String>,
+    mergeable: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: Option<String>,
     #[serde(rename = "updatedAt")]
@@ -236,7 +239,7 @@ pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) ->
     let men = format!("{prefix}is:pr is:open involves:@me -author:@me archived:false");
 
     let gql = format!(
-        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ databaseId number title url isDraft reviewDecision createdAt updatedAt author{{ login avatarUrl }} repository{{ nameWithOwner }} commits(last:1){{ nodes{{ commit{{ statusCheckRollup{{ state }} }} }} }} }} }} }} rr: search(query:$rr,type:ISSUE){{ issueCount }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
+        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{{ login avatarUrl }} repository{{ nameWithOwner }} commits(last:1){{ nodes{{ commit{{ statusCheckRollup{{ state }} }} }} }} }} }} }} rr: search(query:$rr,type:ISSUE){{ issueCount }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
     );
     let data: DashData = graphql(
         &state,
@@ -313,6 +316,7 @@ pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) ->
                 is_draft: n.is_draft,
                 review_decision: n.review_decision,
                 ci: ci.to_string(),
+                conflicting: n.mergeable.as_deref() == Some("CONFLICTING"),
                 created_at: n.created_at,
                 updated_at: n.updated_at,
             });

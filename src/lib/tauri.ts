@@ -67,6 +67,7 @@ export interface MinePr {
   isDraft: boolean;
   reviewDecision: string | null;
   ci: "success" | "failure" | "pending" | "none";
+  conflicting: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }

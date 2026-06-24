@@ -296,6 +296,55 @@ pub async fn gh_dependabot_ai_fix(
     gh(&path, &args).await
 }
 
+/// Let the AI resolve a PR's merge conflicts: check the PR out locally, merge
+/// its base (which conflicts), have Claude (edit + shell) resolve every conflict
+/// and re-run build/tests, then commit the merge and push it to the PR branch —
+/// updating the existing PR in place. Returns the agent's summary. Needs push
+/// access to the PR's branch (i.e. works on your own PRs).
+#[tauri::command]
+pub async fn gh_resolve_conflicts_ai(path: String, number: u64, base: String) -> AppResult<String> {
+    gh(&path, &["pr", "checkout", &number.to_string()]).await?;
+    git_net(&path, &["fetch", "origin", &base]).await?;
+
+    // `git merge` exits non-zero on conflicts (the case we want); a clean Ok
+    // means there was nothing to resolve.
+    let target = format!("origin/{base}");
+    if git(&path, &["merge", "--no-edit", &target]).await.is_ok() {
+        return Err(AppError::Other(
+            "No conflicts to resolve — the branch already merges cleanly.".into(),
+        ));
+    }
+    let unmerged = git(&path, &["diff", "--name-only", "--diff-filter=U"]).await?;
+    if unmerged.trim().is_empty() {
+        let _ = git(&path, &["merge", "--abort"]).await;
+        return Err(AppError::Other(
+            "Couldn't start the merge to resolve (no conflicts detected).".into(),
+        ));
+    }
+
+    let prompt = format!(
+        "This git repository is mid-merge with conflicts (merging origin/{base} into the PR branch). \
+         Resolve EVERY conflict by editing the files — keep both sides' intent correct, don't blindly pick one side. \
+         Remove all conflict markers, then run the project's build and tests to confirm it works and fix any fallout. \
+         Do NOT run `git commit`, `git merge --continue`, or `git merge --abort` — just leave the conflicts resolved in the working tree."
+    );
+    let summary = crate::commands::ai::apply_with_claude(&prompt, &path).await?;
+
+    let still = git(&path, &["diff", "--name-only", "--diff-filter=U"]).await?;
+    if !still.trim().is_empty() {
+        let _ = git(&path, &["merge", "--abort"]).await;
+        return Err(AppError::Other(format!(
+            "The AI couldn't fully resolve the conflicts — {} file(s) still conflicting, merge aborted (nothing committed).",
+            still.lines().count()
+        )));
+    }
+
+    git(&path, &["add", "-A"]).await?;
+    git(&path, &["commit", "--no-edit"]).await?;
+    git_net(&path, &["push"]).await?;
+    Ok(summary)
+}
+
 /// Check out an existing PR into the local clone (`gh pr checkout <n>`).
 #[tauri::command]
 pub async fn gh_pr_checkout(path: String, number: u64) -> AppResult<()> {

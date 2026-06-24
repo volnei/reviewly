@@ -14,9 +14,12 @@ import { invoke } from "@/lib/tauri";
 import type { PullDetail } from "@/lib/tauri";
 import { safeOpenUrl, toastError } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { useLocalRepos } from "@/stores/local-repos";
 import { type MergeMethod, useMergePrefs } from "@/stores/merge-prefs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
+  Bot,
   Check,
   ChevronDown,
   CircleDashed,
@@ -150,11 +153,56 @@ export function PrActions({ owner, repo, number, pr, nodeId }: Props) {
   // (replaces the blocking window.confirm). Holds the method to merge with.
   const [confirmMerge, setConfirmMerge] = useState<MergeMethod | null>(null);
 
+  // "Resolve conflicts with AI" — runs in your local clone of this repo, if any.
+  const localRepo = useLocalRepos((s) =>
+    s.repos.find((r) => `${r.owner}/${r.repo}` === `${owner}/${repo}`),
+  );
+  const resolveConflicts = useMutation({
+    mutationFn: () =>
+      invoke<string>("gh_resolve_conflicts_ai", {
+        path: localRepo?.path ?? "",
+        number,
+        base: pr.base.ref,
+      }),
+    onSuccess: () => {
+      toast.success("Conflicts resolved · pushed", {
+        description: "The PR branch was updated — re-checking mergeability.",
+      });
+      invalidate();
+    },
+    onError: (e) => toast.error("AI couldn't resolve the conflicts", { description: String(e) }),
+  });
+  async function runResolveConflicts() {
+    if (!localRepo) {
+      toast.error(`Clone ${owner}/${repo} locally first`, {
+        description: "Add it in the Repositories tab so the AI can work in your checkout.",
+      });
+      return;
+    }
+    const ok = await confirmDialog(
+      `Let AI resolve the conflicts in this PR and push?\n\nIt works in your local clone:\n${localRepo.path}\n\nThe agent merges the base, resolves every conflict, runs your build/tests, commits the merge, and pushes to the PR branch.`,
+      { title: "Resolve conflicts with AI", kind: "warning" },
+    );
+    if (ok) resolveConflicts.mutate();
+  }
+
   return (
     <div className="flex items-center gap-1.5">
       {/* Primary action. Clicking opens a menu — never an instant merge.
           Auto-merge (waits for checks + required reviews) is the recommended
           path; "Merge now" is a deliberate, explicit choice below it. */}
+      {open && !pr.draft && pr.mergeable === false && (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={resolveConflicts.isPending}
+          onClick={runResolveConflicts}
+          aria-label="Resolve conflicts with AI"
+        >
+          <Bot className="size-3.5" />
+          Resolve with AI
+        </Button>
+      )}
       {open && !pr.draft && (
         <div className="relative">
           <Button
