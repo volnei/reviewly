@@ -22,7 +22,7 @@ import {
   GitPullRequest,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const DAY = 86_400_000;
 
@@ -306,8 +306,31 @@ const DOT: Record<Tone, string> = {
   muted: "bg-muted-foreground",
 };
 
-/** The inbox hero: headline metric, secondary stats as (zero-hiding) chips, and
- * an animated "backlog by age" bar chart. */
+/** Animate a number from its last value up to `target` on change (easeOutCubic).
+ * First mount animates 0 → target, the count-up "wow" when the inbox opens. */
+function useCountUp(target: number, ms = 1000): number {
+  const [val, setVal] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    const from = fromRef.current;
+    let raf = 0;
+    let startT: number | null = null;
+    const step = (t: number) => {
+      if (startT === null) startT = t;
+      const p = Math.min(1, (t - startT) / ms);
+      const cur = Math.round(from + (target - from) * (1 - (1 - p) ** 3));
+      fromRef.current = cur;
+      setVal(cur);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return val;
+}
+
+/** The inbox hero — a dark aurora spotlight: a big count-up gradient metric,
+ * secondary stats as (zero-hiding) glass chips, and an animated backlog chart. */
 function InboxHero({
   waiting,
   oldest,
@@ -323,31 +346,37 @@ function InboxHero({
   needsFixing: number;
   ageBuckets: number[];
 }) {
+  const n = useCountUp(waiting);
   return (
-    <div className="relative mx-6 mb-4 overflow-hidden rounded-2xl border border-hairline bg-gradient-to-br from-primary/[0.07] via-card/20 to-transparent px-5 py-5">
+    <div className="relative mx-6 mb-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b14] px-6 py-7">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-28 -left-16 size-80 rounded-full bg-indigo-500/40 blur-[60px] animate-aurora-a" />
+        <div className="absolute -top-32 -right-12 size-80 rounded-full bg-fuchsia-500/30 blur-[60px] animate-aurora-b" />
+        <div className="absolute -bottom-24 left-1/3 size-80 rounded-full bg-sky-500/30 blur-[60px] animate-aurora-c" />
+      </div>
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-primary/15 blur-3xl"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
       />
-      <div className="relative flex items-center justify-between gap-6">
+      <div className="relative flex items-end justify-between gap-6">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/45">
             Your review queue
           </p>
-          <h2 className="mt-1.5 font-display text-[28px] leading-none tracking-tight text-foreground">
-            <span className="bg-gradient-to-r from-primary to-info bg-clip-text tabular-nums text-transparent">
-              {waiting}
-            </span>{" "}
-            {waiting === 1 ? "PR waiting" : "PRs waiting"} on you
+          <h2 className="mt-2.5 font-display text-[42px] font-medium leading-[1.02] tracking-tight">
+            <span className="bg-gradient-to-r from-indigo-300 via-violet-300 to-sky-300 bg-clip-text tabular-nums text-transparent">
+              {n}
+            </span>
+            <span className="text-white"> {waiting === 1 ? "PR" : "PRs"} waiting on you</span>
           </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2.5 text-xs text-white/55">
             {waiting === 0
               ? "Inbox zero — nothing waiting. 🎉"
               : oldest
                 ? `Oldest has waited ${oldest}`
                 : "Fresh off the queue"}
           </p>
-          <div className="mt-3.5 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Chip tone="destructive" value={aging} label="aging" />
             <Chip tone="success" value={ready} label="ready to merge" />
             <Chip tone="destructive" value={needsFixing} label="needs fixing" />
@@ -362,15 +391,15 @@ function InboxHero({
 function Chip({ tone, value, label }: { tone: Tone; value: number; label: string }) {
   if (value === 0) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2.5 py-1 text-xs">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs backdrop-blur-sm">
       <span className={cn("size-1.5 rounded-full", DOT[tone])} />
-      <span className="font-medium tabular-nums text-foreground">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums text-white">{value}</span>
+      <span className="text-white/55">{label}</span>
     </span>
   );
 }
 
-/** "Backlog by age" bars that grow in on mount. */
+/** "Backlog by age" bars that grow in on mount, gradient-filled. */
 function AgeChart({ buckets }: { buckets: number[] }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -387,17 +416,19 @@ function AgeChart({ buckets }: { buckets: number[] }) {
     >
       {buckets.map((v, i) => (
         <div key={labels[i]} className="flex w-9 flex-col items-center gap-1.5">
-          <span className="h-3 text-[11px] tabular-nums text-muted-foreground/80">{v || ""}</span>
-          <div className="relative flex h-20 w-full items-end overflow-hidden rounded-md bg-foreground/[0.04]">
+          <span className="h-3 text-[11px] tabular-nums text-white/70">{v || ""}</span>
+          <div className="relative flex h-20 w-full items-end overflow-hidden rounded-md bg-white/[0.06]">
             <div
               className={cn(
-                "w-full rounded-md transition-[height] duration-700 ease-out",
-                i === 3 ? "bg-destructive/70" : "bg-primary/55",
+                "w-full rounded-md transition-[height] duration-1000 ease-out",
+                i === 3
+                  ? "bg-gradient-to-t from-rose-500/80 to-rose-400"
+                  : "bg-gradient-to-t from-indigo-500/70 to-violet-400",
               )}
-              style={{ height: mounted ? `${Math.max(v ? 8 : 0, (v / max) * 100)}%` : "0%" }}
+              style={{ height: mounted ? `${Math.max(v ? 10 : 0, (v / max) * 100)}%` : "0%" }}
             />
           </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/60">{labels[i]}</span>
+          <span className="text-[10px] tabular-nums text-white/45">{labels[i]}</span>
         </div>
       ))}
     </div>
