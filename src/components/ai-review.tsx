@@ -60,7 +60,7 @@ export function AiReview({ prKey, context, executeAction }: Props) {
   }, [prKey, localRepos]);
 
   // Stream tokens (ai:chunk) + completion (ai:complete) for THIS PR. Chunks
-  // accumulate live; on complete we commit the full text (+ cost) to the store.
+  // accumulate live; on complete we commit the full text to the store.
   useEffect(() => {
     const unlistens: Array<() => void> = [];
     let alive = true;
@@ -74,21 +74,17 @@ export function AiReview({ prKey, context, executeAction }: Props) {
       }),
     );
     track(
-      listen<{ key: string; ok: boolean; output?: string; costUsd?: number; error?: string }>(
-        "ai:complete",
-        (e) => {
-          if (e.payload.key !== prKey || !streamingRef.current) return;
-          const p = e.payload;
-          append(prKey, {
-            role: "assistant",
-            content: p.ok ? (p.output ?? "") : `⚠️ ${p.error ?? "AI failed"}`,
-            cost: p.costUsd ?? undefined,
-          });
-          streamingRef.current = false;
-          setStreaming(false);
-          setStreamText("");
-        },
-      ),
+      listen<{ key: string; ok: boolean; output?: string; error?: string }>("ai:complete", (e) => {
+        if (e.payload.key !== prKey || !streamingRef.current) return;
+        const p = e.payload;
+        append(prKey, {
+          role: "assistant",
+          content: p.ok ? (p.output ?? "") : `⚠️ ${p.error ?? "AI failed"}`,
+        });
+        streamingRef.current = false;
+        setStreaming(false);
+        setStreamText("");
+      }),
     );
     return () => {
       alive = false;
@@ -191,12 +187,6 @@ export function AiReview({ prKey, context, executeAction }: Props) {
     return -1;
   }, [messages]);
 
-  // Running cost of this conversation (only some backends report it).
-  const sessionCost = useMemo(
-    () => messages.reduce((sum, m) => sum + (m.cost ?? 0), 0),
-    [messages],
-  );
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* conversation (scrolls; composer stays pinned below) */}
@@ -218,7 +208,6 @@ export function AiReview({ prKey, context, executeAction }: Props) {
               <AssistantMessage
                 key={i}
                 content={m.content}
-                cost={m.cost}
                 executeAction={executeAction}
                 onRegenerate={i === lastAssistantIdx && !streaming ? regenerate : undefined}
               />
@@ -260,12 +249,7 @@ export function AiReview({ prKey, context, executeAction }: Props) {
       {/* composer */}
       <div className="mt-2 shrink-0 space-y-2">
         {messages.length > 0 && (
-          <div className="flex items-center gap-2">
-            {sessionCost > 0 && (
-              <span className="pl-0.5 text-[11px] tabular-nums text-muted-foreground/55">
-                {formatUsd(sessionCost)} this chat
-              </span>
-            )}
+          <div className="flex items-center">
             <Button
               size="xs"
               variant="ghost"
@@ -332,13 +316,10 @@ export function AiReview({ prKey, context, executeAction }: Props) {
 
 function AssistantMessage({
   content,
-  cost,
   executeAction,
   onRegenerate,
 }: {
   content: string;
-  /** USD cost of this turn, shown faintly when the backend reports it. */
-  cost?: number;
   executeAction: (a: AiAction) => Promise<void>;
   /** Present only on the last assistant turn — re-runs the prior user message. */
   onRegenerate?: () => void;
@@ -376,34 +357,22 @@ function AssistantMessage({
       {actions.map((a, i) => (
         <ActionCard key={i} action={a} executeAction={executeAction} />
       ))}
-      {(onRegenerate || (cost != null && cost > 0)) && (
+      {/* 69: regenerate the last assistant turn. */}
+      {onRegenerate && (
         <div className="flex items-center">
-          {cost != null && cost > 0 && (
-            <span className="pl-1 text-[10px] tabular-nums text-muted-foreground/40">
-              {formatUsd(cost)}
-            </span>
-          )}
-          {/* 69: regenerate the last assistant turn. */}
-          {onRegenerate && (
-            <Button
-              size="xs"
-              variant="ghost"
-              className="ml-auto opacity-0 transition-opacity group-hover/msg:opacity-100"
-              onClick={onRegenerate}
-            >
-              <RotateCcw className="size-3" />
-              Regenerate
-            </Button>
-          )}
+          <Button
+            size="xs"
+            variant="ghost"
+            className="ml-auto opacity-0 transition-opacity group-hover/msg:opacity-100"
+            onClick={onRegenerate}
+          >
+            <RotateCcw className="size-3" />
+            Regenerate
+          </Button>
         </div>
       )}
     </div>
   );
-}
-
-/** Compact USD: sub-dollar shows 3 decimals ($0.062), else 2 ($1.20). */
-function formatUsd(n: number): string {
-  return `$${n < 1 ? n.toFixed(3) : n.toFixed(2)}`;
 }
 
 /** Three-dot typing indicator (staggered bounce), like a chat app. */

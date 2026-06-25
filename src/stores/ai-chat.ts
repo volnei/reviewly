@@ -5,8 +5,6 @@ import { persist } from "zustand/middleware";
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-  /** USD cost of this assistant turn, when the backend reports it (Claude). */
-  cost?: number;
 }
 
 /** Keep at most this many PR conversations so the persisted row stays bounded. */
