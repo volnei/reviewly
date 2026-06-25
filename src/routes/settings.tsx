@@ -1,16 +1,16 @@
 import { Card } from "@/components/card";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import { PageHeader } from "@/components/page-header";
-import { SectionHeader } from "@/components/section-header";
 import { Segmented } from "@/components/segmented";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { UserHoverCard } from "@/components/user-hover-card";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { type AiProvider, CLI_PROVIDERS, useAiProvider } from "@/stores/ai";
+import { ACCENTS, useAppearance } from "@/stores/appearance";
 import { useAuth } from "@/stores/auth";
 import { useNotifSettings } from "@/stores/notif-settings";
 import { useReviewPrefs } from "@/stores/review-prefs";
@@ -66,9 +66,8 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle="Account and AI review" />
 
       <ScrollArea className="flex-1">
-        <div className="space-y-6 px-6 py-5">
-          <section>
-            <SectionHeader title="GitHub account" icon={Github} />
+        <div className="space-y-5 px-6 py-5">
+          <CollapsibleSection id="github" title="GitHub account" icon={Github}>
             {viewer ? (
               <Card className="flex items-center gap-3">
                 <UserHoverCard user={viewer}>
@@ -86,12 +85,9 @@ export function SettingsPage() {
             ) : (
               <Card className="text-xs text-muted-foreground">Not signed in.</Card>
             )}
-          </section>
+          </CollapsibleSection>
 
-          <Separator />
-
-          <section>
-            <SectionHeader title="AI review" icon={Sparkles} />
+          <CollapsibleSection id="ai" title="AI review" icon={Sparkles}>
             <Card>
               {/* Lead with the local-first promise — it's the whole point. */}
               <div className="flex items-start gap-2.5 rounded-xl bg-foreground/[0.03] px-3 py-2.5">
@@ -127,18 +123,10 @@ export function SettingsPage() {
 
               <AiInstructions />
             </Card>
-          </section>
-
-          <Separator />
+          </CollapsibleSection>
 
           <AppearanceSection />
-
-          <Separator />
-
           <CodeReviewSection />
-
-          <Separator />
-
           <NotificationsSection />
         </div>
       </ScrollArea>
@@ -235,10 +223,13 @@ function AiInstructions() {
 function AppearanceSection() {
   const theme = useTheme((s) => s.theme);
   const setTheme = useTheme((s) => s.setTheme);
+  const accent = useAppearance((s) => s.accent);
+  const setAccent = useAppearance((s) => s.setAccent);
+  const reduceMotion = useAppearance((s) => s.reduceMotion);
+  const setReduceMotion = useAppearance((s) => s.setReduceMotion);
   return (
-    <section>
-      <SectionHeader title="Appearance" icon={Palette} />
-      <Card>
+    <CollapsibleSection id="appearance" title="Appearance" icon={Palette}>
+      <Card className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium text-foreground">Theme</p>
@@ -256,8 +247,48 @@ function AppearanceSection() {
             onChange={setTheme}
           />
         </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">Accent color</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Drives highlights, buttons, and the active state across the app.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {ACCENTS.map((a) => {
+              const on = accent === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setAccent(a.id)}
+                  aria-label={a.label}
+                  aria-pressed={on}
+                  title={a.label}
+                  className="size-5 rounded-full transition-transform hover:scale-110"
+                  style={{
+                    backgroundColor: a.swatch,
+                    boxShadow: on
+                      ? `0 0 0 2px var(--color-background), 0 0 0 3.5px ${a.swatch}`
+                      : undefined,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-hairline pt-4">
+          <SettingToggle
+            label="Reduce motion"
+            description="Turn off animations and transitions across the app."
+            checked={reduceMotion}
+            onChange={setReduceMotion}
+          />
+        </div>
       </Card>
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -269,8 +300,7 @@ function CodeReviewSection() {
   const diffDensity = useReviewPrefs((s) => s.diffDensity);
   const setDiffDensity = useReviewPrefs((s) => s.setDiffDensity);
   return (
-    <section>
-      <SectionHeader title="Code review" icon={Eye} />
+    <CollapsibleSection id="code-review" title="Code review" icon={Eye}>
       <Card className="space-y-4">
         <SettingToggle
           label="Auto-mark files as viewed"
@@ -300,7 +330,7 @@ function CodeReviewSection() {
           />
         </div>
       </Card>
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -308,8 +338,7 @@ function NotificationsSection() {
   const desktopEnabled = useNotifSettings((s) => s.desktopEnabled);
   const setDesktopEnabled = useNotifSettings((s) => s.setDesktopEnabled);
   return (
-    <section>
-      <SectionHeader title="Notifications" icon={Bell} />
+    <CollapsibleSection id="notifications" title="Notifications" icon={Bell}>
       <Card>
         <SettingToggle
           label="Desktop notifications"
@@ -318,7 +347,7 @@ function NotificationsSection() {
           onChange={setDesktopEnabled}
         />
       </Card>
-    </section>
+    </CollapsibleSection>
   );
 }
 

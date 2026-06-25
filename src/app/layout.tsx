@@ -13,6 +13,7 @@ import { useRealtimeEvents } from "@/app/use-realtime-events";
 import { useUpdater } from "@/app/use-updater";
 import { AboutDialog } from "@/components/about-dialog";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
+import { ACCENTS, useAppearance } from "@/stores/appearance";
 import { resolveTheme, useTheme } from "@/stores/theme";
 import { type ReactNode, useEffect, useState } from "react";
 import { Toaster } from "sonner";
@@ -38,6 +39,29 @@ function useAppliedTheme(): "light" | "dark" {
   return resolved;
 }
 
+/** Apply the accent + reduce-motion preferences to <html>. */
+function useAppliedAppearance() {
+  const accent = useAppearance((s) => s.accent);
+  const reduceMotion = useAppearance((s) => s.reduceMotion);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const a = ACCENTS.find((x) => x.id === accent) ?? ACCENTS[0];
+    if (a.primary) {
+      root.style.setProperty("--primary", a.primary);
+      root.style.setProperty("--primary-foreground", a.foreground);
+    } else {
+      // Violet — let the theme's own light/dark values stand.
+      root.style.removeProperty("--primary");
+      root.style.removeProperty("--primary-foreground");
+    }
+  }, [accent]);
+
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-reduce-motion", reduceMotion);
+  }, [reduceMotion]);
+}
+
 export function AppLayout({ children }: { children: ReactNode }) {
   useAuthBootstrap();
   useGlobalShortcuts();
@@ -49,6 +73,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useNotifSync();
   useUpdater();
   const theme = useAppliedTheme();
+  useAppliedAppearance();
 
   return (
     <div className="flex h-full flex-col">

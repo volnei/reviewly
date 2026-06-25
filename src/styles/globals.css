@@ -337,6 +337,18 @@
     -webkit-user-select: text;
   }
 
+  /* Manual "Reduce motion" toggle (Settings → Appearance). Mirrors what the OS
+     prefers-reduced-motion would do, but user-controlled: near-instant
+     animations/transitions everywhere. */
+  html[data-reduce-motion] *,
+  html[data-reduce-motion] *::before,
+  html[data-reduce-motion] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
   /* Light mode gets depth from soft shadows (dark gets it from vibrancy).
      A gentle, layered drop-shadow on translucent/blurred panels lifts them
      off the gradient backdrop. */
