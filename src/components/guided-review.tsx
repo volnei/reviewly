@@ -459,7 +459,10 @@ function Tour({
       for (const i of visible) {
         const el = stepRefs.current[i];
         if (!el) continue;
-        if (el.getBoundingClientRect().top - top <= 1) current = i;
+        // Small tolerance so a jumped-to stop (which lands ~flush at the top)
+        // still registers as current — a tight `<= 1` would snap back to the
+        // previous stop after a click/next jump.
+        if (el.getBoundingClientRect().top - top <= 4) current = i;
         else break;
       }
       setActive(current);
@@ -842,7 +845,7 @@ const Step = ({
   }
 
   return (
-    <section ref={setRef} className="scroll-mt-2 animate-tour-fade-in">
+    <section ref={setRef} className="animate-tour-fade-in">
       {/* sticky header — the current stop stays pinned while you read it.
           Opaque so the diff scrolls cleanly *under* it (no bleed-through). The
           pinning itself marks "where you are", so the row stays neutral. */}
