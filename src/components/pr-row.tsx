@@ -94,7 +94,7 @@ export function PrRowLink({
       onMouseEnter={prefetchDetail}
       onFocus={prefetchDetail}
       className={cn(
-        "group flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors duration-100 hover:bg-foreground/[0.04] data-[status=active]:bg-primary/[0.08] data-[status=active]:ring-1 data-[status=active]:ring-primary/20",
+        "group flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors duration-100 hover:bg-foreground/[0.04] data-[status=active]:bg-primary/[0.08]",
         className,
       )}
     >
