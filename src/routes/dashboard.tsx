@@ -252,18 +252,24 @@ export function DashboardPage() {
               )
             : "Your review inbox"
         }
+        actions={
+          <>
+            {syncedAt > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Synced {relativeTime(syncedAt)}
+              </span>
+            )}
+            <IconButton
+              label="Refresh"
+              icon={RefreshCw}
+              loading={refreshing}
+              onClick={refreshAll}
+            />
+          </>
+        }
       />
 
       <ScrollArea className="flex-1">
-        <div className="flex flex-wrap items-center justify-end gap-3 px-6 pt-4 pb-1">
-          {syncedAt > 0 && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              Synced {relativeTime(syncedAt)}
-            </span>
-          )}
-          <IconButton label="Refresh" icon={RefreshCw} loading={refreshing} onClick={refreshAll} />
-        </div>
-
         {allEmpty ? (
           <div className="px-6 py-16">
             <EmptyState
