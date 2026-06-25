@@ -10,12 +10,15 @@ import { relativeTime } from "@/lib/format";
 import { type ListState, readPrs } from "@/lib/prs-db";
 import { ensureBackfilled } from "@/lib/sync";
 import type { CiStatus, Label, PullSummary } from "@/lib/tauri";
-import { invoke } from "@/lib/tauri";
+import { invoke, parseRepoUrl } from "@/lib/tauri";
+import { safeOpenUrl, toastRetry } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { useLocalRepos } from "@/stores/local-repos";
 import { type GroupBy, type PrScope, type SortKey, usePrFilters } from "@/stores/pr-filters";
+import { usePrView } from "@/stores/pr-view";
 import { useWatchedRepos } from "@/stores/watched-repos";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
@@ -44,6 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   type ActiveFilterChip,
   type ActiveFilterOption,
@@ -82,6 +86,8 @@ const SCOPE_OPTIONS: Option<PrScope>[] = [
 type PrListRow =
   | { kind: "header"; key: string; label: string; count: number }
   | { kind: "pr"; key: number; pr: PullSummary };
+
+const PR_LIST_TOP_INSET = 8;
 
 export function PRsPage() {
   // Filters live in a persisted store so they survive navigation + restarts.
@@ -663,7 +669,10 @@ function PrVirtualList({
   initialScroll: number;
   onScrollPos: (key: string, top: number) => void;
 }) {
+  const navigate = useNavigate();
   const parentRef = useRef<HTMLDivElement>(null);
+  const localRepos = useLocalRepos((s) => s.repos);
+  const setPrDetailTab = usePrView((s) => s.setTab);
   const virt = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
@@ -673,6 +682,24 @@ function PrVirtualList({
       const r = rows[i];
       return r.kind === "header" ? `h:${r.key}` : `p:${r.key}`;
     },
+  });
+
+  const checkoutLocal = useMutation({
+    mutationFn: ({
+      path,
+      number,
+    }: {
+      owner: string;
+      repo: string;
+      path: string;
+      number: number;
+    }) => invoke("gh_pr_checkout", { path, number }),
+    onSuccess: (_data, vars) =>
+      toast.success(`Checked out #${vars.number} in ${vars.owner}/${vars.repo}`, {
+        description: vars.path,
+      }),
+    onError: (e, vars) =>
+      toastRetry(`Checkout failed — ${String(e)}`, () => checkoutLocal.mutate(vars)),
   });
 
   // Indices of the PR rows (skip group headers) for j/k roving navigation.
@@ -687,6 +714,7 @@ function PrVirtualList({
     setActivePos((p) => (p >= prIndices.length ? prIndices.length - 1 : p));
   }, [prIndices.length]);
   const activeRowIndex = activePos >= 0 ? prIndices[activePos] : -1;
+  const activeRowId = activeRowIndex >= 0 ? `pr-row-${rows[activeRowIndex]?.key}` : undefined;
 
   // Restore the saved scroll position on mount / when the list scope changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only on scope change
@@ -695,6 +723,85 @@ function PrVirtualList({
     if (el && initialScroll > 0) el.scrollTop = initialScroll;
     setActivePos(-1);
   }, [scrollKey]);
+
+  const activePr = useMemo(() => {
+    const row = activeRowIndex >= 0 ? rows[activeRowIndex] : null;
+    return row?.kind === "pr" ? row.pr : null;
+  }, [activeRowIndex, rows]);
+  const activePrRepo = activePr ? parseRepoUrl(activePr.repository_url) : null;
+  const activeAnnouncement =
+    activePr && activePrRepo && activePos >= 0
+      ? `Selected ${activePrRepo.owner}/${activePrRepo.repo} pull request ${activePr.number}, ${activePos + 1} of ${prIndices.length}: ${activePr.title}`
+      : "";
+
+  const getPrTarget = useCallback((pr: PullSummary) => {
+    const repo = parseRepoUrl(pr.repository_url);
+    if (!repo) return null;
+    return { ...repo, number: pr.number };
+  }, []);
+
+  const openPr = useCallback(
+    (pr: PullSummary, view?: "diff") => {
+      const target = getPrTarget(pr);
+      if (!target) return;
+      if (view === "diff") {
+        setPrDetailTab(`${target.owner}/${target.repo}#${target.number}`, "files");
+      }
+      navigate({
+        to: "/prs/$owner/$repo/$number",
+        params: {
+          owner: target.owner,
+          repo: target.repo,
+          number: String(target.number),
+        },
+      });
+    },
+    [getPrTarget, navigate, setPrDetailTab],
+  );
+
+  const checkoutPr = useCallback(
+    (pr: PullSummary) => {
+      const target = getPrTarget(pr);
+      if (!target) return;
+      const localRepo = localRepos.find(
+        (repo) => repo.owner === target.owner && repo.repo === target.repo,
+      );
+      if (!localRepo) {
+        toast.info(`Clone ${target.owner}/${target.repo} locally first`, {
+          description: "Add it in Repositories so Reviewly can run gh pr checkout.",
+        });
+        return;
+      }
+      checkoutLocal.mutate({
+        owner: target.owner,
+        repo: target.repo,
+        path: localRepo.path,
+        number: target.number,
+      });
+    },
+    [checkoutLocal, getPrTarget, localRepos],
+  );
+
+  const runPrAction = useCallback(
+    (action: "open" | "diff" | "github" | "checkout") => {
+      if (!activePr) return;
+      switch (action) {
+        case "open":
+          openPr(activePr);
+          break;
+        case "diff":
+          openPr(activePr, "diff");
+          break;
+        case "github":
+          safeOpenUrl(activePr.html_url);
+          break;
+        case "checkout":
+          checkoutPr(activePr);
+          break;
+      }
+    },
+    [activePr, checkoutPr, openPr],
+  );
 
   // Persist scroll position as the user scrolls, throttled to one write per
   // animation frame so the sqlStorage-backed store isn't spammed.
@@ -714,7 +821,17 @@ function PrVirtualList({
     [],
   );
 
-  // j/k move the active row, Enter opens it. Only when not typing in an input.
+  const moveActive = useCallback(
+    (nextPos: number, align: "auto" | "start" | "end" = "auto") => {
+      if (prIndices.length === 0) return;
+      const clamped = Math.max(0, Math.min(nextPos, prIndices.length - 1));
+      virt.scrollToIndex(prIndices[clamped], { align });
+      setActivePos(clamped);
+    },
+    [prIndices, virt],
+  );
+
+  // Arrows/j/k move the active row; row shortcuts act on the active PR only.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
@@ -723,82 +840,173 @@ function PrVirtualList({
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (prIndices.length === 0) return;
 
-      if (e.key === "j" || e.key === "k") {
+      if (e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
-        setActivePos((p) => {
-          const next =
-            e.key === "j"
-              ? Math.min((p < 0 ? -1 : p) + 1, prIndices.length - 1)
-              : Math.max((p < 0 ? prIndices.length : p) - 1, 0);
-          virt.scrollToIndex(prIndices[next], { align: "auto" });
-          return next;
-        });
-      } else if (e.key === "Enter") {
-        if (activePos < 0) return;
-        const el = parentRef.current?.querySelector<HTMLAnchorElement>(
-          `[data-pr-row="${prIndices[activePos]}"] a`,
-        );
-        if (el) {
-          e.preventDefault();
-          el.click();
-        }
+        const current =
+          activePos < 0
+            ? e.key === "j" || e.key === "ArrowDown"
+              ? -1
+              : prIndices.length
+            : activePos;
+        moveActive(current + (e.key === "j" || e.key === "ArrowDown" ? 1 : -1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        moveActive(0, "start");
+      } else if (e.key === "End") {
+        e.preventDefault();
+        moveActive(prIndices.length - 1, "end");
+      } else if (e.key === "PageDown" || e.key === "PageUp") {
+        e.preventDefault();
+        const pageSize = Math.max(1, Math.floor((parentRef.current?.clientHeight ?? 350) / 50) - 1);
+        const current =
+          activePos < 0 ? (e.key === "PageDown" ? 0 : prIndices.length - 1) : activePos;
+        moveActive(current + (e.key === "PageDown" ? pageSize : -pageSize));
+      } else if (e.key === "Enter" || e.key === "ArrowRight") {
+        if (!activePr) return;
+        e.preventDefault();
+        runPrAction("open");
+      } else if (e.key === "d") {
+        e.preventDefault();
+        runPrAction("diff");
+      } else if (e.key === "g") {
+        e.preventDefault();
+        runPrAction("github");
+      } else if (e.key === "c") {
+        e.preventDefault();
+        runPrAction("checkout");
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [prIndices, activePos, virt]);
-
-  // Move DOM focus onto the active row's link once it's rendered.
-  useEffect(() => {
-    if (activeRowIndex < 0) return;
-    const el = parentRef.current?.querySelector<HTMLAnchorElement>(
-      `[data-pr-row="${activeRowIndex}"] a`,
-    );
-    el?.focus();
-  }, [activeRowIndex]);
+  }, [activePos, activePr, moveActive, prIndices.length, runPrAction]);
 
   return (
-    <div ref={parentRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pb-6">
-      <div style={{ height: virt.getTotalSize(), position: "relative", width: "100%" }}>
-        {virt.getVirtualItems().map((vi) => {
-          const row = rows[vi.index];
-          return (
-            <div
-              key={vi.key}
-              data-index={vi.index}
-              data-pr-row={row.kind === "pr" ? vi.index : undefined}
-              ref={virt.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${vi.start}px)`,
-              }}
-            >
-              {row.kind === "header" ? (
-                <h2 className="px-6 pt-4 pb-1 text-xs font-semibold text-muted-foreground">
-                  {row.label} <span className="text-muted-foreground/60">· {row.count}</span>
-                </h2>
-              ) : (
-                <div className="px-3">
-                  <PrRowLink
-                    pr={row.pr}
-                    showRepo={groupBy !== "repo"}
-                    ciState={ciMap.get(row.pr.number)}
-                    className={
-                      vi.index === activeRowIndex
-                        ? "ring-1 ring-primary/40 bg-foreground/[0.04]"
-                        : undefined
-                    }
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={parentRef}
+        onScroll={onScroll}
+        onFocus={() => {
+          if (activePos < 0 && prIndices.length > 0) setActivePos(0);
+        }}
+        role="listbox"
+        tabIndex={0}
+        aria-label="Pull requests"
+        aria-activedescendant={activeRowId}
+        className="h-full overflow-y-auto pb-24 outline-none"
+      >
+        <div className="sr-only" aria-live="polite">
+          {activeAnnouncement}
+        </div>
+        <div
+          style={{
+            height: virt.getTotalSize() + PR_LIST_TOP_INSET,
+            position: "relative",
+            width: "100%",
+          }}
+        >
+          {virt.getVirtualItems().map((vi) => {
+            const row = rows[vi.index];
+            const prPos = row.kind === "pr" ? prIndices.indexOf(vi.index) : -1;
+            const active = vi.index === activeRowIndex;
+            return (
+              <div
+                key={vi.key}
+                data-index={vi.index}
+                data-pr-row={row.kind === "pr" ? vi.index : undefined}
+                ref={virt.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vi.start + PR_LIST_TOP_INSET}px)`,
+                }}
+              >
+                {row.kind === "header" ? (
+                  <h2
+                    role="presentation"
+                    className="px-6 pt-4 pb-1 text-xs font-semibold text-muted-foreground"
+                  >
+                    {row.label} <span className="text-muted-foreground/60">· {row.count}</span>
+                  </h2>
+                ) : (
+                  <div
+                    id={`pr-row-${row.key}`}
+                    role="option"
+                    aria-selected={active}
+                    tabIndex={-1}
+                    className="px-3"
+                    onMouseEnter={() => setActivePos(prPos)}
+                  >
+                    <PrRowLink
+                      pr={row.pr}
+                      showRepo={groupBy !== "repo"}
+                      ciState={ciMap.get(row.pr.number)}
+                      tabIndex={-1}
+                      className={active ? "ring-1 ring-primary/40 bg-foreground/[0.04]" : undefined}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+      <PrListCommandBar pr={activePr} worktreeReady={false} />
     </div>
+  );
+}
+
+function PrListCommandBar({
+  pr,
+  worktreeReady,
+}: {
+  pr: PullSummary | null;
+  worktreeReady: boolean;
+}) {
+  const repo = pr ? parseRepoUrl(pr.repository_url) : null;
+  if (!pr || !repo) return null;
+
+  return (
+    <div
+      aria-label={`Keyboard shortcuts for ${repo.owner}/${repo.repo} pull request ${pr.number}`}
+      className={cn(
+        "pointer-events-none absolute bottom-4 left-1/2 z-10 hidden max-w-[calc(100%-3rem)] -translate-x-1/2 items-center gap-2 rounded-lg border border-hairline bg-popover/95 px-2.5 py-2 text-[11px] text-muted-foreground shadow-2xl backdrop-blur-md lg:flex",
+      )}
+    >
+      <span className="max-w-64 truncate border-r border-hairline pr-2 font-medium text-foreground/80">
+        {repo.owner}/{repo.repo}#{pr.number}
+      </span>
+      <KeyHint keys="↑↓" label="move" />
+      <KeyHint keys="Pg" label="page" />
+      <KeyHint keys="Home/End" label="jump" />
+      <KeyHint keys="→" label="open" />
+      <KeyHint keys="d" label="diff" />
+      <KeyHint keys="g" label="GitHub" />
+      <KeyHint keys="c" label="checkout" />
+      {worktreeReady && <KeyHint keys="C" label="worktree" />}
+    </div>
+  );
+}
+
+function KeyHint({
+  keys,
+  label,
+  disabled = false,
+}: {
+  keys: string;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1 whitespace-nowrap", disabled && "opacity-45")}
+    >
+      <kbd className="flex h-4 min-w-4 items-center justify-center rounded border border-border/70 bg-foreground/[0.06] px-1 font-mono text-[10px] text-foreground">
+        {keys}
+      </kbd>
+      <span>{label}</span>
+    </span>
   );
 }
 

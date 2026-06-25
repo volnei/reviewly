@@ -44,6 +44,7 @@ interface Props {
   /** CI rollup state — a small dot is shown for failing/pending only. */
   ciState?: "success" | "failure" | "pending" | "none" | string;
   className?: string;
+  tabIndex?: number;
 }
 
 /**
@@ -51,7 +52,14 @@ interface Props {
  * labels, draft marker, avatar. The timestamp is secondary, so it only
  * fades in on hover/focus to keep the row quiet at rest.
  */
-export function PrRowLink({ pr, showRepo = true, showUpdated = false, ciState, className }: Props) {
+export function PrRowLink({
+  pr,
+  showRepo = true,
+  showUpdated = false,
+  ciState,
+  className,
+  tabIndex,
+}: Props) {
   const repo = parseRepoUrl(pr.repository_url);
   const prKey = repo ? `${repo.owner}/${repo.repo}#${pr.number}` : "";
   // A guided tour exists (or is generating in the background) for this PR.
@@ -82,6 +90,7 @@ export function PrRowLink({ pr, showRepo = true, showUpdated = false, ciState, c
       to="/prs/$owner/$repo/$number"
       params={{ owner: repo.owner, repo: repo.repo, number: String(pr.number) }}
       preload="intent"
+      tabIndex={tabIndex}
       onMouseEnter={prefetchDetail}
       onFocus={prefetchDetail}
       className={cn(
