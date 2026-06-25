@@ -11,6 +11,7 @@ import { useNativeChrome } from "@/app/use-native-chrome";
 import { useNotifSync } from "@/app/use-notif-sync";
 import { usePrSync } from "@/app/use-pr-sync";
 import { useRealtimeEvents } from "@/app/use-realtime-events";
+import { useTrayNav } from "@/app/use-tray-nav";
 import { useUpdater } from "@/app/use-updater";
 import { AboutDialog } from "@/components/about-dialog";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
@@ -76,6 +77,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const theme = useAppliedTheme();
   useAppliedAppearance();
   useAppBehaviorSync();
+  useTrayNav();
 
   return (
     <div className="flex h-full flex-col">
