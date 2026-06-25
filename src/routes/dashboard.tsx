@@ -1,14 +1,17 @@
 import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { PageHeader } from "@/components/page-header";
+import { PopoverItem, PopoverPanel, PopoverSection } from "@/components/popover";
+import { TooltipFor } from "@/components/tooltip-for";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime } from "@/lib/format";
 import { ciMeta, reviewMeta } from "@/lib/status";
-import type { Dashboard, MinePr, PullSummary } from "@/lib/tauri";
-import { invoke, parseRepoUrl } from "@/lib/tauri";
+import type { Dashboard, DashboardPr } from "@/lib/tauri";
+import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
+import { type SnoozeKind, getPrSnooze, isPrSnoozed, usePrSnoozes } from "@/stores/pr-snoozes";
 import { useWatchedRepos } from "@/stores/watched-repos";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -18,61 +21,50 @@ import {
   ChevronRight,
   Clock,
   FilePen,
+  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  MessageSquare,
+  MoreHorizontal,
   RefreshCw,
+  TimerReset,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 const DAY = 86_400_000;
 
-interface InboxItem {
-  id: number;
+type Priority = "critical" | "high" | "normal" | "low";
+
+interface InboxItem extends DashboardPr {
   owner: string;
-  repo: string;
-  number: number;
-  title: string;
-  author: string;
-  avatar: string;
-  updatedAt: string;
-  ci?: MinePr["ci"];
-  review?: string | null;
-  conflicting?: boolean;
+  repoName: string;
+  priority: Priority;
+  waitingDays: number;
+  blocked: boolean;
 }
 
-function fromSummary(p: PullSummary): InboxItem | null {
-  const r = parseRepoUrl(p.repository_url);
-  if (!r) return null;
-  return {
-    id: p.id,
-    owner: r.owner,
-    repo: r.repo,
-    number: p.number,
-    title: p.title,
-    author: p.user.login,
-    avatar: p.user.avatar_url,
-    updatedAt: p.updated_at,
-  };
-}
-
-function fromMine(m: MinePr): InboxItem {
+function fromPr(m: DashboardPr): InboxItem {
   const [owner, repo] = m.repo.split("/");
+  const waitingDays = ageDays(m.updatedAt ?? m.createdAt);
+  const blocked = isBlocked(m);
   return {
-    id: m.id,
+    ...m,
     owner: owner ?? "",
-    repo: repo ?? "",
-    number: m.number,
-    title: m.title,
-    author: m.author,
-    avatar: m.avatar,
-    updatedAt: m.updatedAt ?? m.createdAt ?? "",
-    ci: m.ci,
-    review: m.reviewDecision,
-    conflicting: m.conflicting,
+    repoName: repo ?? "",
+    priority: priorityFor(m, waitingDays, blocked),
+    waitingDays,
+    blocked,
   };
 }
 
-function shortAge(iso: string): { label: string; aging: boolean } {
+function ageDays(iso?: string | null): number {
+  if (!iso) return 0;
+  return Math.max(0, Math.floor((Date.now() - +new Date(iso)) / DAY));
+}
+
+function shortAge(iso?: string | null): { label: string; aging: boolean } {
   if (!iso) return { label: "", aging: false };
   const ms = Date.now() - +new Date(iso);
   const d = Math.floor(ms / DAY);
@@ -82,9 +74,52 @@ function shortAge(iso: string): { label: string; aging: boolean } {
   return { label: "now", aging: false };
 }
 
+function isBlocked(pr: DashboardPr): boolean {
+  return (
+    pr.ci === "failure" ||
+    pr.conflicting ||
+    pr.reviewDecision === "CHANGES_REQUESTED" ||
+    pr.unresolvedThreadCount > 0
+  );
+}
+
+function priorityFor(
+  pr: DashboardPr,
+  waitingDays = ageDays(pr.updatedAt ?? pr.createdAt),
+  blocked = isBlocked(pr),
+): Priority {
+  if (waitingDays > 7 || (blocked && waitingDays > 3)) return "critical";
+  if (
+    pr.ci === "failure" ||
+    pr.conflicting ||
+    pr.reviewDecision === "CHANGES_REQUESTED" ||
+    pr.unresolvedThreadCount > 0 ||
+    (waitingDays >= 4 && waitingDays <= 7)
+  ) {
+    return "high";
+  }
+  if ((waitingDays >= 1 && waitingDays <= 3) || pr.ci === "pending") return "normal";
+  return "low";
+}
+
+const PRIORITY_WEIGHT: Record<Priority, number> = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+function byPriorityThenAge(a: InboxItem, b: InboxItem): number {
+  return (
+    PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority] ||
+    +new Date(a.updatedAt ?? a.createdAt ?? 0) - +new Date(b.updatedAt ?? b.createdAt ?? 0)
+  );
+}
+
 export function DashboardPage() {
   const viewer = useAuth((s) => s.viewer);
   const watched = useWatchedRepos((s) => s.repos);
+  const snoozes = usePrSnoozes((s) => s.snoozes);
   const repoQual = useMemo(() => watched.map((r) => `repo:${r}`).join(" "), [watched]);
 
   const dashboard = useQuery({
@@ -95,71 +130,91 @@ export function DashboardPage() {
     staleTime: 60_000,
   });
 
-  const reviewRequested = useQuery({
-    queryKey: ["prs", "review-requested"],
-    queryFn: () =>
-      invoke<PullSummary[]>("gh_review_requested", { includeDrafts: false, includeClosed: false }),
-  });
+  // INCOMING — PRs requesting your review, oldest first, using the enriched GraphQL rows.
+  const allIncoming = useMemo(
+    () => (dashboard.data?.incoming ?? []).map(fromPr).sort(byPriorityThenAge),
+    [dashboard.data],
+  );
 
-  // INCOMING — PRs requesting your review, scoped to watched repos, oldest first.
-  const incoming = useMemo(() => {
-    const ws = new Set(watched);
-    return (reviewRequested.data ?? [])
-      .map(fromSummary)
-      .filter((x): x is InboxItem => !!x && (ws.size === 0 || ws.has(`${x.owner}/${x.repo}`)))
-      .sort((a, b) => +new Date(a.updatedAt) - +new Date(b.updatedAt));
-  }, [reviewRequested.data, watched]);
+  const allMine = useMemo(
+    () => (dashboard.data?.mine ?? []).map(fromPr).sort(byPriorityThenAge),
+    [dashboard.data],
+  );
+
+  const activeIncoming = useMemo(
+    () => allIncoming.filter((i) => !isPrSnoozed(i, getPrSnooze(snoozes, i))),
+    [allIncoming, snoozes],
+  );
+
+  const snoozed = useMemo(() => {
+    const byId = new Map<number, InboxItem>();
+    for (const item of [...allIncoming, ...allMine]) {
+      if (isPrSnoozed(item, getPrSnooze(snoozes, item))) byId.set(item.id, item);
+    }
+    return [...byId.values()].sort(byPriorityThenAge);
+  }, [allIncoming, allMine, snoozes]);
+
+  const blocked = useMemo(() => activeIncoming.filter((i) => i.blocked), [activeIncoming]);
+  const stale = useMemo(
+    () => activeIncoming.filter((i) => !i.blocked && i.waitingDays > 3),
+    [activeIncoming],
+  );
+  const incoming = useMemo(
+    () => activeIncoming.filter((i) => !i.blocked && i.waitingDays <= 3),
+    [activeIncoming],
+  );
 
   // OUTGOING — your open PRs, bucketed by what action they need.
   const buckets = useMemo(() => {
-    const mine = (dashboard.data?.mine ?? []).map((m) => ({ raw: m, item: fromMine(m) }));
     const drafts: InboxItem[] = [];
     const needsAttention: InboxItem[] = [];
     const ready: InboxItem[] = [];
     const awaiting: InboxItem[] = [];
-    for (const { raw, item } of mine) {
-      if (raw.isDraft) {
+    for (const item of allMine.filter((i) => !isPrSnoozed(i, getPrSnooze(snoozes, i)))) {
+      if (item.isDraft) {
         drafts.push(item);
       } else if (
-        raw.reviewDecision === "CHANGES_REQUESTED" ||
-        raw.ci === "failure" ||
-        raw.conflicting
+        item.reviewDecision === "CHANGES_REQUESTED" ||
+        item.ci === "failure" ||
+        item.conflicting ||
+        item.unresolvedThreadCount > 0
       ) {
         needsAttention.push(item);
-      } else if (raw.reviewDecision === "APPROVED") {
+      } else if (item.reviewDecision === "APPROVED") {
         ready.push(item);
       } else {
         awaiting.push(item);
       }
     }
-    const byAge = (a: InboxItem, b: InboxItem) => +new Date(a.updatedAt) - +new Date(b.updatedAt);
     return {
-      drafts: drafts.sort(byAge),
-      needsAttention: needsAttention.sort(byAge),
-      ready: ready.sort(byAge),
-      awaiting: awaiting.sort(byAge),
+      drafts: drafts.sort(byPriorityThenAge),
+      needsAttention: needsAttention.sort(byPriorityThenAge),
+      ready: ready.sort(byPriorityThenAge),
+      awaiting: awaiting.sort(byPriorityThenAge),
     };
-  }, [dashboard.data]);
+  }, [allMine, snoozes]);
 
   const agingCount = useMemo(
-    () => incoming.filter((i) => shortAge(i.updatedAt).aging).length,
-    [incoming],
+    () => activeIncoming.filter((i) => shortAge(i.updatedAt ?? i.createdAt).aging).length,
+    [activeIncoming],
   );
-  const oldest = incoming[0] ? shortAge(incoming[0].updatedAt).label : null;
+  const oldest = activeIncoming[0]
+    ? shortAge(activeIncoming[0].updatedAt ?? activeIncoming[0].createdAt).label
+    : null;
   const conflictingCount = buckets.needsAttention.filter((i) => i.conflicting).length;
 
   // Review backlog bucketed by how long it's been waiting — the hero chart.
   const ageBuckets = useMemo(() => {
     const b = [0, 0, 0, 0]; // ≤1d · 2–3d · 4–7d · >7d
-    for (const i of incoming) {
-      const days = Math.floor((Date.now() - +new Date(i.updatedAt)) / DAY);
+    for (const i of activeIncoming) {
+      const days = ageDays(i.updatedAt ?? i.createdAt);
       if (days <= 1) b[0] += 1;
       else if (days <= 3) b[1] += 1;
       else if (days <= 7) b[2] += 1;
       else b[3] += 1;
     }
     return b;
-  }, [incoming]);
+  }, [activeIncoming]);
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -167,13 +222,12 @@ export function DashboardPage() {
     return () => clearInterval(id);
   }, []);
   const syncedAt = dashboard.dataUpdatedAt;
-  const refreshing = dashboard.isFetching || reviewRequested.isFetching;
+  const refreshing = dashboard.isFetching;
   const refreshAll = () => {
     dashboard.refetch();
-    reviewRequested.refetch();
   };
 
-  const loadingIn = reviewRequested.isLoading;
+  const loadingIn = dashboard.isLoading;
   const loadingOut = dashboard.isLoading;
   const hasData = !loadingIn && !loadingOut;
   const totalMine =
@@ -181,7 +235,8 @@ export function DashboardPage() {
     buckets.ready.length +
     buckets.awaiting.length +
     buckets.drafts.length;
-  const allEmpty = hasData && incoming.length === 0 && totalMine === 0;
+  const totalActiveIncoming = blocked.length + stale.length + incoming.length;
+  const allEmpty = hasData && totalActiveIncoming === 0 && totalMine === 0 && snoozed.length === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -190,25 +245,31 @@ export function DashboardPage() {
         subtitle={
           hasData
             ? summarize(
-                incoming.length,
+                totalActiveIncoming,
                 oldest,
                 buckets.ready.length,
                 buckets.needsAttention.length,
               )
             : "Your review inbox"
         }
+        actions={
+          <>
+            {syncedAt > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Synced {relativeTime(syncedAt)}
+              </span>
+            )}
+            <IconButton
+              label="Refresh"
+              icon={RefreshCw}
+              loading={refreshing}
+              onClick={refreshAll}
+            />
+          </>
+        }
       />
 
       <ScrollArea className="flex-1">
-        <div className="flex items-center justify-end gap-3 px-6 pt-4 pb-1">
-          {syncedAt > 0 && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              Synced {relativeTime(syncedAt)}
-            </span>
-          )}
-          <IconButton label="Refresh" icon={RefreshCw} loading={refreshing} onClick={refreshAll} />
-        </div>
-
         {allEmpty ? (
           <div className="px-6 py-16">
             <EmptyState
@@ -221,7 +282,7 @@ export function DashboardPage() {
           <>
             {hasData && (
               <InboxHero
-                waiting={incoming.length}
+                waiting={totalActiveIncoming}
                 oldest={oldest}
                 aging={agingCount}
                 ready={buckets.ready.length}
@@ -231,6 +292,22 @@ export function DashboardPage() {
               />
             )}
             <div className="px-3 pb-8">
+              <Section
+                title="Blocked"
+                count={blocked.length}
+                icon={AlertTriangle}
+                tone="destructive"
+                loading={loadingIn}
+                items={blocked}
+              />
+              <Section
+                title="Stale"
+                count={stale.length}
+                icon={TimerReset}
+                tone="warning"
+                loading={loadingIn}
+                items={stale}
+              />
               <Section
                 title="Needs your review"
                 count={incoming.length}
@@ -275,6 +352,14 @@ export function DashboardPage() {
                 defaultOpen={false}
                 items={buckets.drafts}
               />
+              <Section
+                title="Snoozed"
+                count={snoozed.length}
+                icon={Clock}
+                tone="muted"
+                items={snoozed}
+                defaultOpen={false}
+              />
             </div>
           </>
         )}
@@ -296,12 +381,13 @@ function summarize(needs: number, oldest: string | null, ready: number, attentio
   return parts.join(" · ");
 }
 
-type Tone = "primary" | "success" | "destructive" | "muted";
+type Tone = "primary" | "success" | "destructive" | "warning" | "muted";
 
 const TONE: Record<Tone, string> = {
   primary: "text-primary",
   success: "text-success",
   destructive: "text-destructive",
+  warning: "text-warning",
   muted: "text-muted-foreground",
 };
 
@@ -311,6 +397,7 @@ const DOT: Record<Tone, string> = {
   primary: "bg-primary",
   success: "bg-success",
   destructive: "bg-destructive",
+  warning: "bg-warning",
   muted: "bg-muted-foreground",
 };
 
@@ -497,7 +584,9 @@ function Section({
           )}
         />
         <Icon className={cn("size-4 shrink-0", TONE[tone])} strokeWidth={1.75} />
-        <span className="text-sm font-semibold text-foreground">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+          {title}
+        </span>
         <span className="text-sm tabular-nums text-muted-foreground/70">{count}</span>
         {badge && (
           <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-medium text-destructive">
@@ -518,7 +607,7 @@ function Section({
                   onOpen={() =>
                     navigate({
                       to: "/prs/$owner/$repo/$number",
-                      params: { owner: it.owner, repo: it.repo, number: String(it.number) },
+                      params: { owner: it.owner, repo: it.repoName, number: String(it.number) },
                     })
                   }
                 />
@@ -535,46 +624,140 @@ function Section({
   );
 }
 
-function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
-  const age = shortAge(item.updatedAt);
+function InboxRow({
+  item,
+  onOpen,
+}: {
+  item: InboxItem;
+  onOpen: () => void;
+}) {
+  const age = shortAge(item.updatedAt ?? item.createdAt);
+  const snooze = usePrSnoozes((s) => s.snooze);
+  const unsnooze = usePrSnoozes((s) => s.unsnooze);
+  const currentSnooze = usePrSnoozes((s) => getPrSnooze(s.snoozes, item));
+  const snoozed = isPrSnoozed(item, currentSnooze);
+  const applySnooze = (kind: SnoozeKind) => {
+    const entry = snooze(item, kind);
+    toast("Snoozed", {
+      description: `${item.repo} #${item.number}`,
+      action: { label: "Undo", onClick: () => unsnooze(entry.key) },
+    });
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
       className={cn(
-        "group flex w-full items-center gap-3 px-3 py-3 pl-10 text-left transition-colors hover:bg-foreground/[0.03]",
+        "group flex w-full items-center gap-3 px-3 py-1.5 pl-10 transition-colors hover:bg-foreground/[0.03]",
         // PRs that have been waiting on you for over a week get a faint accent.
         age.aging && "bg-destructive/[0.035]",
       )}
     >
-      {item.avatar ? (
-        <img src={item.avatar} alt="" className="size-6 shrink-0 rounded-full" />
-      ) : (
-        <span className="size-6 shrink-0 rounded-full bg-foreground/10" />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {item.owner}/{item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
-          {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
-        </p>
-      </div>
-      {item.conflicting && (
-        <span title="Has merge conflicts" className="shrink-0">
-          <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
-        </span>
-      )}
-      <ReviewBadge review={item.review} />
-      <CiIcon ci={item.ci} />
-      <span
-        className={cn(
-          "w-9 shrink-0 text-right text-xs tabular-nums",
-          age.aging ? "font-semibold text-destructive" : "text-muted-foreground/70",
-        )}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
-        {age.label}
+        {item.avatar ? (
+          <img src={item.avatar} alt="" className="size-5 shrink-0 rounded-full" />
+        ) : (
+          <span className="size-5 shrink-0 rounded-full bg-foreground/10" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <p className="min-w-0 max-w-full truncate font-medium text-foreground text-sm">
+              {item.title}
+            </p>
+            <PriorityPill priority={item.priority} />
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
+            {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
+          </p>
+        </div>
+      </button>
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        <RowSignals item={item} />
+        <span
+          className={cn(
+            "w-9 shrink-0 text-right text-xs tabular-nums",
+            age.aging ? "font-semibold text-destructive" : "text-muted-foreground/70",
+          )}
+        >
+          {age.label}
+        </span>
+        <SnoozeMenu snoozed={snoozed} onSnooze={applySnooze} onUnsnooze={() => unsnooze(item)} />
+      </div>
+    </div>
+  );
+}
+
+function PriorityPill({ priority }: { priority: Priority }) {
+  if (priority !== "critical" && priority !== "high") return null;
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize",
+        priority === "critical"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-warning/15 text-warning",
+      )}
+    >
+      {priority}
+    </span>
+  );
+}
+
+function RowSignals({ item }: { item: InboxItem }) {
+  const commentCount =
+    item.unresolvedThreadCount > 0
+      ? item.unresolvedThreadCount
+      : item.reviewThreadCount + item.issueCommentCount;
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
+      {item.conflicting && (
+        <SignalTooltip label="Has merge conflicts">
+          <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
+        </SignalTooltip>
+      )}
+      <ReviewBadge review={item.reviewDecision} />
+      <CiIcon ci={item.ci} />
+      {commentCount > 0 && (
+        <SignalTooltip
+          label={
+            item.unresolvedThreadCount > 0
+              ? `${item.unresolvedThreadCount} unresolved review ${
+                  item.unresolvedThreadCount === 1 ? "thread" : "threads"
+                }`
+              : `${commentCount} comments`
+          }
+        >
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 px-1",
+              item.unresolvedThreadCount > 0 ? "text-destructive" : "text-muted-foreground/80",
+            )}
+            aria-label={
+              item.unresolvedThreadCount > 0
+                ? `${item.unresolvedThreadCount} unresolved review threads`
+                : `${commentCount} comments`
+            }
+          >
+            <MessageSquare className="size-3.5" />
+            <span className="text-[10px] tabular-nums">{commentCount}</span>
+          </span>
+        </SignalTooltip>
+      )}
+    </div>
+  );
+}
+
+function SignalTooltip({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <TooltipFor label={label}>
+      <span className="-my-1 inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-foreground/[0.04]">
+        {children}
       </span>
-    </button>
+    </TooltipFor>
   );
 }
 
@@ -583,7 +766,9 @@ function ReviewBadge({ review }: { review?: string | null }) {
   if (!m) return null;
   const Icon = m.icon;
   return (
-    <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
+    <SignalTooltip label={m.label}>
+      <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
+    </SignalTooltip>
   );
 }
 
@@ -593,9 +778,116 @@ function CiIcon({ ci }: { ci?: InboxItem["ci"] }) {
   const Icon = m.icon;
   // A passing check is dimmed; failing/pending stay full strength.
   return (
-    <Icon
-      className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-70")}
-      aria-label={m.label}
-    />
+    <SignalTooltip label={m.label}>
+      <Icon
+        className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-55")}
+        aria-label={m.label}
+      />
+    </SignalTooltip>
+  );
+}
+
+function SnoozeMenu({
+  snoozed,
+  onSnooze,
+  onUnsnooze,
+}: {
+  snoozed: boolean;
+  onSnooze: (kind: SnoozeKind) => void;
+  onUnsnooze: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <TooltipFor label="Snooze">
+        <button
+          type="button"
+          aria-label="Snooze"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((v) => !v);
+          }}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-foreground/[0.05] hover:text-foreground group-hover:opacity-100 data-[open=true]:opacity-100"
+          data-open={open}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      </TooltipFor>
+      {open && (
+        <PopoverPanel onClose={() => setOpen(false)} width="w-44">
+          <PopoverSection title="Snooze">
+            <SnoozeItem
+              icon={Clock}
+              onClick={() => {
+                onSnooze("later-today");
+                setOpen(false);
+              }}
+            >
+              Later today
+            </SnoozeItem>
+            <SnoozeItem
+              icon={TimerReset}
+              onClick={() => {
+                onSnooze("tomorrow");
+                setOpen(false);
+              }}
+            >
+              Tomorrow
+            </SnoozeItem>
+            <SnoozeItem
+              icon={GitCommitHorizontal}
+              onClick={() => {
+                onSnooze("next-week");
+                setOpen(false);
+              }}
+            >
+              Next week
+            </SnoozeItem>
+            <SnoozeItem
+              icon={RefreshCw}
+              onClick={() => {
+                onSnooze("until-ci-changes");
+                setOpen(false);
+              }}
+            >
+              Until CI changes
+            </SnoozeItem>
+            {snoozed && (
+              <SnoozeItem
+                icon={X}
+                onClick={() => {
+                  onUnsnooze();
+                  setOpen(false);
+                }}
+              >
+                Unsnooze
+              </SnoozeItem>
+            )}
+          </PopoverSection>
+        </PopoverPanel>
+      )}
+    </div>
+  );
+}
+
+function SnoozeItem({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: typeof Clock;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <PopoverItem
+      icon={icon}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
+    </PopoverItem>
   );
 }

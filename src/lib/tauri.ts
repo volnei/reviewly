@@ -52,11 +52,13 @@ export interface Dashboard {
   ciFail: number;
   ciPending: number;
   stale: number;
+  /** PRs requesting your review, enriched with review decision + CI/thread signals. */
+  incoming: DashboardPr[];
   /** Your open PRs, enriched with review decision + CI, for the inbox sections. */
-  mine: MinePr[];
+  mine: DashboardPr[];
 }
 
-export interface MinePr {
+export interface DashboardPr {
   id: number;
   number: number;
   title: string;
@@ -70,7 +72,12 @@ export interface MinePr {
   conflicting: boolean;
   createdAt: string | null;
   updatedAt: string | null;
+  issueCommentCount: number;
+  reviewThreadCount: number;
+  unresolvedThreadCount: number;
 }
+
+export type MinePr = DashboardPr;
 
 /** A GitHub user's public profile (avatar hover mini-card). */
 export interface UserProfile {
