@@ -37,6 +37,7 @@ Built with **Tauri 2** (Rust + React). Free and open source under the [GPL-3.0](
 - [Privacy & security](#privacy--security)
 - [Build from source](#build-from-source)
 - [Tech stack](#tech-stack)
+- [Support](#support)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -272,6 +273,10 @@ The GitHub OAuth client ID ships in [`src-tauri/.cargo/config.toml`](src-tauri/.
 **Rust core** — Tokio, reqwest (GitHub REST + GraphQL over rustls), serde, chrono, the `keyring` crate for the OS keychain, and `tracing` for logs.
 
 **Tooling** — [Bun](https://bun.sh) for installs/scripts, [Biome](https://biomejs.dev) for lint/format.
+
+## Support
+
+Reviewly is free and open source, and built in the open. If it saves you time on reviews, consider [**sponsoring the project** ❤️](https://github.com/sponsors/volnei) — it keeps Reviewly free, maintained, and with no ads or paywalls. A ⭐ on the repo helps too, and so does telling another reviewer about it.
 
 ## Contributing
 
