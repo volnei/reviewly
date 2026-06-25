@@ -510,7 +510,7 @@ function Section({
         (items.length === 0 ? (
           <p className="px-10 py-3 text-xs text-muted-foreground">{emptyText ?? "Nothing here."}</p>
         ) : (
-          <ul className="mt-0.5 space-y-0.5">
+          <ul className="mt-1 divide-y divide-hairline/40">
             {shown.map((it) => (
               <li key={it.id}>
                 <InboxRow
@@ -542,19 +542,19 @@ function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
       type="button"
       onClick={onOpen}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-lg px-3 py-2 pl-10 text-left transition-colors hover:bg-foreground/[0.04]",
+        "group flex w-full items-center gap-3 px-3 py-3 pl-10 text-left transition-colors hover:bg-foreground/[0.03]",
         // PRs that have been waiting on you for over a week get a faint accent.
         age.aging && "bg-destructive/[0.035]",
       )}
     >
       {item.avatar ? (
-        <img src={item.avatar} alt="" className="size-5 shrink-0 rounded-full" />
+        <img src={item.avatar} alt="" className="size-6 shrink-0 rounded-full" />
       ) : (
-        <span className="size-5 shrink-0 rounded-full bg-foreground/10" />
+        <span className="size-6 shrink-0 rounded-full bg-foreground/10" />
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        <p className="mt-1 truncate text-xs text-muted-foreground">
           {item.owner}/{item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
           {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
         </p>
