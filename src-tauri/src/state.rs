@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
@@ -29,6 +29,11 @@ pub struct AppState {
     /// Whether the poller shows desktop notifications. Mirrors the Settings
     /// toggle (pushed from the frontend via `set_notifications_enabled`).
     pub notify_enabled: AtomicBool,
+    /// Notification reasons that may raise a desktop alert (review_requested,
+    /// mention, comment, ci_activity, …). Mirrors Settings.
+    pub notify_reasons: Mutex<HashSet<String>>,
+    /// Desktop-poll interval in seconds. Mirrors Settings.
+    pub notify_poll_secs: AtomicU64,
 }
 
 impl AppState {
@@ -78,6 +83,13 @@ impl AppState {
             ai_inflight: Arc::new(Mutex::new(HashSet::new())),
             ai_tasks: Arc::new(Mutex::new(HashMap::new())),
             notify_enabled: AtomicBool::new(true),
+            notify_reasons: Mutex::new(
+                ["review_requested", "mention", "comment", "ci_activity"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+            ),
+            notify_poll_secs: AtomicU64::new(60),
         }
     }
 }

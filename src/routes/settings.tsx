@@ -20,7 +20,7 @@ import { type AiProvider, CLI_PROVIDERS, useAiProvider } from "@/stores/ai";
 import { LANDING_OPTIONS, useAppBehavior } from "@/stores/app-behavior";
 import { ACCENTS, useAppearance } from "@/stores/appearance";
 import { useAuth } from "@/stores/auth";
-import { useNotifSettings } from "@/stores/notif-settings";
+import { NOTIF_REASONS, useNotifSettings } from "@/stores/notif-settings";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useTheme } from "@/stores/theme";
 import { useUi } from "@/stores/ui";
@@ -470,18 +470,66 @@ function BehaviorSection() {
   );
 }
 
+const POLL_OPTIONS = [
+  { secs: 30, label: "Every 30s" },
+  { secs: 60, label: "Every minute" },
+  { secs: 120, label: "Every 2 min" },
+  { secs: 300, label: "Every 5 min" },
+  { secs: 600, label: "Every 10 min" },
+];
+
 function NotificationsSection() {
   const desktopEnabled = useNotifSettings((s) => s.desktopEnabled);
   const setDesktopEnabled = useNotifSettings((s) => s.setDesktopEnabled);
+  const reasons = useNotifSettings((s) => s.reasons);
+  const setReason = useNotifSettings((s) => s.setReason);
+  const pollSecs = useNotifSettings((s) => s.pollSecs);
+  const setPollSecs = useNotifSettings((s) => s.setPollSecs);
   return (
     <CollapsibleSection id="notifications" title="Notifications" icon={Bell}>
-      <Card>
+      <Card className="space-y-4">
         <SettingToggle
           label="Desktop notifications"
-          description="Get an OS alert when a pull request requests your review. Asks for notification permission the first time it's on."
+          description="Get an OS alert when something needs you. Asks for permission the first time it's on."
           checked={desktopEnabled}
           onChange={setDesktopEnabled}
         />
+        {desktopEnabled && (
+          <>
+            <div className="space-y-3 border-t border-hairline pt-4">
+              <p className="text-xs font-medium text-foreground">Notify me about</p>
+              {NOTIF_REASONS.map((r) => (
+                <SettingToggle
+                  key={r.id}
+                  label={r.label}
+                  description={r.description}
+                  checked={reasons[r.id]}
+                  onChange={(v) => setReason(r.id, v)}
+                />
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Check interval</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  How often Reviewly polls GitHub.
+                </p>
+              </div>
+              <Select value={String(pollSecs)} onValueChange={(v) => v && setPollSecs(Number(v))}>
+                <SelectTrigger size="sm" className="w-36 text-xs text-foreground">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {POLL_OPTIONS.map((o) => (
+                    <SelectItem key={o.secs} value={String(o.secs)} className="text-xs">
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
       </Card>
     </CollapsibleSection>
   );

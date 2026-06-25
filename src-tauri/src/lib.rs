@@ -315,6 +315,8 @@ pub fn run() {
             commands::comments::gh_create_review_comment,
             // notifications
             commands::notifications::set_notifications_enabled,
+            commands::notifications::set_notification_reasons,
+            commands::notifications::set_poll_interval,
             commands::notifications::gh_list_notifications,
             commands::notifications::gh_mark_notification_read,
             commands::actions::gh_mark_all_notifications_read,

@@ -10,6 +10,20 @@ import { useEffect } from "react";
  */
 export function useNotifSync() {
   const enabled = useNotifSettings((s) => s.desktopEnabled);
+  const reasons = useNotifSettings((s) => s.reasons);
+  const pollSecs = useNotifSettings((s) => s.pollSecs);
+
+  // Push the granular reason filter + poll interval to the Rust poller.
+  useEffect(() => {
+    const on = (Object.entries(reasons) as [string, boolean][])
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    void invoke("set_notification_reasons", { reasons: on });
+  }, [reasons]);
+
+  useEffect(() => {
+    void invoke("set_poll_interval", { secs: pollSecs });
+  }, [pollSecs]);
 
   useEffect(() => {
     void invoke("set_notifications_enabled", { enabled });
