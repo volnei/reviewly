@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod ai;
+pub mod app;
 pub mod attachments;
 pub mod auth;
 pub mod comments;

@@ -146,6 +146,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:reviewly.db", migrations)
@@ -231,6 +232,14 @@ pub fn run() {
 
             if let Err(e) = tray::build(app.handle()) {
                 tracing::warn!("tray build failed: {e}");
+            }
+
+            // Start hidden in the tray when the user opted in (read from a flag
+            // file written by `set_start_in_tray`, before the frontend loads).
+            if commands::app::should_start_in_tray(app.handle()) {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
             }
 
             let handle = app.handle().clone();
@@ -320,6 +329,10 @@ pub fn run() {
             commands::notifications::gh_list_notifications,
             commands::notifications::gh_mark_notification_read,
             commands::actions::gh_mark_all_notifications_read,
+            // app behavior
+            commands::app::set_launch_at_login,
+            commands::app::get_launch_at_login,
+            commands::app::set_start_in_tray,
             // attachments
             commands::attachments::gh_fetch_attachment,
             // actions (mutations: reactions, labels, reviewers, merge, etc.)

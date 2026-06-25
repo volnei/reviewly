@@ -11,6 +11,12 @@ interface State {
   /** Where the app lands on launch (once signed in). */
   defaultLandingPage: LandingPage;
   setDefaultLandingPage: (v: LandingPage) => void;
+  /** Register the app to start at login (OS autostart). */
+  launchAtLogin: boolean;
+  setLaunchAtLogin: (v: boolean) => void;
+  /** Launch hidden in the tray instead of opening the window. */
+  startInTray: boolean;
+  setStartInTray: (v: boolean) => void;
 }
 
 export const useAppBehavior = create<State>()(
@@ -20,6 +26,10 @@ export const useAppBehavior = create<State>()(
       setConfirmBeforeSubmit: (confirmBeforeSubmit) => set({ confirmBeforeSubmit }),
       defaultLandingPage: "/",
       setDefaultLandingPage: (defaultLandingPage) => set({ defaultLandingPage }),
+      launchAtLogin: false,
+      setLaunchAtLogin: (launchAtLogin) => set({ launchAtLogin }),
+      startInTray: false,
+      setStartInTray: (startInTray) => set({ startInTray }),
     }),
     { name: "reviewly.app-behavior", storage: sqlStorage<State>() },
   ),

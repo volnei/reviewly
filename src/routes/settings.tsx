@@ -433,9 +433,31 @@ function BehaviorSection() {
   const setConfirmBeforeSubmit = useAppBehavior((s) => s.setConfirmBeforeSubmit);
   const defaultLandingPage = useAppBehavior((s) => s.defaultLandingPage);
   const setDefaultLandingPage = useAppBehavior((s) => s.setDefaultLandingPage);
+  const launchAtLogin = useAppBehavior((s) => s.launchAtLogin);
+  const setLaunchAtLogin = useAppBehavior((s) => s.setLaunchAtLogin);
+  const startInTray = useAppBehavior((s) => s.startInTray);
+  const setStartInTray = useAppBehavior((s) => s.setStartInTray);
   return (
     <CollapsibleSection id="behavior" title="Behavior" icon={SlidersHorizontal}>
       <Card className="space-y-4">
+        <SettingToggle
+          label="Launch at login"
+          description="Start Reviewly automatically when you log in."
+          checked={launchAtLogin}
+          onChange={(v) => {
+            setLaunchAtLogin(v);
+            void invoke("set_launch_at_login", { enabled: v });
+          }}
+        />
+        <SettingToggle
+          label="Start in the tray"
+          description="Launch hidden in the menu-bar tray instead of opening the window."
+          checked={startInTray}
+          onChange={(v) => {
+            setStartInTray(v);
+            void invoke("set_start_in_tray", { enabled: v });
+          }}
+        />
         <SettingToggle
           label="Confirm before submitting a review"
           description="Show a confirmation step before a review is posted to GitHub."

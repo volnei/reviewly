@@ -2,6 +2,7 @@ import { CommandPalette } from "@/app/command-palette";
 import { PinboardBar } from "@/app/pinboard-bar";
 import { Sidebar } from "@/app/sidebar";
 import { TitleBar } from "@/app/title-bar";
+import { useAppBehaviorSync } from "@/app/use-app-behavior-sync";
 import { useAuthBootstrap } from "@/app/use-auth-bootstrap";
 import { useClipboardSniff } from "@/app/use-clipboard-sniff";
 import { useGlobalShortcuts } from "@/app/use-global-shortcuts";
@@ -74,6 +75,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useUpdater();
   const theme = useAppliedTheme();
   useAppliedAppearance();
+  useAppBehaviorSync();
 
   return (
     <div className="flex h-full flex-col">
