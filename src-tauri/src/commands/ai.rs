@@ -39,6 +39,12 @@ async fn run_provider(
 /// Run the AI CLI inside the PR's local clone (when one exists) so the agent can
 /// actually grep/read the repo — not just the embedded diff. Ignored if the path
 /// is missing or not a directory, so callers can always pass it optimistically.
+/// True when `cwd` points at a real directory — the PR's local clone. Gates both
+/// the working directory and whether the review may read the repo.
+fn has_repo(cwd: Option<&str>) -> bool {
+    cwd.is_some_and(|d| !d.is_empty() && std::path::Path::new(d).is_dir())
+}
+
 fn apply_cwd(cmd: &mut Command, cwd: Option<&str>) {
     if let Some(dir) = cwd {
         if !dir.is_empty() && std::path::Path::new(dir).is_dir() {
@@ -235,6 +241,13 @@ async fn run_claude(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // With the PR's local clone present, let the review READ the repo
+    // (read-only — no edits, no shell) so it can resolve its own questions from
+    // the actual code instead of reasoning off the diff alone. Without a clone
+    // there's nothing local to explore, so we leave it diff-only.
+    if has_repo(cwd) {
+        cmd.arg("--allowedTools").arg("Read Grep Glob LS");
+    }
     apply_cwd(&mut cmd, cwd);
     let child = cmd
         .spawn()
