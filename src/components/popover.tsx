@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Check, type LucideIcon } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 /**
  * The app's standard floating panel + click-outside backdrop. Use inside a
@@ -86,10 +86,10 @@ export function PopoverItem({
   children,
 }: {
   icon?: LucideIcon;
-  /** Show a leading check slot (true = checked, false = reserved space). */
+  /** Show a trailing check slot (true = checked, false = reserved space). */
   checked?: boolean;
   count?: number;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -102,13 +102,13 @@ export function PopoverItem({
         className,
       )}
     >
-      {checked != null && (
-        <Check className={cn("size-3 shrink-0", checked ? "text-primary" : "opacity-0")} />
-      )}
       {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {count != null && (
         <span className="shrink-0 tabular-nums text-muted-foreground">{count}</span>
+      )}
+      {checked != null && (
+        <Check className={cn("size-3 shrink-0", checked ? "text-primary" : "opacity-0")} />
       )}
     </button>
   );
