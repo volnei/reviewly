@@ -11,7 +11,6 @@ import type { Dashboard, DashboardPr } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
-import { type DashboardViewMode, useDashboardPrefs } from "@/stores/dashboard-prefs";
 import { type SnoozeKind, getPrSnooze, isPrSnoozed, usePrSnoozes } from "@/stores/pr-snoozes";
 import { useWatchedRepos } from "@/stores/watched-repos";
 import { useQuery } from "@tanstack/react-query";
@@ -25,13 +24,9 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
-  Kanban,
-  Layers,
   MessageSquare,
   MoreHorizontal,
   RefreshCw,
-  Rows3,
-  SlidersHorizontal,
   TimerReset,
   X,
 } from "lucide-react";
@@ -39,11 +34,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DAY = 86_400_000;
-
-const VIEW_OPTIONS = [
-  { value: "compact", label: "Compact", icon: Rows3 },
-  { value: "kanban", label: "Board", icon: Kanban },
-] satisfies Array<{ value: DashboardViewMode; label: string; icon: typeof Rows3 }>;
 
 type Priority = "critical" | "high" | "normal" | "low";
 
@@ -130,12 +120,6 @@ export function DashboardPage() {
   const viewer = useAuth((s) => s.viewer);
   const watched = useWatchedRepos((s) => s.repos);
   const snoozes = usePrSnoozes((s) => s.snoozes);
-  const viewMode = useDashboardPrefs((s) => s.viewMode);
-  const setViewMode = useDashboardPrefs((s) => s.setViewMode);
-  const kanbanShowEmptyStatuses = useDashboardPrefs((s) => s.kanbanShowEmptyStatuses);
-  const setKanbanShowEmptyStatuses = useDashboardPrefs((s) => s.setKanbanShowEmptyStatuses);
-  const kanbanShowCardSignals = useDashboardPrefs((s) => s.kanbanShowCardSignals);
-  const setKanbanShowCardSignals = useDashboardPrefs((s) => s.setKanbanShowCardSignals);
   const repoQual = useMemo(() => watched.map((r) => `repo:${r}`).join(" "), [watched]);
 
   const dashboard = useQuery({
@@ -268,19 +252,6 @@ export function DashboardPage() {
               )
             : "Your review inbox"
         }
-        actions={
-          <>
-            {viewMode === "kanban" && (
-              <KanbanDisplayMenu
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                onShowEmptyStatuses={setKanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
-                onShowCardSignals={setKanbanShowCardSignals}
-              />
-            )}
-            <DashboardViewToggle value={viewMode} onChange={setViewMode} />
-          </>
-        }
       />
 
       <ScrollArea className="flex-1">
@@ -314,12 +285,7 @@ export function DashboardPage() {
                 ageBuckets={ageBuckets}
               />
             )}
-            <div
-              className={cn(
-                "pb-8",
-                viewMode === "kanban" ? "flex items-start gap-3 overflow-x-auto px-6" : "px-3",
-              )}
-            >
+            <div className="px-3 pb-8">
               <Section
                 title="Blocked"
                 count={blocked.length}
@@ -327,9 +293,6 @@ export function DashboardPage() {
                 tone="destructive"
                 loading={loadingIn}
                 items={blocked}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Stale"
@@ -338,9 +301,6 @@ export function DashboardPage() {
                 tone="warning"
                 loading={loadingIn}
                 items={stale}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Needs your review"
@@ -352,9 +312,6 @@ export function DashboardPage() {
                 alwaysShow
                 emptyText="Inbox zero — nothing waiting on you. 🎉"
                 items={incoming}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Needs your attention"
@@ -363,9 +320,6 @@ export function DashboardPage() {
                 tone="destructive"
                 loading={loadingOut}
                 items={buckets.needsAttention}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Ready to merge"
@@ -374,9 +328,6 @@ export function DashboardPage() {
                 tone="success"
                 loading={loadingOut}
                 items={buckets.ready}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Awaiting review"
@@ -385,9 +336,6 @@ export function DashboardPage() {
                 tone="muted"
                 loading={loadingOut}
                 items={buckets.awaiting}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Drafts"
@@ -397,9 +345,6 @@ export function DashboardPage() {
                 loading={loadingOut}
                 defaultOpen={false}
                 items={buckets.drafts}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Snoozed"
@@ -408,9 +353,6 @@ export function DashboardPage() {
                 tone="muted"
                 items={snoozed}
                 defaultOpen={false}
-                viewMode={viewMode}
-                showEmptyStatuses={kanbanShowEmptyStatuses}
-                showCardSignals={kanbanShowCardSignals}
               />
             </div>
           </>
@@ -431,90 +373,6 @@ function summarize(needs: number, oldest: string | null, ready: number, attentio
   if (ready > 0) parts.push(`${ready} ready to merge`);
   if (attention > 0) parts.push(`${attention} need fixing`);
   return parts.join(" · ");
-}
-
-function DashboardViewToggle({
-  value,
-  onChange,
-}: {
-  value: DashboardViewMode;
-  onChange: (mode: DashboardViewMode) => void;
-}) {
-  return (
-    <div className="inline-flex h-7 shrink-0 items-center rounded-lg bg-foreground/[0.05] p-0.5">
-      {VIEW_OPTIONS.map((option) => {
-        const Icon = option.icon;
-        const active = value === option.value;
-        return (
-          <TooltipFor key={option.value} label={option.label}>
-            <button
-              type="button"
-              aria-label={option.label}
-              aria-pressed={active}
-              onClick={() => onChange(option.value)}
-              className={cn(
-                "inline-flex size-6 items-center justify-center rounded-md transition-colors",
-                active
-                  ? "bg-card text-foreground shadow-md ring-1 ring-border/40 ring-inset"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="size-3.5" />
-            </button>
-          </TooltipFor>
-        );
-      })}
-    </div>
-  );
-}
-
-function KanbanDisplayMenu({
-  showEmptyStatuses,
-  onShowEmptyStatuses,
-  showCardSignals,
-  onShowCardSignals,
-}: {
-  showEmptyStatuses: boolean;
-  onShowEmptyStatuses: (show: boolean) => void;
-  showCardSignals: boolean;
-  onShowCardSignals: (show: boolean) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative shrink-0">
-      <TooltipFor label="Board display">
-        <button
-          type="button"
-          aria-label="Board display"
-          onClick={() => setOpen((v) => !v)}
-          className="inline-flex size-7 items-center justify-center rounded-lg bg-foreground/[0.05] text-muted-foreground transition-colors hover:text-foreground data-[open=true]:bg-card data-[open=true]:text-foreground data-[open=true]:shadow-md data-[open=true]:ring-1 data-[open=true]:ring-border/40"
-          data-open={open}
-        >
-          <SlidersHorizontal className="size-3.5" />
-        </button>
-      </TooltipFor>
-      {open && (
-        <PopoverPanel onClose={() => setOpen(false)} width="w-52">
-          <PopoverSection title="Board">
-            <PopoverItem
-              icon={Layers}
-              checked={showEmptyStatuses}
-              onClick={() => onShowEmptyStatuses(!showEmptyStatuses)}
-            >
-              Empty statuses
-            </PopoverItem>
-            <PopoverItem
-              icon={MessageSquare}
-              checked={showCardSignals}
-              onClick={() => onShowCardSignals(!showCardSignals)}
-            >
-              Card signals
-            </PopoverItem>
-          </PopoverSection>
-        </PopoverPanel>
-      )}
-    </div>
-  );
 }
 
 type Tone = "primary" | "success" | "destructive" | "warning" | "muted";
@@ -675,9 +533,6 @@ function Section({
   alwaysShow,
   defaultOpen = true,
   emptyText,
-  viewMode,
-  showEmptyStatuses,
-  showCardSignals,
 }: {
   title: string;
   count: number;
@@ -689,27 +544,13 @@ function Section({
   alwaysShow?: boolean;
   defaultOpen?: boolean;
   emptyText?: string;
-  viewMode: DashboardViewMode;
-  showEmptyStatuses: boolean;
-  showCardSignals: boolean;
 }) {
-  const isBoard = viewMode === "kanban";
-  const [open, setOpen] = useState(() => (isBoard && count === 0 ? false : defaultOpen));
+  const [open, setOpen] = useState(defaultOpen);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isBoard) return;
-    setOpen(count > 0);
-  }, [count, isBoard]);
 
   if (loading) {
     return (
-      <div
-        className={cn(
-          "px-3 py-3",
-          isBoard && "min-w-72 max-w-[28rem] flex-[1_0_18rem] rounded-lg bg-card/30",
-        )}
-      >
+      <div className="px-3 py-3">
         <Skeleton className="mb-2 h-5 w-40" />
         <div className="space-y-1.5">
           {[...Array(3)].map((_, i) => (
@@ -719,19 +560,12 @@ function Section({
       </div>
     );
   }
-  if (isBoard && items.length === 0 && !showEmptyStatuses) return null;
-  if (!isBoard && !alwaysShow && items.length === 0) return null;
+  if (!alwaysShow && items.length === 0) return null;
 
   const shown = items.slice(0, SECTION_LIMIT);
 
   return (
-    <section
-      className={cn(
-        "py-1",
-        isBoard &&
-          "min-w-72 max-w-[28rem] flex-[1_0_18rem] rounded-lg border border-hairline bg-card/30 p-1",
-      )}
-    >
+    <section className="py-1">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -757,19 +591,13 @@ function Section({
 
       {open &&
         (items.length === 0 ? (
-          <p className={cn("py-3 text-xs text-muted-foreground", isBoard ? "px-3" : "px-10")}>
-            {emptyText ?? "Nothing here."}
-          </p>
+          <p className="px-10 py-3 text-xs text-muted-foreground">{emptyText ?? "Nothing here."}</p>
         ) : (
-          <ul
-            className={cn("mt-1", isBoard ? "space-y-2 px-1 pb-1" : "divide-y divide-hairline/40")}
-          >
+          <ul className="mt-1 divide-y divide-hairline/40">
             {shown.map((it) => (
               <li key={it.id}>
                 <InboxRow
                   item={it}
-                  viewMode={viewMode}
-                  showSignals={!isBoard || showCardSignals}
                   onOpen={() =>
                     navigate({
                       to: "/prs/$owner/$repo/$number",
@@ -780,7 +608,7 @@ function Section({
               </li>
             ))}
             {items.length > shown.length && (
-              <li className={cn("pt-1 text-xs text-muted-foreground", isBoard ? "px-2" : "px-10")}>
+              <li className="px-10 pt-1 text-xs text-muted-foreground">
                 +{items.length - shown.length} more
               </li>
             )}
@@ -792,13 +620,9 @@ function Section({
 
 function InboxRow({
   item,
-  viewMode,
-  showSignals,
   onOpen,
 }: {
   item: InboxItem;
-  viewMode: DashboardViewMode;
-  showSignals: boolean;
   onOpen: () => void;
 }) {
   const age = shortAge(item.updatedAt ?? item.createdAt);
@@ -806,8 +630,6 @@ function InboxRow({
   const unsnooze = usePrSnoozes((s) => s.unsnooze);
   const currentSnooze = usePrSnoozes((s) => getPrSnooze(s.snoozes, item));
   const snoozed = isPrSnoozed(item, currentSnooze);
-  const isCompact = viewMode === "compact";
-  const isCard = viewMode === "kanban";
   const applySnooze = (kind: SnoozeKind) => {
     const entry = snooze(item, kind);
     toast("Snoozed", {
@@ -819,11 +641,7 @@ function InboxRow({
   return (
     <div
       className={cn(
-        "group flex w-full transition-colors hover:bg-foreground/[0.03]",
-        isCard
-          ? "h-40 min-w-0 flex-col items-stretch gap-3 overflow-hidden rounded-lg border border-hairline bg-card/35 p-3 hover:bg-card/55"
-          : "items-center gap-3 px-3 pl-10",
-        isCompact ? "py-1.5" : !isCard && "py-3",
+        "group flex w-full items-center gap-3 px-3 py-1.5 pl-10 transition-colors hover:bg-foreground/[0.03]",
         // PRs that have been waiting on you for over a week get a faint accent.
         age.aging && "bg-destructive/[0.035]",
       )}
@@ -831,59 +649,28 @@ function InboxRow({
       <button
         type="button"
         onClick={onOpen}
-        className={cn(
-          "flex min-w-0 flex-1 gap-3 text-left",
-          isCard ? "min-h-0 items-start" : "items-center",
-        )}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         {item.avatar ? (
-          <img
-            src={item.avatar}
-            alt=""
-            className={cn("shrink-0 rounded-full", isCompact ? "size-5" : "size-6")}
-          />
+          <img src={item.avatar} alt="" className="size-5 shrink-0 rounded-full" />
         ) : (
-          <span
-            className={cn(
-              "shrink-0 rounded-full bg-foreground/10",
-              isCompact ? "size-5" : "size-6",
-            )}
-          />
+          <span className="size-5 shrink-0 rounded-full bg-foreground/10" />
         )}
-        <div className={cn("min-w-0 flex-1", isCard && "min-h-0")}>
-          <div
-            className={cn(
-              "flex min-w-0 max-w-full gap-2",
-              isCard ? "flex-col items-start" : "items-center",
-            )}
-          >
-            <p
-              className={cn(
-                "min-w-0 max-w-full font-medium text-foreground",
-                isCard
-                  ? "line-clamp-2 text-sm leading-snug break-words [overflow-wrap:anywhere]"
-                  : "truncate text-sm",
-              )}
-            >
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <p className="min-w-0 max-w-full truncate font-medium text-foreground text-sm">
               {item.title}
             </p>
             <PriorityPill priority={item.priority} />
           </div>
-          <p
-            className={cn("truncate text-xs text-muted-foreground", isCompact ? "mt-0.5" : "mt-1")}
-          >
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
             {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
           </p>
         </div>
       </button>
-      <div
-        className={cn(
-          "flex shrink-0 items-center gap-2",
-          isCard ? "justify-between border-hairline/60 border-t pt-2" : "justify-end",
-        )}
-      >
-        {showSignals && <RowSignals item={item} />}
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        <RowSignals item={item} />
         <span
           className={cn(
             "w-9 shrink-0 text-right text-xs tabular-nums",
