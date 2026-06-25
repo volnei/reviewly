@@ -168,14 +168,7 @@ function ConnectStep() {
         </p>
       </div>
 
-      {error && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-destructive">Sign-in failed</p>
-          <pre className="overflow-auto rounded-md border border-hairline bg-background/50 p-3 text-xs text-muted-foreground">
-            {error}
-          </pre>
-        </div>
-      )}
+      {error && <AuthError raw={error} />}
 
       {mode === "choosing" && (
         <ChoosingView ghAvailable={ghAvailable} onUseGh={useGhCli} onUseDevice={beginDeviceFlow} />
@@ -417,6 +410,79 @@ function Perk({ icon: Icon, text }: { icon: typeof Eye; text: string }) {
     <div className="flex items-start gap-2">
       <Icon className="mt-0.5 size-3.5 shrink-0 text-success" />
       <span className="text-xs text-muted-foreground">{text}</span>
+    </div>
+  );
+}
+
+/** Map a raw backend auth error to a specific, actionable message. The raw
+ * string is still shown (collapsed) for anyone who wants the details. */
+function explainAuthError(raw: string): { title: string; hint: string } {
+  const e = raw.toLowerCase();
+  if (e.includes("spawn gh"))
+    return {
+      title: "GitHub CLI isn't installed",
+      hint: "We couldn't find the gh command on your PATH. Install it from cli.github.com, or use the device flow below instead.",
+    };
+  if (e.includes("gh auth token") || e.includes("not logged"))
+    return {
+      title: "You're not signed in to the GitHub CLI",
+      hint: "Run gh auth login in a terminal, then try again — or use the device flow below.",
+    };
+  if (e.includes("client_id") || e.includes("client id"))
+    return {
+      title: "Device flow isn't configured in this build",
+      hint: "This build is missing its GitHub client ID. Use the GitHub CLI option instead.",
+    };
+  if (e.includes("http error") || e.includes("dns error") || e.includes("tcp connect"))
+    return {
+      title: "Couldn't reach GitHub",
+      hint: "Check your internet connection (and any VPN or proxy), then try again.",
+    };
+  if (e.includes("expired"))
+    return {
+      title: "The sign-in code expired",
+      hint: "The code is only valid for a few minutes. Start the device flow again.",
+    };
+  if (e.includes("denied"))
+    return {
+      title: "Sign-in was denied",
+      hint: "The request was declined on GitHub. Start again and approve it.",
+    };
+  if (e.includes("timed out") || e.includes("timeout"))
+    return {
+      title: "Sign-in timed out",
+      hint: "We stopped waiting for you to authorize on GitHub. Start the device flow again.",
+    };
+  if (e.includes("bad credentials") || e.includes("401"))
+    return {
+      title: "GitHub rejected the token",
+      hint: "The token is invalid or expired. Try signing in again.",
+    };
+  if (e.includes("rate limit") || e.includes("403"))
+    return {
+      title: "GitHub rate-limited the request",
+      hint: "Wait a minute, then try again.",
+    };
+  return {
+    title: "Sign-in failed",
+    hint: "Something went wrong connecting to GitHub — the details below may help.",
+  };
+}
+
+function AuthError({ raw }: { raw: string }) {
+  const { title, hint } = explainAuthError(raw);
+  return (
+    <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/[0.06] p-3">
+      <p className="text-sm font-medium text-destructive">{title}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground/60 transition-colors hover:text-muted-foreground">
+          Technical details
+        </summary>
+        <pre className="mt-1.5 overflow-auto rounded-md border border-hairline bg-background/50 p-2 text-[11px] text-muted-foreground">
+          {raw}
+        </pre>
+      </details>
     </div>
   );
 }

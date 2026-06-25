@@ -10,6 +10,23 @@ use tokio::process::Command;
 /// Generous enough for a full-diff review, short enough to never hang forever.
 const AI_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// Longer cap for the *conscious* review: with the PR's local clone present the
+/// agent actually reads/greps the repo (an agentic loop with tool calls), which
+/// legitimately takes minutes on a large PR. It runs in the background and
+/// survives navigation, so a generous ceiling costs the user nothing — far
+/// better than killing a valid run at 180s.
+const REVIEW_TIMEOUT: Duration = Duration::from_secs(420);
+
+/// The right cap for a run: the long agentic one when it can read the repo,
+/// the short one for diff-only / chat.
+fn run_timeout(cwd: Option<&str>) -> Duration {
+    if has_repo(cwd) {
+        REVIEW_TIMEOUT
+    } else {
+        AI_TIMEOUT
+    }
+}
+
 /// CLI binary for a provider id. Unknown ids fall back to Claude.
 fn provider_bin(provider: &str) -> &str {
     match provider {
@@ -253,13 +270,14 @@ async fn run_claude(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
         .spawn()
         .map_err(|e| AppError::Other(format!("failed to spawn claude: {e}")))?;
 
-    let output = match tokio::time::timeout(AI_TIMEOUT, child.wait_with_output()).await {
+    let timeout = run_timeout(cwd);
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| AppError::Other(format!("wait claude: {e}")))?,
         // On timeout the dropped future kills the child (kill_on_drop).
         Err(_) => {
             return Err(AppError::Other(format!(
                 "Claude took longer than {}s and was stopped. Try again, or pick a smaller PR.",
-                AI_TIMEOUT.as_secs()
+                timeout.as_secs()
             )))
         }
     };
@@ -352,13 +370,14 @@ async fn run_codex(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
         // Dropping stdin here closes it, signalling EOF.
     }
 
-    let output = match tokio::time::timeout(AI_TIMEOUT, child.wait_with_output()).await {
+    let timeout = run_timeout(cwd);
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| AppError::Other(format!("wait codex: {e}")))?,
         Err(_) => {
             let _ = tokio::fs::remove_file(&out_path).await;
             return Err(AppError::Other(format!(
                 "Codex took longer than {}s and was stopped. Try again, or pick a smaller PR.",
-                AI_TIMEOUT.as_secs()
+                timeout.as_secs()
             )));
         }
     };
@@ -393,12 +412,13 @@ async fn run_gemini(prompt: &str, cwd: Option<&str>) -> AppResult<String> {
     let child = cmd
         .spawn()
         .map_err(|e| AppError::Other(format!("failed to spawn gemini: {e}")))?;
-    let output = match tokio::time::timeout(AI_TIMEOUT, child.wait_with_output()).await {
+    let timeout = run_timeout(cwd);
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| AppError::Other(format!("wait gemini: {e}")))?,
         Err(_) => {
             return Err(AppError::Other(format!(
                 "Gemini took longer than {}s and was stopped. Try again, or pick a smaller PR.",
-                AI_TIMEOUT.as_secs()
+                timeout.as_secs()
             )))
         }
     };

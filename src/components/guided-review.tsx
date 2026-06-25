@@ -1,5 +1,6 @@
 import { Composer } from "@/components/composer";
 import { IconButton } from "@/components/icon-button";
+import { KiteLoader } from "@/components/kite-loader";
 import { MarkdownBody } from "@/components/markdown-body";
 import { Button } from "@/components/ui/button";
 import { GUIDED_SYSTEM } from "@/lib/ai/prompts";
@@ -26,6 +27,7 @@ import {
   Compass,
   FileCode,
   HelpCircle,
+  ListOrdered,
   MessageSquare,
   RefreshCw,
   RotateCcw,
@@ -242,46 +244,144 @@ function Intro({
   const elapsed = useElapsed(pending);
   const unavailable = available === false;
   const hasInstructions = useReviewPrefs((s) => s.aiInstructions.trim().length > 0);
-  return (
-    <div className="relative flex h-full flex-col items-center justify-center gap-5 p-8 text-center">
-      {/* Blueprint dot-grid + a restrained spotlight — depth and a "labs" feel
-          without haze. */}
-      <div aria-hidden className="lab-grid pointer-events-none absolute inset-0 opacity-60" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(38% 46% at 50% 38%, color-mix(in oklch, var(--color-primary) 10%, transparent), transparent 72%)",
-        }}
-      />
 
-      {/* Emblem: a crisp icon tile. While reading, a scan line sweeps top→bottom
-          (Claude reading the diff) and a soft glow breathes behind it. */}
-      <div className="relative z-10 flex size-12 items-center justify-center">
-        {pending && (
-          <span
-            aria-hidden
-            className="absolute inset-0 animate-pulse rounded-[18px] bg-primary/20 blur-lg motion-reduce:hidden"
-          />
-        )}
-        <div className="relative flex size-12 items-center justify-center overflow-hidden rounded-[14px] border border-border/50 bg-card shadow-sm">
-          {pending && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 h-px animate-tile-scan bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_6px_var(--color-primary)] motion-reduce:hidden"
-            />
-          )}
-          <Sparkles className="size-6 text-primary" strokeWidth={1.5} />
+  // The kite is alive by *physics*, not a canned path: a spring tugs it by its
+  // line toward the cursor (lag + overshoot = the feel of being pulled), and
+  // when the mouse is idle it drifts gently on its own. Each frame we also draw
+  // the slack flying line from the kite's (now-moved) bridle to the cursor.
+  // Refs (not state) so none of this re-renders React.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const homeRef = useRef<HTMLDivElement>(null);
+  const kiteRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<SVGCircleElement>(null);
+  const stringRef = useRef<SVGPathElement>(null);
+  const cursorRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const pos = { x: 0, y: 0 };
+    const vel = { x: 0, y: 0 };
+    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const kite = kiteRef.current;
+      const home = homeRef.current;
+      const panel = panelRef.current;
+      if (!kite || !home || !panel) return;
+      const pr = panel.getBoundingClientRect();
+      const hr = home.getBoundingClientRect();
+      const hx = hr.left + hr.width / 2 - pr.left;
+      const hy = hr.top + hr.height / 2 - pr.top;
+      const cur = cursorRef.current;
+      const t = performance.now() / 1000;
+
+      // Target offset from home: pulled toward the cursor on a leash (≤72px),
+      // or a gentle idle wander when there's no cursor.
+      let tx: number;
+      let ty: number;
+      if (cur) {
+        const rx = cur.x - hx;
+        const ry = cur.y - hy;
+        const d = Math.hypot(rx, ry) || 1;
+        const reach = Math.min(d, 72);
+        tx = (rx / d) * reach + Math.sin(t * 1.4) * 2.5;
+        ty = (ry / d) * reach + Math.cos(t * 1.8) * 2.5;
+      } else {
+        tx = Math.sin(t * 0.7) * 9 + Math.sin(t * 1.9) * 3;
+        ty = Math.cos(t * 0.9) * 7 + Math.cos(t * 2.3) * 2;
+      }
+
+      // Spring toward the target with damping → lag and a little overshoot.
+      vel.x = (vel.x + (tx - pos.x) * 0.045) * 0.87;
+      vel.y = (vel.y + (ty - pos.y) * 0.045) * 0.87;
+      pos.x += vel.x;
+      pos.y += vel.y;
+      // Face the pull: tilt toward the side the line is tugging it (kite→cursor
+      // horizontal), plus a little of its own velocity for life.
+      const aim = cur ? clamp((cur.x - (hx + pos.x)) / 50, -1, 1) * 28 : 0;
+      const bank = clamp(aim + vel.x * 0.8, -34, 34);
+      kite.style.transform = `translate(${pos.x.toFixed(2)}px, ${pos.y.toFixed(2)}px) rotate(${bank.toFixed(2)}deg)`;
+
+      // Flying line: slack curve from the moved bridle to the cursor.
+      const path = stringRef.current;
+      const anchor = anchorRef.current;
+      if (!path) return;
+      if (!cur || !anchor) {
+        path.setAttribute("opacity", "0");
+        return;
+      }
+      const a = anchor.getBoundingClientRect();
+      const ax = a.left + a.width / 2 - pr.left;
+      const ay = a.top + a.height / 2 - pr.top;
+      const sag = Math.min(44, Math.max(6, Math.hypot(cur.x - ax, cur.y - ay) * 0.16));
+      path.setAttribute(
+        "d",
+        `M${ax} ${ay} Q${(ax + cur.x) / 2} ${(ay + cur.y) / 2 + sag} ${cur.x} ${cur.y}`,
+      );
+      path.setAttribute("opacity", "0.55");
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div
+      ref={panelRef}
+      onMouseMove={(e) => {
+        const r = panelRef.current?.getBoundingClientRect();
+        if (r) cursorRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+      }}
+      onMouseLeave={() => {
+        cursorRef.current = null;
+      }}
+      className="relative flex h-full flex-col items-center justify-center gap-4 p-8 text-center"
+    >
+      {/* Blueprint dot-grid for a restrained "labs" feel. */}
+      <div aria-hidden className="lab-grid pointer-events-none absolute inset-0 opacity-60" />
+
+      {/* Flying line: a slack string from the kite's bridle to the cursor. Sits
+          below the z-10 content, so it emerges from behind the kite. */}
+      <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
+        <path
+          ref={stringRef}
+          fill="none"
+          stroke="#7a5a3a"
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          opacity={0}
+        />
+      </svg>
+
+      {/* Emblem: the brand kite, flown by physics. homeRef is its fixed rest
+          slot (never transformed — the spring measures from here); kiteRef is
+          the moved kite. It wanders gently on its own and is tugged by its line
+          toward the cursor. */}
+      <div ref={homeRef} className="relative z-10 flex h-36 w-24 items-center justify-center">
+        <div ref={kiteRef} className="will-change-transform">
+          <KiteLoader anchorRef={anchorRef} className="h-36 w-24" />
         </div>
       </div>
 
-      <div className="z-10 max-w-md">
+      <div className="z-10 flex flex-col items-center gap-2.5">
         <h2 className="font-display text-lg text-foreground">Guided tour</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          {aiName} reads the whole PR and walks you through it in a sensible order — the core change
-          first, then what depends on it — with a suggested comment where it counts.
-        </p>
+        {!pending && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <Compass className="size-3.5 text-primary" />
+              Reads the PR
+            </span>
+            <ChevronRight className="size-3 text-muted-foreground/40" />
+            <span className="inline-flex items-center gap-1.5">
+              <ListOrdered className="size-3.5 text-primary" />
+              Orders it
+            </span>
+            <ChevronRight className="size-3 text-muted-foreground/40" />
+            <span className="inline-flex items-center gap-1.5">
+              <MessageSquare className="size-3.5 text-primary" />
+              Flags what matters
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="z-10 flex min-h-[3rem] flex-col items-center justify-center gap-1">

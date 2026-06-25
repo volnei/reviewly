@@ -860,3 +860,66 @@
     background-color: transparent;
   }
 }
+
+/* Guided-tour loader: the kite's position + bank are driven by a JS spring
+   (tugged by its line toward the cursor); here we animate only the local life —
+   the sail billows (skews + breathes like fabric catching air) and a two-segment
+   tail whips. Pivots use fill-box: the sail flexes about its bottom tip, each
+   tail segment swings from its top (where it hangs). */
+.kite-billow {
+  transform-box: fill-box;
+  /* Pivot at the bottom tip (where the tail ties on) so that point stays put —
+     the sail flexes upward from it and the tail never detaches. */
+  transform-origin: 50% 94%;
+  animation: kite-billow 2.3s ease-in-out infinite;
+}
+.kite-tail-anim {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: kite-tail 3.1s ease-in-out infinite;
+}
+.kite-tail-2 {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: kite-tail-2 2.3s ease-in-out infinite;
+}
+@keyframes kite-billow {
+  0%,
+  100% {
+    transform: skewX(0deg) scale(1, 1);
+  }
+  25% {
+    transform: skewX(14deg) scale(0.8, 1.09);
+  }
+  50% {
+    transform: skewX(0deg) scale(1.07, 0.91);
+  }
+  75% {
+    transform: skewX(-14deg) scale(0.8, 1.09);
+  }
+}
+@keyframes kite-tail {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(11deg);
+  }
+}
+@keyframes kite-tail-2 {
+  0%,
+  100% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(-9deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kite-billow,
+  .kite-tail-anim,
+  .kite-tail-2 {
+    animation: none;
+  }
+}
