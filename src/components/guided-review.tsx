@@ -360,6 +360,28 @@ function Tour({
   const scrollRef = useRef<HTMLDivElement>(null);
   const stepRefs = useRef<(HTMLElement | null)[]>([]);
 
+  // While a programmatic jump (click a node / next / prev) is smooth-scrolling,
+  // hold the chosen stop active until the scroll actually arrives — otherwise
+  // the scroll listener reads the mid-animation position and briefly flashes
+  // each stop it passes over (the "blink to the previous one").
+  const jumpTargetRef = useRef<number | null>(null);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginJump = useCallback((target: number) => {
+    jumpTargetRef.current = target;
+    if (jumpTimer.current) clearTimeout(jumpTimer.current);
+    // Safety release: the scroll may never reach the very top (e.g. the last
+    // stops), so don't hold the highlight hostage forever.
+    jumpTimer.current = setTimeout(() => {
+      jumpTargetRef.current = null;
+    }, 1000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (jumpTimer.current) clearTimeout(jumpTimer.current);
+    },
+    [],
+  );
+
   // Stops the reviewer dismissed (handled questions / concerns) are hidden.
   const dismissedSet = useMemo(() => new Set(entry.dismissed ?? []), [entry.dismissed]);
 
@@ -391,11 +413,12 @@ function Tour({
         const p = visible.indexOf(a);
         const curr = p < 0 ? 0 : p;
         const n = visible[Math.max(0, Math.min(visible.length - 1, curr + delta))] ?? a;
+        beginJump(n);
         stepRefs.current[n]?.scrollIntoView({ behavior: "smooth", block: "start" });
         return n;
       });
     },
-    [visible],
+    [visible, beginJump],
   );
 
   // When the filter hides the active step, snap to the first visible one.
@@ -465,6 +488,12 @@ function Tour({
         if (el.getBoundingClientRect().top - top <= 4) current = i;
         else break;
       }
+      // A jump is animating: hold the chosen stop until the scroll reaches it,
+      // so we don't flash each stop it passes over on the way.
+      if (jumpTargetRef.current !== null) {
+        if (current !== jumpTargetRef.current) return;
+        jumpTargetRef.current = null;
+      }
       setActive(current);
     }
     syncStuck();
@@ -485,10 +514,14 @@ function Tour({
     [visible, plan.steps],
   );
 
-  const jumpTo = useCallback((i: number) => {
-    stepRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActive(i);
-  }, []);
+  const jumpTo = useCallback(
+    (i: number) => {
+      beginJump(i);
+      stepRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActive(i);
+    },
+    [beginJump],
+  );
 
   // Promote every (undismissed) suggested comment into the pending review at
   // once, and seed the suggested verdict so the submit popover opens on it.
