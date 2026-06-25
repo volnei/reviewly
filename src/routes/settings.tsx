@@ -318,9 +318,17 @@ function CodeReviewSection() {
   const setHideWhitespace = useReviewPrefs((s) => s.setHideWhitespace);
   const diffView = useUi((s) => s.diffView);
   const setDiffView = useUi((s) => s.setDiffView);
+  const focusMode = useUi((s) => s.focusMode);
+  const setFocusMode = useUi((s) => s.setFocusMode);
   return (
     <CollapsibleSection id="code-review" title="Code review" icon={Eye}>
       <Card className="space-y-4">
+        <SettingToggle
+          label="Hide generated & lockfile noise"
+          description="Keep lockfiles, snapshots, and generated files out of the file list by default (Focus mode)."
+          checked={focusMode}
+          onChange={setFocusMode}
+        />
         <SettingToggle
           label="Auto-mark files as viewed"
           description="When you scroll past the end of a file's diff, mark it viewed automatically."

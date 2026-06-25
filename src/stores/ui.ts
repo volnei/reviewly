@@ -71,12 +71,13 @@ export const useUi = create<UiState>()(
     }),
     {
       name: "reviewly.ui",
-      storage: sqlStorage<Pick<UiState, "diffView" | "sidebarCollapsed" | "zoom">>(),
-      // Persist only genuine prefs; transient flags (palette/about/focus) stay in memory.
+      storage: sqlStorage<Pick<UiState, "diffView" | "sidebarCollapsed" | "zoom" | "focusMode">>(),
+      // Persist genuine prefs; transient flags (palette/about) stay in memory.
       partialize: (s) => ({
         diffView: s.diffView,
         sidebarCollapsed: s.sidebarCollapsed,
         zoom: s.zoom,
+        focusMode: s.focusMode,
       }),
     },
   ),
