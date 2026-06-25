@@ -643,6 +643,7 @@ function Tour({
             {visible.map((i, p) => {
               const step = plan.steps[i];
               const K = KIND[step.kind];
+              const Icon = K.icon;
               const done = p < pos;
               const isActive = p === pos;
               return (
@@ -655,7 +656,7 @@ function Tour({
                     isActive && "bg-foreground/[0.05]",
                   )}
                 >
-                  <span className="relative flex w-4 shrink-0 flex-col items-center self-stretch">
+                  <span className="relative flex w-5 shrink-0 flex-col items-center self-stretch">
                     <span
                       className={cn(
                         "w-px flex-1",
@@ -666,25 +667,27 @@ function Tour({
                             : "bg-foreground/12",
                       )}
                     />
-                    <span className="relative flex size-3.5 items-center justify-center">
+                    <span className="relative flex size-5 items-center justify-center">
                       {isActive && (
                         <span
                           aria-hidden
                           className="absolute inline-flex size-full rounded-full bg-primary opacity-40 motion-safe:animate-ping"
                         />
                       )}
-                      {/* State, not kind, drives the node: done / current / ahead.
-                          The kind shows in the label, so the timeline reads as a
-                          clean, single-accent progress track. */}
+                      {/* Fill encodes STATE (done/current = accent, ahead = hollow);
+                          the icon encodes the KIND. Colour stays state-based so it
+                          never jumps as you move through the tour. */}
                       <span
                         className={cn(
-                          "relative flex size-3.5 items-center justify-center rounded-full",
+                          "relative flex size-5 items-center justify-center rounded-full",
                           done && "bg-primary text-background",
-                          isActive && "bg-primary ring-4 ring-primary/15",
-                          !done && !isActive && "border-[1.5px] border-foreground/25 bg-background",
+                          isActive && "bg-primary text-background ring-4 ring-primary/15",
+                          !done &&
+                            !isActive &&
+                            "border-[1.5px] border-foreground/25 bg-background text-muted-foreground/70",
                         )}
                       >
-                        {done && <Check className="size-2.5" strokeWidth={3} />}
+                        <Icon className="size-3" />
                       </span>
                     </span>
                     <span
