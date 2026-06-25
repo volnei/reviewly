@@ -630,19 +630,11 @@ function Tour({
         </div>
       )}
 
-      {/* progress — a single quiet bar; the "N / total" counter above carries
-          the exact position. */}
-      <div className="mx-5 mt-3 h-1 overflow-hidden rounded-full bg-foreground/10">
-        <div
-          className="h-full rounded-r-full bg-primary transition-[width] duration-300"
-          style={{ width: `${(Math.max(1, pos + 1) / Math.max(1, visible.length)) * 100}%` }}
-        />
-      </div>
-
       {/* Timeline spine (the journey at a glance) + the reading pane (the
-          focused stop). The spine reflects progress: filled up to the active
-          node, which glows in its kind colour. */}
-      <div className="flex min-h-0 flex-1">
+          focused stop). The spine carries progress on its own — nodes fill in
+          the accent up to the active one, which glows — so there's no separate
+          progress bar. */}
+      <div className="mt-2 flex min-h-0 flex-1">
         <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-hairline px-3 py-4 lg:block">
           <p className="mb-2 px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
             The tour
@@ -678,20 +670,18 @@ function Tour({
                       {isActive && (
                         <span
                           aria-hidden
-                          className={cn(
-                            "absolute inline-flex size-full rounded-full opacity-40 motion-safe:animate-ping",
-                            K.dot,
-                          )}
+                          className="absolute inline-flex size-full rounded-full bg-primary opacity-40 motion-safe:animate-ping"
                         />
                       )}
+                      {/* State, not kind, drives the node: done / current / ahead.
+                          The kind shows in the label, so the timeline reads as a
+                          clean, single-accent progress track. */}
                       <span
                         className={cn(
                           "relative flex size-3.5 items-center justify-center rounded-full",
                           done && "bg-primary text-background",
-                          isActive && cn(K.dot, "ring-4 ring-foreground/5"),
-                          !done &&
-                            !isActive &&
-                            cn("border-[1.5px] border-current bg-background", K.text),
+                          isActive && "bg-primary ring-4 ring-primary/15",
+                          !done && !isActive && "border-[1.5px] border-foreground/25 bg-background",
                         )}
                       >
                         {done && <Check className="size-2.5" strokeWidth={3} />}
