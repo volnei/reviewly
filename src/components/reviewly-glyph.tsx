@@ -1,9 +1,7 @@
 /**
- * Reviewly brand mark — a brilliant-cut gem, identical to the app/dock icon.
- * The facets are real multi-tone fills (table brightest, pavilion darkest, lit
- * top-left) so the cut reads from color contrast, not knocked-out seams — which
- * kept the small sizes from looking split in two. A thin outline keeps the gem
- * crisp on light backgrounds. Fixed brand colors (does not follow currentColor).
+ * Reviewly brand mark — a colourful kite (pipa): four panels split by crossed
+ * brown spars, tilted, tailless. Matches the app/Dock icon. Fixed brand colours
+ * (does not follow currentColor).
  */
 export function ReviewlyGlyph({
   size = 14,
@@ -21,30 +19,20 @@ export function ReviewlyGlyph({
       className={className}
       aria-hidden
     >
-      {/* facets */}
-      <path d="M7.3 5.3 L16.7 5.3 L12 12 Z" fill="#d4daff" />
-      <path d="M7.3 5.3 L2 12 L12 12 Z" fill="#b0b8ff" />
-      <path d="M16.7 5.3 L22 12 L12 12 Z" fill="#8b92fb" />
-      <path d="M2 12 L12 21.4 L12 12 Z" fill="#6d6cf4" />
-      <path d="M22 12 L12 12 L12 21.4 Z" fill="#5049df" />
-      {/* top rim light + specular sparkle */}
-      <path
-        d="M7.3 5.3 L16.7 5.3"
-        stroke="#ffffff"
-        strokeOpacity="0.5"
-        strokeWidth="0.5"
-        strokeLinecap="round"
-      />
-      <path d="M9 6.2 L11 6.2 L10 8 Z" fill="#ffffff" fillOpacity="0.5" />
-      {/* outline for definition on light backgrounds */}
-      <path
-        d="M7.3 5.3 L16.7 5.3 L22 12 L12 21.4 L2 12 Z"
-        fill="none"
-        stroke="#3b34c4"
-        strokeOpacity="0.45"
-        strokeWidth="0.6"
-        strokeLinejoin="round"
-      />
+      <g transform="rotate(18 12 12)">
+        {/* panels: yellow top-left, red top-right, blue bottom-right, green bottom-left */}
+        <path d="M12 3 L12 11 L4 11 Z" fill="#FBBC05" />
+        <path d="M12 3 L12 11 L20 11 Z" fill="#EA4335" />
+        <path d="M12 21 L12 11 L20 11 Z" fill="#4285F4" />
+        <path d="M12 21 L12 11 L4 11 Z" fill="#34A853" />
+        {/* crossed spars (extend past the fabric) */}
+        <path
+          d="M12 2 L12 22 M3 11 L21 11"
+          stroke="#5A3B1E"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </g>
     </svg>
   );
 }
