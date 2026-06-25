@@ -734,16 +734,15 @@ function Tour({
                     />
                   </span>
                   <span className="min-w-0 flex-1 py-2">
-                    {isActive && (
-                      <span
-                        className={cn(
-                          "mb-0.5 block text-[10px] font-medium uppercase leading-none tracking-wide",
-                          K.text,
-                        )}
-                      >
-                        {K.label}
-                      </span>
-                    )}
+                    <span
+                      className={cn(
+                        "mb-0.5 block text-[10px] font-medium uppercase leading-none tracking-wide",
+                        K.text,
+                        !isActive && "opacity-55",
+                      )}
+                    >
+                      {K.label}
+                    </span>
                     <span
                       className={cn(
                         "block truncate text-xs leading-snug",
