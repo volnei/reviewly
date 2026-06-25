@@ -8,6 +8,15 @@
   <b>A fast, local-first desktop app for reviewing GitHub pull requests — with AI that runs on your own machine.</b>
 </p>
 
+<p align="center">
+  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/v/release/volnei/reviewly?label=release&color=8b5cf6" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/volnei/reviewly?color=8b5cf6" alt="License" /></a>
+  <a href="https://github.com/volnei/reviewly/stargazers"><img src="https://img.shields.io/github/stars/volnei/reviewly?color=8b5cf6" alt="Stars" /></a>
+  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/downloads/volnei/reviewly/total?color=8b5cf6&label=downloads" alt="Downloads" /></a>
+  <img src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-1e1e1e" alt="Platforms" />
+  <a href="https://buymeacoffee.com/volnei"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-ffdd00?logoColor=black" alt="Buy Me a Coffee" /></a>
+</p>
+
 Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR review from a dozen browser tabs into one focused workspace. It pulls the PRs that need *you*, lays out the diff the way a reviewer actually reads it, lets a local AI walk you through the change, and posts your review back to GitHub — without sending your code to any server but the one you choose.
 
 Built with **Tauri 2** (Rust + React). Free and open source under the [GPL-3.0](LICENSE).
