@@ -35,7 +35,7 @@ import {
   TimerReset,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DAY = 86_400_000;
@@ -920,16 +920,16 @@ function RowSignals({ item }: { item: InboxItem }) {
       ? item.unresolvedThreadCount
       : item.reviewThreadCount + item.issueCommentCount;
   return (
-    <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+    <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
       {item.conflicting && (
-        <TooltipFor label="Has merge conflicts">
+        <SignalTooltip label="Has merge conflicts">
           <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
-        </TooltipFor>
+        </SignalTooltip>
       )}
       <ReviewBadge review={item.reviewDecision} />
       <CiIcon ci={item.ci} />
       {commentCount > 0 && (
-        <TooltipFor
+        <SignalTooltip
           label={
             item.unresolvedThreadCount > 0
               ? `${item.unresolvedThreadCount} unresolved review ${
@@ -940,7 +940,7 @@ function RowSignals({ item }: { item: InboxItem }) {
         >
           <span
             className={cn(
-              "inline-flex items-center gap-1",
+              "inline-flex items-center gap-1 px-1",
               item.unresolvedThreadCount > 0 ? "text-destructive" : "text-muted-foreground/80",
             )}
             aria-label={
@@ -952,9 +952,19 @@ function RowSignals({ item }: { item: InboxItem }) {
             <MessageSquare className="size-3.5" />
             <span className="text-[10px] tabular-nums">{commentCount}</span>
           </span>
-        </TooltipFor>
+        </SignalTooltip>
       )}
     </div>
+  );
+}
+
+function SignalTooltip({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <TooltipFor label={label}>
+      <span className="-my-1 inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-foreground/[0.04]">
+        {children}
+      </span>
+    </TooltipFor>
   );
 }
 
@@ -963,9 +973,9 @@ function ReviewBadge({ review }: { review?: string | null }) {
   if (!m) return null;
   const Icon = m.icon;
   return (
-    <TooltipFor label={m.label}>
+    <SignalTooltip label={m.label}>
       <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
-    </TooltipFor>
+    </SignalTooltip>
   );
 }
 
@@ -975,12 +985,12 @@ function CiIcon({ ci }: { ci?: InboxItem["ci"] }) {
   const Icon = m.icon;
   // A passing check is dimmed; failing/pending stay full strength.
   return (
-    <TooltipFor label={m.label}>
+    <SignalTooltip label={m.label}>
       <Icon
         className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-55")}
         aria-label={m.label}
       />
-    </TooltipFor>
+    </SignalTooltip>
   );
 }
 
