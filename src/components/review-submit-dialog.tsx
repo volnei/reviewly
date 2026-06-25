@@ -1,10 +1,27 @@
 import { Composer } from "@/components/composer";
 import { PopoverPanel } from "@/components/popover";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import type { DraftComment } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { useAppBehavior } from "@/stores/app-behavior";
 import { type ReviewEvent, useReviewVerdict } from "@/stores/review-verdict";
 import { Check, MessageSquare, X } from "lucide-react";
 import { type ReactElement, cloneElement, useEffect, useState } from "react";
+
+const EVENT_LABEL: Record<ReviewEvent, string> = {
+  COMMENT: "Comment",
+  APPROVE: "Approve",
+  REQUEST_CHANGES: "Request changes",
+};
 
 type Event = ReviewEvent;
 
@@ -54,10 +71,13 @@ export function ReviewSubmitPopover({
 }: Props) {
   const lastVerdict = useReviewVerdict((s) => s.last);
   const setLastVerdict = useReviewVerdict((s) => s.setLast);
+  const confirmBeforeSubmit = useAppBehavior((s) => s.confirmBeforeSubmit);
   const [open, setOpen] = useState(false);
   // Default to the viewer's existing review state if known, else the remembered
   // last-used verdict.
   const [event, setEvent] = useState<Event>(defaultEvent ?? lastVerdict);
+  // When confirm-before-submit is on, holds the verdict awaiting confirmation.
+  const [pendingEvent, setPendingEvent] = useState<Event | null>(null);
 
   // Re-seed the selection each time the popover opens so it reflects the latest
   // existing-state / remembered verdict (without clobbering an in-progress pick).
@@ -65,10 +85,18 @@ export function ReviewSubmitPopover({
     if (open) setEvent(defaultEvent ?? lastVerdict);
   }, [open, defaultEvent, lastVerdict]);
 
-  function submit(e: Event) {
+  function doSubmit(e: Event) {
     setLastVerdict(e);
     onSubmit(e);
     setOpen(false);
+  }
+
+  function submit(e: Event) {
+    if (confirmBeforeSubmit) {
+      setPendingEvent(e);
+      return;
+    }
+    doSubmit(e);
   }
 
   const triggerEl = cloneElement(trigger, { onClick: () => setOpen((v) => !v) });
@@ -210,6 +238,35 @@ export function ReviewSubmitPopover({
           </div>
         </PopoverPanel>
       )}
+
+      <AlertDialog open={pendingEvent !== null} onOpenChange={(o) => !o && setPendingEvent(null)}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit this review?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingEvent ? EVENT_LABEL[pendingEvent] : ""}
+              {draftComments.length > 0
+                ? ` · ${draftComments.length} inline comment${draftComments.length === 1 ? "" : "s"} will be posted to GitHub.`
+                : " · no inline comments."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button
+              size="sm"
+              onClick={() => {
+                const e = pendingEvent;
+                setPendingEvent(null);
+                if (e) doSubmit(e);
+              }}
+            >
+              Submit review
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </div>
   );
 }

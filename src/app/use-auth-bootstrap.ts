@@ -1,8 +1,9 @@
 import type { AuthStatus } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
+import { useAppBehavior } from "@/stores/app-behavior";
 import { useAuth } from "@/stores/auth";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * On app boot, ask Rust whether we have valid credentials. If not, send the
@@ -12,6 +13,10 @@ export function useAuthBootstrap() {
   const { loading, signedIn, set } = useAuth();
   const navigate = useNavigate();
   const { location } = useRouterState();
+  const defaultLandingPage = useAppBehavior((s) => s.defaultLandingPage);
+  // Only honor the landing-page preference once, on the very first boot — never
+  // bounce the user away from "/" when they navigate there later by hand.
+  const landed = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +46,15 @@ export function useAuthBootstrap() {
     // and navigates to "/" itself when finished.
     if (!signedIn && !onOnboarding) {
       navigate({ to: "/onboarding" });
+      return;
     }
-  }, [loading, signedIn, location.pathname, navigate]);
+    // First signed-in render: honor the preferred landing page if we booted onto
+    // the dashboard ("/"). Anything else means a deep link — leave it be.
+    if (signedIn && !landed.current) {
+      landed.current = true;
+      if (defaultLandingPage !== "/" && location.pathname === "/") {
+        navigate({ to: defaultLandingPage });
+      }
+    }
+  }, [loading, signedIn, location.pathname, navigate, defaultLandingPage]);
 }

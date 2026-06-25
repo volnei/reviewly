@@ -1,4 +1,6 @@
+import { sqlStorage } from "@/lib/sql-storage";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type DiffView = "unified" | "split" | "guided";
 
@@ -38,29 +40,44 @@ function snapZoom(z: number, dir: 1 | -1): number {
   return next;
 }
 
-export const useUi = create<UiState>((set) => ({
-  paletteOpen: false,
-  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-  togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
+export const useUi = create<UiState>()(
+  persist(
+    (set) => ({
+      paletteOpen: false,
+      setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+      togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
 
-  aboutOpen: false,
-  setAboutOpen: (aboutOpen) => set({ aboutOpen }),
+      aboutOpen: false,
+      setAboutOpen: (aboutOpen) => set({ aboutOpen }),
 
-  sidebarCollapsed: false,
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      sidebarCollapsed: false,
+      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-  diffView: "unified",
-  setDiffView: (diffView) => set({ diffView }),
-  // ⌘B cycles unified ↔ split only (guided is its own explicit toggle).
-  toggleDiffView: () => set((s) => ({ diffView: s.diffView === "split" ? "unified" : "split" })),
+      diffView: "unified",
+      setDiffView: (diffView) => set({ diffView }),
+      // ⌘B cycles unified ↔ split only (guided is its own explicit toggle).
+      toggleDiffView: () =>
+        set((s) => ({ diffView: s.diffView === "split" ? "unified" : "split" })),
 
-  focusMode: false,
-  setFocusMode: (focusMode) => set({ focusMode }),
-  toggleFocusMode: () => set((s) => ({ focusMode: !s.focusMode })),
+      focusMode: false,
+      setFocusMode: (focusMode) => set({ focusMode }),
+      toggleFocusMode: () => set((s) => ({ focusMode: !s.focusMode })),
 
-  zoom: 1,
-  setZoom: (zoom) => set({ zoom }),
-  zoomIn: () => set((s) => ({ zoom: snapZoom(s.zoom, 1) })),
-  zoomOut: () => set((s) => ({ zoom: snapZoom(s.zoom, -1) })),
-  resetZoom: () => set({ zoom: 1 }),
-}));
+      zoom: 1,
+      setZoom: (zoom) => set({ zoom }),
+      zoomIn: () => set((s) => ({ zoom: snapZoom(s.zoom, 1) })),
+      zoomOut: () => set((s) => ({ zoom: snapZoom(s.zoom, -1) })),
+      resetZoom: () => set({ zoom: 1 }),
+    }),
+    {
+      name: "reviewly.ui",
+      storage: sqlStorage<Pick<UiState, "diffView" | "sidebarCollapsed" | "zoom">>(),
+      // Persist only genuine prefs; transient flags (palette/about/focus) stay in memory.
+      partialize: (s) => ({
+        diffView: s.diffView,
+        sidebarCollapsed: s.sidebarCollapsed,
+        zoom: s.zoom,
+      }),
+    },
+  ),
+);

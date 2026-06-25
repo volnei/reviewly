@@ -136,6 +136,20 @@ export function GuidedReview({
     }).catch((e) => useGuidedGen.getState().fail(prKey, String(e)));
   }, [prKey, headSha, aiInstructions, context, localRepos]);
 
+  // Auto-start the tour on first open when the reviewer opted in (Settings →
+  // Guided tour). Guarded so it fires at most once per PR and never when a tour
+  // already exists or is generating.
+  const autoStartTour = useReviewPrefs((s) => s.autoStartTour);
+  // Tracks the PR we've already auto-started for, so it fires once per PR.
+  const autoStartedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoStartedFor.current === prKey) return;
+    if (autoStartTour && !entry && !pending && available === true) {
+      autoStartedFor.current = prKey;
+      start();
+    }
+  }, [prKey, autoStartTour, entry, pending, available, start]);
+
   // Stop a running generation (kills the AI CLI on the backend).
   const cancel = useCallback(() => {
     invoke("ai_cancel", { key: prKey }).catch(() => {});
@@ -305,6 +319,7 @@ function Tour({
 }) {
   const plan = entry.plan;
   const total = plan.steps.length;
+  const preferPost = useReviewPrefs((s) => s.defaultSuggestionAction === "post");
   const markSeen = useGuided((s) => s.markSeen);
   const setLastActive = useGuided((s) => s.setLastActive);
   const dismiss = useGuided((s) => s.dismiss);
@@ -562,6 +577,7 @@ function Tour({
               step={step}
               index={i}
               files={files}
+              preferPost={preferPost}
               posted={posted.has(i)}
               onAdd={(body) => addComment(step, i, body)}
               onPost={
@@ -605,6 +621,7 @@ const Step = ({
   step,
   index,
   files,
+  preferPost,
   posted,
   onAdd,
   onPost,
@@ -615,6 +632,8 @@ const Step = ({
   step: GuidedStep;
   index: number;
   files: PullFile[];
+  /** When posting straight to GitHub is available, make it the primary action. */
+  preferPost: boolean;
   posted: boolean;
   onAdd: (body: string) => void;
   onPost?: (body: string) => Promise<void>;
@@ -625,6 +644,10 @@ const Step = ({
   const Icon = kind.icon;
   const [posting, setPosting] = useState(false);
   const [postedGh, setPostedGh] = useState(false);
+  // Posting to GitHub is only an option when onPost is wired; the setting only
+  // chooses which of the two is the primary (vs secondary) button.
+  const canPost = !!onPost;
+  const primaryPost = canPost && preferPost;
 
   async function post(b: string) {
     if (!onPost || !b.trim() || posting) return;
@@ -701,7 +724,7 @@ const Step = ({
               </span>
             }
             submitLabel={
-              onPost
+              primaryPost
                 ? postedGh
                   ? "Post again"
                   : "Post to GitHub"
@@ -709,11 +732,21 @@ const Step = ({
                   ? "Add again"
                   : "Add to review"
             }
-            submitIcon={onPost ? <Send className="size-3" /> : undefined}
+            submitIcon={primaryPost ? <Send className="size-3" /> : undefined}
             submitting={posting}
-            onSubmit={onPost ? (b) => post(b) : (b) => onAdd(b)}
-            secondaryLabel={onPost ? (posted ? "Add again" : "Add to review") : undefined}
-            onSecondary={onPost ? (b) => onAdd(b) : undefined}
+            onSubmit={primaryPost ? (b) => post(b) : (b) => onAdd(b)}
+            secondaryLabel={
+              canPost
+                ? primaryPost
+                  ? posted
+                    ? "Add again"
+                    : "Add to review"
+                  : postedGh
+                    ? "Post again"
+                    : "Post to GitHub"
+                : undefined
+            }
+            onSecondary={canPost ? (primaryPost ? (b) => onAdd(b) : (b) => post(b)) : undefined}
             footerStatus={
               postedGh ? (
                 <span className="inline-flex items-center gap-1 pl-0.5 text-[11px] text-success">

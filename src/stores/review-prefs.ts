@@ -21,6 +21,12 @@ interface State {
   /** Collapse del/add pairs that differ only by whitespace. */
   hideWhitespace: boolean;
   setHideWhitespace: (v: boolean) => void;
+  /** Kick off the guided tour automatically when a PR's review screen opens. */
+  autoStartTour: boolean;
+  setAutoStartTour: (v: boolean) => void;
+  /** Primary action for a tour's suggested comment ("add" to review vs "post"). */
+  defaultSuggestionAction: "add" | "post";
+  setDefaultSuggestionAction: (v: "add" | "post") => void;
 }
 
 export const useReviewPrefs = create<State>()(
@@ -38,6 +44,10 @@ export const useReviewPrefs = create<State>()(
       setDiffWrap: (diffWrap) => set({ diffWrap }),
       hideWhitespace: false,
       setHideWhitespace: (hideWhitespace) => set({ hideWhitespace }),
+      autoStartTour: false,
+      setAutoStartTour: (autoStartTour) => set({ autoStartTour }),
+      defaultSuggestionAction: "add",
+      setDefaultSuggestionAction: (defaultSuggestionAction) => set({ defaultSuggestionAction }),
     }),
     { name: "reviewly.review-prefs", storage: sqlStorage<State>() },
   ),

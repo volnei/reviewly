@@ -5,20 +5,30 @@ import { Segmented } from "@/components/segmented";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { UserHoverCard } from "@/components/user-hover-card";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { type AiProvider, CLI_PROVIDERS, useAiProvider } from "@/stores/ai";
+import { LANDING_OPTIONS, useAppBehavior } from "@/stores/app-behavior";
 import { ACCENTS, useAppearance } from "@/stores/appearance";
 import { useAuth } from "@/stores/auth";
 import { useNotifSettings } from "@/stores/notif-settings";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useTheme } from "@/stores/theme";
+import { useUi } from "@/stores/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Check,
+  Compass,
   Eye,
   Github,
   Lock,
@@ -28,6 +38,7 @@ import {
   RotateCcw,
   Server,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   SquareTerminal,
   Star,
@@ -127,7 +138,9 @@ export function SettingsPage() {
 
           <AppearanceSection />
           <CodeReviewSection />
+          <GuidedTourSection />
           <NotificationsSection />
+          <BehaviorSection />
         </div>
       </ScrollArea>
     </div>
@@ -299,6 +312,12 @@ function CodeReviewSection() {
   const setAutoReadyOnReview = useReviewPrefs((s) => s.setAutoReadyOnReview);
   const diffDensity = useReviewPrefs((s) => s.diffDensity);
   const setDiffDensity = useReviewPrefs((s) => s.setDiffDensity);
+  const diffWrap = useReviewPrefs((s) => s.diffWrap);
+  const setDiffWrap = useReviewPrefs((s) => s.setDiffWrap);
+  const hideWhitespace = useReviewPrefs((s) => s.hideWhitespace);
+  const setHideWhitespace = useReviewPrefs((s) => s.setHideWhitespace);
+  const diffView = useUi((s) => s.diffView);
+  const setDiffView = useUi((s) => s.setDiffView);
   return (
     <CollapsibleSection id="code-review" title="Code review" icon={Eye}>
       <Card className="space-y-4">
@@ -317,6 +336,23 @@ function CodeReviewSection() {
 
         <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
           <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">Default diff view</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              How diffs open — side-by-side or inline.
+            </p>
+          </div>
+          <Segmented
+            options={[
+              { value: "unified", label: "Unified" },
+              { value: "split", label: "Split" },
+            ]}
+            value={diffView === "split" ? "split" : "unified"}
+            onChange={setDiffView}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="min-w-0">
             <p className="text-xs font-medium text-foreground">Diff density</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Line spacing in the diff viewer.</p>
           </div>
@@ -328,6 +364,98 @@ function CodeReviewSection() {
             value={diffDensity}
             onChange={setDiffDensity}
           />
+        </div>
+
+        <div className="border-t border-hairline pt-4">
+          <SettingToggle
+            label="Wrap long lines"
+            description="Wrap long diff lines instead of scrolling them horizontally."
+            checked={diffWrap}
+            onChange={setDiffWrap}
+          />
+        </div>
+        <SettingToggle
+          label="Hide whitespace-only changes"
+          description="Collapse lines that differ only by whitespace when reading a diff."
+          checked={hideWhitespace}
+          onChange={setHideWhitespace}
+        />
+      </Card>
+    </CollapsibleSection>
+  );
+}
+
+function GuidedTourSection() {
+  const autoStartTour = useReviewPrefs((s) => s.autoStartTour);
+  const setAutoStartTour = useReviewPrefs((s) => s.setAutoStartTour);
+  const defaultSuggestionAction = useReviewPrefs((s) => s.defaultSuggestionAction);
+  const setDefaultSuggestionAction = useReviewPrefs((s) => s.setDefaultSuggestionAction);
+  return (
+    <CollapsibleSection id="guided-tour" title="Guided tour" icon={Compass}>
+      <Card className="space-y-4">
+        <SettingToggle
+          label="Auto-start the tour"
+          description="Kick off the AI guided tour automatically when you open a PR. Uses your local AI each time."
+          checked={autoStartTour}
+          onChange={setAutoStartTour}
+        />
+        <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">Suggested-comment action</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              The primary button on a tour's suggested comment.
+            </p>
+          </div>
+          <Segmented
+            options={[
+              { value: "add", label: "Add to review" },
+              { value: "post", label: "Post to GitHub" },
+            ]}
+            value={defaultSuggestionAction}
+            onChange={setDefaultSuggestionAction}
+          />
+        </div>
+      </Card>
+    </CollapsibleSection>
+  );
+}
+
+function BehaviorSection() {
+  const confirmBeforeSubmit = useAppBehavior((s) => s.confirmBeforeSubmit);
+  const setConfirmBeforeSubmit = useAppBehavior((s) => s.setConfirmBeforeSubmit);
+  const defaultLandingPage = useAppBehavior((s) => s.defaultLandingPage);
+  const setDefaultLandingPage = useAppBehavior((s) => s.setDefaultLandingPage);
+  return (
+    <CollapsibleSection id="behavior" title="Behavior" icon={SlidersHorizontal}>
+      <Card className="space-y-4">
+        <SettingToggle
+          label="Confirm before submitting a review"
+          description="Show a confirmation step before a review is posted to GitHub."
+          checked={confirmBeforeSubmit}
+          onChange={setConfirmBeforeSubmit}
+        />
+        <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">Default landing page</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Where the app opens on launch.</p>
+          </div>
+          <Select
+            value={defaultLandingPage}
+            onValueChange={(v) =>
+              v && setDefaultLandingPage(v as (typeof LANDING_OPTIONS)[number]["value"])
+            }
+          >
+            <SelectTrigger size="sm" className="w-44 text-xs text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANDING_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </Card>
     </CollapsibleSection>
