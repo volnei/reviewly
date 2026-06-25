@@ -1,6 +1,12 @@
-# Reviewly
+<p align="center">
+  <img src="assets/logo.png" alt="Reviewly" width="128" />
+</p>
 
-**A fast, local-first desktop app for reviewing GitHub pull requests — with AI that runs on your own machine.**
+<h1 align="center">Reviewly</h1>
+
+<p align="center">
+  <b>A fast, local-first desktop app for reviewing GitHub pull requests — with AI that runs on your own machine.</b>
+</p>
 
 Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR review from a dozen browser tabs into one focused workspace. It pulls the PRs that need *you*, lays out the diff the way a reviewer actually reads it, lets a local AI walk you through the change, and posts your review back to GitHub — without sending your code to any server but the one you choose.
 
