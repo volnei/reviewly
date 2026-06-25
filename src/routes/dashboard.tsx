@@ -1,14 +1,18 @@
 import { EmptyState } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { PageHeader } from "@/components/page-header";
+import { PopoverItem, PopoverPanel, PopoverSection } from "@/components/popover";
+import { TooltipFor } from "@/components/tooltip-for";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime } from "@/lib/format";
 import { ciMeta, reviewMeta } from "@/lib/status";
-import type { Dashboard, MinePr, PullSummary } from "@/lib/tauri";
-import { invoke, parseRepoUrl } from "@/lib/tauri";
+import type { Dashboard, DashboardPr } from "@/lib/tauri";
+import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
+import { type DashboardViewMode, useDashboardPrefs } from "@/stores/dashboard-prefs";
+import { type SnoozeKind, getPrSnooze, isPrSnoozed, usePrSnoozes } from "@/stores/pr-snoozes";
 import { useWatchedRepos } from "@/stores/watched-repos";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -18,61 +22,59 @@ import {
   ChevronRight,
   Clock,
   FilePen,
+  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  Kanban,
+  Layers,
+  MessageSquare,
+  MoreHorizontal,
   RefreshCw,
+  Rows3,
+  SlidersHorizontal,
+  TimerReset,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 const DAY = 86_400_000;
 
-interface InboxItem {
-  id: number;
+const VIEW_OPTIONS = [
+  { value: "compact", label: "Compact", icon: Rows3 },
+  { value: "kanban", label: "Board", icon: Kanban },
+] satisfies Array<{ value: DashboardViewMode; label: string; icon: typeof Rows3 }>;
+
+type Priority = "critical" | "high" | "normal" | "low";
+
+interface InboxItem extends DashboardPr {
   owner: string;
-  repo: string;
-  number: number;
-  title: string;
-  author: string;
-  avatar: string;
-  updatedAt: string;
-  ci?: MinePr["ci"];
-  review?: string | null;
-  conflicting?: boolean;
+  repoName: string;
+  priority: Priority;
+  waitingDays: number;
+  blocked: boolean;
 }
 
-function fromSummary(p: PullSummary): InboxItem | null {
-  const r = parseRepoUrl(p.repository_url);
-  if (!r) return null;
-  return {
-    id: p.id,
-    owner: r.owner,
-    repo: r.repo,
-    number: p.number,
-    title: p.title,
-    author: p.user.login,
-    avatar: p.user.avatar_url,
-    updatedAt: p.updated_at,
-  };
-}
-
-function fromMine(m: MinePr): InboxItem {
+function fromPr(m: DashboardPr): InboxItem {
   const [owner, repo] = m.repo.split("/");
+  const waitingDays = ageDays(m.updatedAt ?? m.createdAt);
+  const blocked = isBlocked(m);
   return {
-    id: m.id,
+    ...m,
     owner: owner ?? "",
-    repo: repo ?? "",
-    number: m.number,
-    title: m.title,
-    author: m.author,
-    avatar: m.avatar,
-    updatedAt: m.updatedAt ?? m.createdAt ?? "",
-    ci: m.ci,
-    review: m.reviewDecision,
-    conflicting: m.conflicting,
+    repoName: repo ?? "",
+    priority: priorityFor(m, waitingDays, blocked),
+    waitingDays,
+    blocked,
   };
 }
 
-function shortAge(iso: string): { label: string; aging: boolean } {
+function ageDays(iso?: string | null): number {
+  if (!iso) return 0;
+  return Math.max(0, Math.floor((Date.now() - +new Date(iso)) / DAY));
+}
+
+function shortAge(iso?: string | null): { label: string; aging: boolean } {
   if (!iso) return { label: "", aging: false };
   const ms = Date.now() - +new Date(iso);
   const d = Math.floor(ms / DAY);
@@ -82,9 +84,58 @@ function shortAge(iso: string): { label: string; aging: boolean } {
   return { label: "now", aging: false };
 }
 
+function isBlocked(pr: DashboardPr): boolean {
+  return (
+    pr.ci === "failure" ||
+    pr.conflicting ||
+    pr.reviewDecision === "CHANGES_REQUESTED" ||
+    pr.unresolvedThreadCount > 0
+  );
+}
+
+function priorityFor(
+  pr: DashboardPr,
+  waitingDays = ageDays(pr.updatedAt ?? pr.createdAt),
+  blocked = isBlocked(pr),
+): Priority {
+  if (waitingDays > 7 || (blocked && waitingDays > 3)) return "critical";
+  if (
+    pr.ci === "failure" ||
+    pr.conflicting ||
+    pr.reviewDecision === "CHANGES_REQUESTED" ||
+    pr.unresolvedThreadCount > 0 ||
+    (waitingDays >= 4 && waitingDays <= 7)
+  ) {
+    return "high";
+  }
+  if ((waitingDays >= 1 && waitingDays <= 3) || pr.ci === "pending") return "normal";
+  return "low";
+}
+
+const PRIORITY_WEIGHT: Record<Priority, number> = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+function byPriorityThenAge(a: InboxItem, b: InboxItem): number {
+  return (
+    PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority] ||
+    +new Date(a.updatedAt ?? a.createdAt ?? 0) - +new Date(b.updatedAt ?? b.createdAt ?? 0)
+  );
+}
+
 export function DashboardPage() {
   const viewer = useAuth((s) => s.viewer);
   const watched = useWatchedRepos((s) => s.repos);
+  const snoozes = usePrSnoozes((s) => s.snoozes);
+  const viewMode = useDashboardPrefs((s) => s.viewMode);
+  const setViewMode = useDashboardPrefs((s) => s.setViewMode);
+  const kanbanShowEmptyStatuses = useDashboardPrefs((s) => s.kanbanShowEmptyStatuses);
+  const setKanbanShowEmptyStatuses = useDashboardPrefs((s) => s.setKanbanShowEmptyStatuses);
+  const kanbanShowCardSignals = useDashboardPrefs((s) => s.kanbanShowCardSignals);
+  const setKanbanShowCardSignals = useDashboardPrefs((s) => s.setKanbanShowCardSignals);
   const repoQual = useMemo(() => watched.map((r) => `repo:${r}`).join(" "), [watched]);
 
   const dashboard = useQuery({
@@ -95,71 +146,91 @@ export function DashboardPage() {
     staleTime: 60_000,
   });
 
-  const reviewRequested = useQuery({
-    queryKey: ["prs", "review-requested"],
-    queryFn: () =>
-      invoke<PullSummary[]>("gh_review_requested", { includeDrafts: false, includeClosed: false }),
-  });
+  // INCOMING — PRs requesting your review, oldest first, using the enriched GraphQL rows.
+  const allIncoming = useMemo(
+    () => (dashboard.data?.incoming ?? []).map(fromPr).sort(byPriorityThenAge),
+    [dashboard.data],
+  );
 
-  // INCOMING — PRs requesting your review, scoped to watched repos, oldest first.
-  const incoming = useMemo(() => {
-    const ws = new Set(watched);
-    return (reviewRequested.data ?? [])
-      .map(fromSummary)
-      .filter((x): x is InboxItem => !!x && (ws.size === 0 || ws.has(`${x.owner}/${x.repo}`)))
-      .sort((a, b) => +new Date(a.updatedAt) - +new Date(b.updatedAt));
-  }, [reviewRequested.data, watched]);
+  const allMine = useMemo(
+    () => (dashboard.data?.mine ?? []).map(fromPr).sort(byPriorityThenAge),
+    [dashboard.data],
+  );
+
+  const activeIncoming = useMemo(
+    () => allIncoming.filter((i) => !isPrSnoozed(i, getPrSnooze(snoozes, i))),
+    [allIncoming, snoozes],
+  );
+
+  const snoozed = useMemo(() => {
+    const byId = new Map<number, InboxItem>();
+    for (const item of [...allIncoming, ...allMine]) {
+      if (isPrSnoozed(item, getPrSnooze(snoozes, item))) byId.set(item.id, item);
+    }
+    return [...byId.values()].sort(byPriorityThenAge);
+  }, [allIncoming, allMine, snoozes]);
+
+  const blocked = useMemo(() => activeIncoming.filter((i) => i.blocked), [activeIncoming]);
+  const stale = useMemo(
+    () => activeIncoming.filter((i) => !i.blocked && i.waitingDays > 3),
+    [activeIncoming],
+  );
+  const incoming = useMemo(
+    () => activeIncoming.filter((i) => !i.blocked && i.waitingDays <= 3),
+    [activeIncoming],
+  );
 
   // OUTGOING — your open PRs, bucketed by what action they need.
   const buckets = useMemo(() => {
-    const mine = (dashboard.data?.mine ?? []).map((m) => ({ raw: m, item: fromMine(m) }));
     const drafts: InboxItem[] = [];
     const needsAttention: InboxItem[] = [];
     const ready: InboxItem[] = [];
     const awaiting: InboxItem[] = [];
-    for (const { raw, item } of mine) {
-      if (raw.isDraft) {
+    for (const item of allMine.filter((i) => !isPrSnoozed(i, getPrSnooze(snoozes, i)))) {
+      if (item.isDraft) {
         drafts.push(item);
       } else if (
-        raw.reviewDecision === "CHANGES_REQUESTED" ||
-        raw.ci === "failure" ||
-        raw.conflicting
+        item.reviewDecision === "CHANGES_REQUESTED" ||
+        item.ci === "failure" ||
+        item.conflicting ||
+        item.unresolvedThreadCount > 0
       ) {
         needsAttention.push(item);
-      } else if (raw.reviewDecision === "APPROVED") {
+      } else if (item.reviewDecision === "APPROVED") {
         ready.push(item);
       } else {
         awaiting.push(item);
       }
     }
-    const byAge = (a: InboxItem, b: InboxItem) => +new Date(a.updatedAt) - +new Date(b.updatedAt);
     return {
-      drafts: drafts.sort(byAge),
-      needsAttention: needsAttention.sort(byAge),
-      ready: ready.sort(byAge),
-      awaiting: awaiting.sort(byAge),
+      drafts: drafts.sort(byPriorityThenAge),
+      needsAttention: needsAttention.sort(byPriorityThenAge),
+      ready: ready.sort(byPriorityThenAge),
+      awaiting: awaiting.sort(byPriorityThenAge),
     };
-  }, [dashboard.data]);
+  }, [allMine, snoozes]);
 
   const agingCount = useMemo(
-    () => incoming.filter((i) => shortAge(i.updatedAt).aging).length,
-    [incoming],
+    () => activeIncoming.filter((i) => shortAge(i.updatedAt ?? i.createdAt).aging).length,
+    [activeIncoming],
   );
-  const oldest = incoming[0] ? shortAge(incoming[0].updatedAt).label : null;
+  const oldest = activeIncoming[0]
+    ? shortAge(activeIncoming[0].updatedAt ?? activeIncoming[0].createdAt).label
+    : null;
   const conflictingCount = buckets.needsAttention.filter((i) => i.conflicting).length;
 
   // Review backlog bucketed by how long it's been waiting — the hero chart.
   const ageBuckets = useMemo(() => {
     const b = [0, 0, 0, 0]; // ≤1d · 2–3d · 4–7d · >7d
-    for (const i of incoming) {
-      const days = Math.floor((Date.now() - +new Date(i.updatedAt)) / DAY);
+    for (const i of activeIncoming) {
+      const days = ageDays(i.updatedAt ?? i.createdAt);
       if (days <= 1) b[0] += 1;
       else if (days <= 3) b[1] += 1;
       else if (days <= 7) b[2] += 1;
       else b[3] += 1;
     }
     return b;
-  }, [incoming]);
+  }, [activeIncoming]);
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -167,13 +238,12 @@ export function DashboardPage() {
     return () => clearInterval(id);
   }, []);
   const syncedAt = dashboard.dataUpdatedAt;
-  const refreshing = dashboard.isFetching || reviewRequested.isFetching;
+  const refreshing = dashboard.isFetching;
   const refreshAll = () => {
     dashboard.refetch();
-    reviewRequested.refetch();
   };
 
-  const loadingIn = reviewRequested.isLoading;
+  const loadingIn = dashboard.isLoading;
   const loadingOut = dashboard.isLoading;
   const hasData = !loadingIn && !loadingOut;
   const totalMine =
@@ -181,7 +251,8 @@ export function DashboardPage() {
     buckets.ready.length +
     buckets.awaiting.length +
     buckets.drafts.length;
-  const allEmpty = hasData && incoming.length === 0 && totalMine === 0;
+  const totalActiveIncoming = blocked.length + stale.length + incoming.length;
+  const allEmpty = hasData && totalActiveIncoming === 0 && totalMine === 0 && snoozed.length === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -190,17 +261,30 @@ export function DashboardPage() {
         subtitle={
           hasData
             ? summarize(
-                incoming.length,
+                totalActiveIncoming,
                 oldest,
                 buckets.ready.length,
                 buckets.needsAttention.length,
               )
             : "Your review inbox"
         }
+        actions={
+          <>
+            {viewMode === "kanban" && (
+              <KanbanDisplayMenu
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                onShowEmptyStatuses={setKanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
+                onShowCardSignals={setKanbanShowCardSignals}
+              />
+            )}
+            <DashboardViewToggle value={viewMode} onChange={setViewMode} />
+          </>
+        }
       />
 
       <ScrollArea className="flex-1">
-        <div className="flex items-center justify-end gap-3 px-6 pt-4 pb-1">
+        <div className="flex flex-wrap items-center justify-end gap-3 px-6 pt-4 pb-1">
           {syncedAt > 0 && (
             <span className="text-xs text-muted-foreground tabular-nums">
               Synced {relativeTime(syncedAt)}
@@ -221,7 +305,7 @@ export function DashboardPage() {
           <>
             {hasData && (
               <InboxHero
-                waiting={incoming.length}
+                waiting={totalActiveIncoming}
                 oldest={oldest}
                 aging={agingCount}
                 ready={buckets.ready.length}
@@ -230,7 +314,34 @@ export function DashboardPage() {
                 ageBuckets={ageBuckets}
               />
             )}
-            <div className="px-3 pb-8">
+            <div
+              className={cn(
+                "pb-8",
+                viewMode === "kanban" ? "flex items-start gap-3 overflow-x-auto px-6" : "px-3",
+              )}
+            >
+              <Section
+                title="Blocked"
+                count={blocked.length}
+                icon={AlertTriangle}
+                tone="destructive"
+                loading={loadingIn}
+                items={blocked}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
+              />
+              <Section
+                title="Stale"
+                count={stale.length}
+                icon={TimerReset}
+                tone="warning"
+                loading={loadingIn}
+                items={stale}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
+              />
               <Section
                 title="Needs your review"
                 count={incoming.length}
@@ -241,6 +352,9 @@ export function DashboardPage() {
                 alwaysShow
                 emptyText="Inbox zero — nothing waiting on you. 🎉"
                 items={incoming}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Needs your attention"
@@ -249,6 +363,9 @@ export function DashboardPage() {
                 tone="destructive"
                 loading={loadingOut}
                 items={buckets.needsAttention}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Ready to merge"
@@ -257,6 +374,9 @@ export function DashboardPage() {
                 tone="success"
                 loading={loadingOut}
                 items={buckets.ready}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Awaiting review"
@@ -265,6 +385,9 @@ export function DashboardPage() {
                 tone="muted"
                 loading={loadingOut}
                 items={buckets.awaiting}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
               />
               <Section
                 title="Drafts"
@@ -274,6 +397,20 @@ export function DashboardPage() {
                 loading={loadingOut}
                 defaultOpen={false}
                 items={buckets.drafts}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
+              />
+              <Section
+                title="Snoozed"
+                count={snoozed.length}
+                icon={Clock}
+                tone="muted"
+                items={snoozed}
+                defaultOpen={false}
+                viewMode={viewMode}
+                showEmptyStatuses={kanbanShowEmptyStatuses}
+                showCardSignals={kanbanShowCardSignals}
               />
             </div>
           </>
@@ -296,12 +433,97 @@ function summarize(needs: number, oldest: string | null, ready: number, attentio
   return parts.join(" · ");
 }
 
-type Tone = "primary" | "success" | "destructive" | "muted";
+function DashboardViewToggle({
+  value,
+  onChange,
+}: {
+  value: DashboardViewMode;
+  onChange: (mode: DashboardViewMode) => void;
+}) {
+  return (
+    <div className="inline-flex h-7 shrink-0 items-center rounded-lg bg-foreground/[0.05] p-0.5">
+      {VIEW_OPTIONS.map((option) => {
+        const Icon = option.icon;
+        const active = value === option.value;
+        return (
+          <TooltipFor key={option.value} label={option.label}>
+            <button
+              type="button"
+              aria-label={option.label}
+              aria-pressed={active}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "inline-flex size-6 items-center justify-center rounded-md transition-colors",
+                active
+                  ? "bg-card text-foreground shadow-md ring-1 ring-border/40 ring-inset"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          </TooltipFor>
+        );
+      })}
+    </div>
+  );
+}
+
+function KanbanDisplayMenu({
+  showEmptyStatuses,
+  onShowEmptyStatuses,
+  showCardSignals,
+  onShowCardSignals,
+}: {
+  showEmptyStatuses: boolean;
+  onShowEmptyStatuses: (show: boolean) => void;
+  showCardSignals: boolean;
+  onShowCardSignals: (show: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <TooltipFor label="Board display">
+        <button
+          type="button"
+          aria-label="Board display"
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex size-7 items-center justify-center rounded-lg bg-foreground/[0.05] text-muted-foreground transition-colors hover:text-foreground data-[open=true]:bg-card data-[open=true]:text-foreground data-[open=true]:shadow-md data-[open=true]:ring-1 data-[open=true]:ring-border/40"
+          data-open={open}
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      </TooltipFor>
+      {open && (
+        <PopoverPanel onClose={() => setOpen(false)} width="w-52">
+          <PopoverSection title="Board">
+            <PopoverItem
+              icon={Layers}
+              checked={showEmptyStatuses}
+              onClick={() => onShowEmptyStatuses(!showEmptyStatuses)}
+            >
+              Empty statuses
+            </PopoverItem>
+            <PopoverItem
+              icon={MessageSquare}
+              checked={showCardSignals}
+              onClick={() => onShowCardSignals(!showCardSignals)}
+            >
+              Card signals
+            </PopoverItem>
+          </PopoverSection>
+        </PopoverPanel>
+      )}
+    </div>
+  );
+}
+
+type Tone = "primary" | "success" | "destructive" | "warning" | "muted";
 
 const TONE: Record<Tone, string> = {
   primary: "text-primary",
   success: "text-success",
   destructive: "text-destructive",
+  warning: "text-warning",
   muted: "text-muted-foreground",
 };
 
@@ -311,6 +533,7 @@ const DOT: Record<Tone, string> = {
   primary: "bg-primary",
   success: "bg-success",
   destructive: "bg-destructive",
+  warning: "bg-warning",
   muted: "bg-muted-foreground",
 };
 
@@ -452,6 +675,9 @@ function Section({
   alwaysShow,
   defaultOpen = true,
   emptyText,
+  viewMode,
+  showEmptyStatuses,
+  showCardSignals,
 }: {
   title: string;
   count: number;
@@ -463,13 +689,27 @@ function Section({
   alwaysShow?: boolean;
   defaultOpen?: boolean;
   emptyText?: string;
+  viewMode: DashboardViewMode;
+  showEmptyStatuses: boolean;
+  showCardSignals: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const isBoard = viewMode === "kanban";
+  const [open, setOpen] = useState(() => (isBoard && count === 0 ? false : defaultOpen));
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isBoard) return;
+    setOpen(count > 0);
+  }, [count, isBoard]);
 
   if (loading) {
     return (
-      <div className="px-3 py-3">
+      <div
+        className={cn(
+          "px-3 py-3",
+          isBoard && "min-w-72 max-w-[28rem] flex-[1_0_18rem] rounded-lg bg-card/30",
+        )}
+      >
         <Skeleton className="mb-2 h-5 w-40" />
         <div className="space-y-1.5">
           {[...Array(3)].map((_, i) => (
@@ -479,12 +719,19 @@ function Section({
       </div>
     );
   }
-  if (!alwaysShow && items.length === 0) return null;
+  if (isBoard && items.length === 0 && !showEmptyStatuses) return null;
+  if (!isBoard && !alwaysShow && items.length === 0) return null;
 
   const shown = items.slice(0, SECTION_LIMIT);
 
   return (
-    <section className="py-1">
+    <section
+      className={cn(
+        "py-1",
+        isBoard &&
+          "min-w-72 max-w-[28rem] flex-[1_0_18rem] rounded-lg border border-hairline bg-card/30 p-1",
+      )}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -497,7 +744,9 @@ function Section({
           )}
         />
         <Icon className={cn("size-4 shrink-0", TONE[tone])} strokeWidth={1.75} />
-        <span className="text-sm font-semibold text-foreground">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+          {title}
+        </span>
         <span className="text-sm tabular-nums text-muted-foreground/70">{count}</span>
         {badge && (
           <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-medium text-destructive">
@@ -508,24 +757,30 @@ function Section({
 
       {open &&
         (items.length === 0 ? (
-          <p className="px-10 py-3 text-xs text-muted-foreground">{emptyText ?? "Nothing here."}</p>
+          <p className={cn("py-3 text-xs text-muted-foreground", isBoard ? "px-3" : "px-10")}>
+            {emptyText ?? "Nothing here."}
+          </p>
         ) : (
-          <ul className="mt-1 divide-y divide-hairline/40">
+          <ul
+            className={cn("mt-1", isBoard ? "space-y-2 px-1 pb-1" : "divide-y divide-hairline/40")}
+          >
             {shown.map((it) => (
               <li key={it.id}>
                 <InboxRow
                   item={it}
+                  viewMode={viewMode}
+                  showSignals={!isBoard || showCardSignals}
                   onOpen={() =>
                     navigate({
                       to: "/prs/$owner/$repo/$number",
-                      params: { owner: it.owner, repo: it.repo, number: String(it.number) },
+                      params: { owner: it.owner, repo: it.repoName, number: String(it.number) },
                     })
                   }
                 />
               </li>
             ))}
             {items.length > shown.length && (
-              <li className="px-10 pt-1 text-xs text-muted-foreground">
+              <li className={cn("pt-1 text-xs text-muted-foreground", isBoard ? "px-2" : "px-10")}>
                 +{items.length - shown.length} more
               </li>
             )}
@@ -535,46 +790,171 @@ function Section({
   );
 }
 
-function InboxRow({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
-  const age = shortAge(item.updatedAt);
+function InboxRow({
+  item,
+  viewMode,
+  showSignals,
+  onOpen,
+}: {
+  item: InboxItem;
+  viewMode: DashboardViewMode;
+  showSignals: boolean;
+  onOpen: () => void;
+}) {
+  const age = shortAge(item.updatedAt ?? item.createdAt);
+  const snooze = usePrSnoozes((s) => s.snooze);
+  const unsnooze = usePrSnoozes((s) => s.unsnooze);
+  const currentSnooze = usePrSnoozes((s) => getPrSnooze(s.snoozes, item));
+  const snoozed = isPrSnoozed(item, currentSnooze);
+  const isCompact = viewMode === "compact";
+  const isCard = viewMode === "kanban";
+  const applySnooze = (kind: SnoozeKind) => {
+    const entry = snooze(item, kind);
+    toast("Snoozed", {
+      description: `${item.repo} #${item.number}`,
+      action: { label: "Undo", onClick: () => unsnooze(entry.key) },
+    });
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
       className={cn(
-        "group flex w-full items-center gap-3 px-3 py-3 pl-10 text-left transition-colors hover:bg-foreground/[0.03]",
+        "group flex w-full transition-colors hover:bg-foreground/[0.03]",
+        isCard
+          ? "h-40 min-w-0 flex-col items-stretch gap-3 overflow-hidden rounded-lg border border-hairline bg-card/35 p-3 hover:bg-card/55"
+          : "items-center gap-3 px-3 pl-10",
+        isCompact ? "py-1.5" : !isCard && "py-3",
         // PRs that have been waiting on you for over a week get a faint accent.
         age.aging && "bg-destructive/[0.035]",
       )}
     >
-      {item.avatar ? (
-        <img src={item.avatar} alt="" className="size-6 shrink-0 rounded-full" />
-      ) : (
-        <span className="size-6 shrink-0 rounded-full bg-foreground/10" />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {item.owner}/{item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
-          {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
-        </p>
-      </div>
-      {item.conflicting && (
-        <span title="Has merge conflicts" className="shrink-0">
-          <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
-        </span>
-      )}
-      <ReviewBadge review={item.review} />
-      <CiIcon ci={item.ci} />
-      <span
+      <button
+        type="button"
+        onClick={onOpen}
         className={cn(
-          "w-9 shrink-0 text-right text-xs tabular-nums",
-          age.aging ? "font-semibold text-destructive" : "text-muted-foreground/70",
+          "flex min-w-0 flex-1 gap-3 text-left",
+          isCard ? "min-h-0 items-start" : "items-center",
         )}
       >
-        {age.label}
-      </span>
-    </button>
+        {item.avatar ? (
+          <img
+            src={item.avatar}
+            alt=""
+            className={cn("shrink-0 rounded-full", isCompact ? "size-5" : "size-6")}
+          />
+        ) : (
+          <span
+            className={cn(
+              "shrink-0 rounded-full bg-foreground/10",
+              isCompact ? "size-5" : "size-6",
+            )}
+          />
+        )}
+        <div className={cn("min-w-0 flex-1", isCard && "min-h-0")}>
+          <div
+            className={cn(
+              "flex min-w-0 max-w-full gap-2",
+              isCard ? "flex-col items-start" : "items-center",
+            )}
+          >
+            <p
+              className={cn(
+                "min-w-0 max-w-full font-medium text-foreground",
+                isCard
+                  ? "line-clamp-2 text-sm leading-snug break-words [overflow-wrap:anywhere]"
+                  : "truncate text-sm",
+              )}
+            >
+              {item.title}
+            </p>
+            <PriorityPill priority={item.priority} />
+          </div>
+          <p
+            className={cn("truncate text-xs text-muted-foreground", isCompact ? "mt-0.5" : "mt-1")}
+          >
+            {item.repo} <span className="text-muted-foreground/60">#{item.number}</span>
+            {item.author && <span className="text-muted-foreground/60"> · {item.author}</span>}
+          </p>
+        </div>
+      </button>
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-2",
+          isCard ? "justify-between border-hairline/60 border-t pt-2" : "justify-end",
+        )}
+      >
+        {showSignals && <RowSignals item={item} />}
+        <span
+          className={cn(
+            "w-9 shrink-0 text-right text-xs tabular-nums",
+            age.aging ? "font-semibold text-destructive" : "text-muted-foreground/70",
+          )}
+        >
+          {age.label}
+        </span>
+        <SnoozeMenu snoozed={snoozed} onSnooze={applySnooze} onUnsnooze={() => unsnooze(item)} />
+      </div>
+    </div>
+  );
+}
+
+function PriorityPill({ priority }: { priority: Priority }) {
+  if (priority !== "critical" && priority !== "high") return null;
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize",
+        priority === "critical"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-warning/15 text-warning",
+      )}
+    >
+      {priority}
+    </span>
+  );
+}
+
+function RowSignals({ item }: { item: InboxItem }) {
+  const commentCount =
+    item.unresolvedThreadCount > 0
+      ? item.unresolvedThreadCount
+      : item.reviewThreadCount + item.issueCommentCount;
+  return (
+    <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+      {item.conflicting && (
+        <TooltipFor label="Has merge conflicts">
+          <GitMerge className="size-3.5 text-destructive" aria-label="Has merge conflicts" />
+        </TooltipFor>
+      )}
+      <ReviewBadge review={item.reviewDecision} />
+      <CiIcon ci={item.ci} />
+      {commentCount > 0 && (
+        <TooltipFor
+          label={
+            item.unresolvedThreadCount > 0
+              ? `${item.unresolvedThreadCount} unresolved review ${
+                  item.unresolvedThreadCount === 1 ? "thread" : "threads"
+                }`
+              : `${commentCount} comments`
+          }
+        >
+          <span
+            className={cn(
+              "inline-flex items-center gap-1",
+              item.unresolvedThreadCount > 0 ? "text-destructive" : "text-muted-foreground/80",
+            )}
+            aria-label={
+              item.unresolvedThreadCount > 0
+                ? `${item.unresolvedThreadCount} unresolved review threads`
+                : `${commentCount} comments`
+            }
+          >
+            <MessageSquare className="size-3.5" />
+            <span className="text-[10px] tabular-nums">{commentCount}</span>
+          </span>
+        </TooltipFor>
+      )}
+    </div>
   );
 }
 
@@ -583,7 +963,9 @@ function ReviewBadge({ review }: { review?: string | null }) {
   if (!m) return null;
   const Icon = m.icon;
   return (
-    <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
+    <TooltipFor label={m.label}>
+      <Icon className={cn("size-3.5 shrink-0", m.tone)} strokeWidth={2.5} aria-label={m.label} />
+    </TooltipFor>
   );
 }
 
@@ -593,9 +975,116 @@ function CiIcon({ ci }: { ci?: InboxItem["ci"] }) {
   const Icon = m.icon;
   // A passing check is dimmed; failing/pending stay full strength.
   return (
-    <Icon
-      className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-70")}
-      aria-label={m.label}
-    />
+    <TooltipFor label={m.label}>
+      <Icon
+        className={cn("size-3.5 shrink-0", m.tone, ci === "success" && "opacity-55")}
+        aria-label={m.label}
+      />
+    </TooltipFor>
+  );
+}
+
+function SnoozeMenu({
+  snoozed,
+  onSnooze,
+  onUnsnooze,
+}: {
+  snoozed: boolean;
+  onSnooze: (kind: SnoozeKind) => void;
+  onUnsnooze: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <TooltipFor label="Snooze">
+        <button
+          type="button"
+          aria-label="Snooze"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((v) => !v);
+          }}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-foreground/[0.05] hover:text-foreground group-hover:opacity-100 data-[open=true]:opacity-100"
+          data-open={open}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      </TooltipFor>
+      {open && (
+        <PopoverPanel onClose={() => setOpen(false)} width="w-44">
+          <PopoverSection title="Snooze">
+            <SnoozeItem
+              icon={Clock}
+              onClick={() => {
+                onSnooze("later-today");
+                setOpen(false);
+              }}
+            >
+              Later today
+            </SnoozeItem>
+            <SnoozeItem
+              icon={TimerReset}
+              onClick={() => {
+                onSnooze("tomorrow");
+                setOpen(false);
+              }}
+            >
+              Tomorrow
+            </SnoozeItem>
+            <SnoozeItem
+              icon={GitCommitHorizontal}
+              onClick={() => {
+                onSnooze("next-week");
+                setOpen(false);
+              }}
+            >
+              Next week
+            </SnoozeItem>
+            <SnoozeItem
+              icon={RefreshCw}
+              onClick={() => {
+                onSnooze("until-ci-changes");
+                setOpen(false);
+              }}
+            >
+              Until CI changes
+            </SnoozeItem>
+            {snoozed && (
+              <SnoozeItem
+                icon={X}
+                onClick={() => {
+                  onUnsnooze();
+                  setOpen(false);
+                }}
+              >
+                Unsnooze
+              </SnoozeItem>
+            )}
+          </PopoverSection>
+        </PopoverPanel>
+      )}
+    </div>
+  );
+}
+
+function SnoozeItem({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: typeof Clock;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <PopoverItem
+      icon={icon}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
+    </PopoverItem>
   );
 }

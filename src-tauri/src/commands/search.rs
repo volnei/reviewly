@@ -134,14 +134,17 @@ pub struct Dashboard {
     pub ci_fail: u64,
     pub ci_pending: u64,
     pub stale: u64,
+    /// PRs requesting your review, enriched with review decision + CI/thread
+    /// signals so the dashboard can prioritize without a second REST call.
+    pub incoming: Vec<DashboardPr>,
     /// Your open PRs, enriched with review decision + CI, so the inbox can list
     /// them by action (ready to merge / needs attention / awaiting / draft).
-    pub mine: Vec<MinePr>,
+    pub mine: Vec<DashboardPr>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MinePr {
+pub struct DashboardPr {
     pub id: u64,
     pub number: u64,
     pub title: String,
@@ -158,16 +161,19 @@ pub struct MinePr {
     pub conflicting: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub issue_comment_count: u64,
+    pub review_thread_count: u64,
+    pub unresolved_thread_count: u64,
 }
 
 #[derive(Deserialize)]
 struct DashData {
-    mine: MineSearch,
-    rr: CountSearch,
+    mine: PrSearch,
+    incoming: PrSearch,
     men: CountSearch,
 }
 #[derive(Deserialize)]
-struct MineSearch {
+struct PrSearch {
     #[serde(rename = "issueCount")]
     issue_count: u64,
     nodes: Vec<StatsNode>,
@@ -197,6 +203,9 @@ struct StatsNode {
     author: Option<GqlAuthor>,
     repository: Option<GqlRepo>,
     commits: Option<StatsCommits>,
+    comments: Option<StatsCount>,
+    #[serde(rename = "reviewThreads")]
+    review_threads: Option<StatsReviewThreads>,
 }
 #[derive(Deserialize, Default)]
 #[serde(default)]
@@ -228,18 +237,103 @@ struct StatsCommit {
 struct StatsRollup {
     state: String,
 }
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsCount {
+    #[serde(rename = "totalCount")]
+    total_count: u64,
+}
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsReviewThreads {
+    #[serde(rename = "totalCount")]
+    total_count: u64,
+    nodes: Vec<StatsReviewThread>,
+}
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsReviewThread {
+    #[serde(rename = "isResolved")]
+    is_resolved: bool,
+}
+
+fn ci_from_node(n: &StatsNode) -> &'static str {
+    match n
+        .commits
+        .as_ref()
+        .and_then(|c| c.nodes.first())
+        .and_then(|cn| cn.commit.rollup.as_ref())
+        .map(|r| r.state.as_str())
+    {
+        Some("SUCCESS") => "success",
+        Some("FAILURE") | Some("ERROR") => "failure",
+        Some("PENDING") | Some("EXPECTED") => "pending",
+        _ => "none",
+    }
+}
+
+fn dashboard_pr_from_node(n: StatsNode, ci: &str) -> Option<DashboardPr> {
+    let (author, avatar) = match n.author {
+        Some(a) => (
+            a.login.unwrap_or_default(),
+            a.avatar_url.unwrap_or_default(),
+        ),
+        None => (String::new(), String::new()),
+    };
+    let issue_comment_count = n.comments.as_ref().map(|c| c.total_count).unwrap_or(0);
+    let review_thread_count = n
+        .review_threads
+        .as_ref()
+        .map(|t| t.total_count)
+        .unwrap_or(0);
+    let unresolved_thread_count = n
+        .review_threads
+        .as_ref()
+        .map(|t| t.nodes.iter().filter(|thread| !thread.is_resolved).count() as u64)
+        .unwrap_or(0);
+
+    n.database_id.map(|id| DashboardPr {
+        id,
+        number: n.number.unwrap_or(0),
+        title: n.title.unwrap_or_default(),
+        url: n.url.unwrap_or_default(),
+        repo: n
+            .repository
+            .and_then(|r| r.name_with_owner)
+            .unwrap_or_default(),
+        author,
+        avatar,
+        is_draft: n.is_draft,
+        review_decision: n.review_decision,
+        ci: ci.to_string(),
+        conflicting: n.mergeable.as_deref() == Some("CONFLICTING"),
+        created_at: n.created_at,
+        updated_at: n.updated_at,
+        issue_comment_count,
+        review_thread_count,
+        unresolved_thread_count,
+    })
+}
 
 #[tauri::command]
-pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) -> AppResult<Dashboard> {
+pub async fn gh_dashboard(
+    state: State<'_, AppState>,
+    repo_qualifier: String,
+) -> AppResult<Dashboard> {
     let token = creds::require_token()?;
     let q = repo_qualifier.trim();
-    let prefix = if q.is_empty() { String::new() } else { format!("{q} ") };
+    let prefix = if q.is_empty() {
+        String::new()
+    } else {
+        format!("{q} ")
+    };
     let mine = format!("{prefix}is:pr is:open author:@me archived:false");
     let rr = format!("{prefix}is:pr is:open review-requested:@me archived:false -is:draft");
     let men = format!("{prefix}is:pr is:open involves:@me -author:@me archived:false");
 
+    let pr_fields = "databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{ login avatarUrl } repository{ nameWithOwner } comments(first:1){ totalCount } reviewThreads(first:100){ totalCount nodes{ isResolved } } commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } }";
     let gql = format!(
-        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{{ login avatarUrl }} repository{{ nameWithOwner }} commits(last:1){{ nodes{{ commit{{ statusCheckRollup{{ state }} }} }} }} }} }} }} rr: search(query:$rr,type:ISSUE){{ issueCount }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
+        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} incoming: search(query:$rr,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
     );
     let data: DashData = graphql(
         &state,
@@ -252,7 +346,7 @@ pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) ->
     let now = Utc::now();
     let week = chrono::Duration::days(7);
     let mut d = Dashboard {
-        review_requested: data.rr.issue_count,
+        review_requested: data.incoming.issue_count,
         mentions: data.men.issue_count,
         opened: data.mine.issue_count,
         approved: 0,
@@ -263,21 +357,17 @@ pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) ->
         ci_fail: 0,
         ci_pending: 0,
         stale: 0,
+        incoming: Vec::new(),
         mine: Vec::new(),
     };
+    for n in data.incoming.nodes {
+        let ci = ci_from_node(&n);
+        if let Some(pr) = dashboard_pr_from_node(n, ci) {
+            d.incoming.push(pr);
+        }
+    }
     for n in data.mine.nodes {
-        let ci = match n
-            .commits
-            .as_ref()
-            .and_then(|c| c.nodes.first())
-            .and_then(|cn| cn.commit.rollup.as_ref())
-            .map(|r| r.state.as_str())
-        {
-            Some("SUCCESS") => "success",
-            Some("FAILURE") | Some("ERROR") => "failure",
-            Some("PENDING") | Some("EXPECTED") => "pending",
-            _ => "none",
-        };
+        let ci = ci_from_node(&n);
         if n.is_draft {
             d.draft += 1;
         } else {
@@ -300,26 +390,8 @@ pub async fn gh_dashboard(state: State<'_, AppState>, repo_qualifier: String) ->
                 }
             }
         }
-        let (author, avatar) = match n.author {
-            Some(a) => (a.login.unwrap_or_default(), a.avatar_url.unwrap_or_default()),
-            None => (String::new(), String::new()),
-        };
-        if let Some(id) = n.database_id {
-            d.mine.push(MinePr {
-                id,
-                number: n.number.unwrap_or(0),
-                title: n.title.unwrap_or_default(),
-                url: n.url.unwrap_or_default(),
-                repo: n.repository.and_then(|r| r.name_with_owner).unwrap_or_default(),
-                author,
-                avatar,
-                is_draft: n.is_draft,
-                review_decision: n.review_decision,
-                ci: ci.to_string(),
-                conflicting: n.mergeable.as_deref() == Some("CONFLICTING"),
-                created_at: n.created_at,
-                updated_at: n.updated_at,
-            });
+        if let Some(pr) = dashboard_pr_from_node(n, ci) {
+            d.mine.push(pr);
         }
     }
     Ok(d)
