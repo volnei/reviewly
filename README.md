@@ -276,7 +276,7 @@ The GitHub OAuth client ID ships in [`src-tauri/.cargo/config.toml`](src-tauri/.
 
 ## Support
 
-Reviewly is free and open source, and built in the open. If it saves you time on reviews, consider [**sponsoring the project** ❤️](https://github.com/sponsors/volnei) — it keeps Reviewly free, maintained, and with no ads or paywalls. A ⭐ on the repo helps too, and so does telling another reviewer about it.
+Reviewly is free and open source, and built in the open. If it saves you time on reviews, consider [**buying me a coffee** ☕](https://buymeacoffee.com/volnei) — it keeps Reviewly free, maintained, and with no ads or paywalls. A ⭐ on the repo helps too, and so does telling another reviewer about it.
 
 ## Contributing
 
