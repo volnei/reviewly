@@ -1,7 +1,7 @@
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Menu, PopoverItem, PopoverSection } from "@/components/popover";
-import { PrRowLink, type PrState, STATE_META, prState } from "@/components/pr-row";
+import { Menu, PopoverItem, PopoverPanel, PopoverSection } from "@/components/popover";
+import { PrRowLink, type PrState, STATE_META } from "@/components/pr-row";
 import { Segmented } from "@/components/segmented";
 import { TooltipFor } from "@/components/tooltip-for";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { relativeTime } from "@/lib/format";
 import { type ListState, readPrs } from "@/lib/prs-db";
 import { ensureBackfilled } from "@/lib/sync";
 import type { CiStatus, Label, PullSummary } from "@/lib/tauri";
-import { invoke, parseRepoUrl } from "@/lib/tauri";
+import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { type GroupBy, type PrScope, type SortKey, usePrFilters } from "@/stores/pr-filters";
 import { useWatchedRepos } from "@/stores/watched-repos";
@@ -25,11 +25,13 @@ import {
   ArrowUp01,
   ArrowUpNarrowWide,
   Check,
+  ChevronDown,
   Filter,
   FolderGit2,
   GitPullRequest,
   Inbox,
   List,
+  ListFilter,
   type LucideIcon,
   Minus,
   PenLine,
@@ -41,7 +43,14 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ActiveFilterChip,
+  type ActiveFilterOption,
+  type AuthorFilterOption,
+  repoOf,
+  usePrFilterModel,
+} from "./pr-filter-model";
 
 interface Option<T extends string> {
   value: T;
@@ -69,13 +78,6 @@ const SCOPE_OPTIONS: Option<PrScope>[] = [
   { value: "involved", label: "Involved", icon: Users },
 ];
 
-const STATE_ORDER: PrState[] = ["open", "draft", "merged", "closed"];
-
-function repoOf(p: PullSummary): string {
-  const r = parseRepoUrl(p.repository_url);
-  return r ? `${r.owner}/${r.repo}` : "unknown";
-}
-
 /** A flattened virtual-list row: either a group header or a PR. */
 type PrListRow =
   | { kind: "header"; key: string; label: string; count: number }
@@ -86,20 +88,10 @@ export function PRsPage() {
   const query = usePrFilters((s) => s.query);
   const sort = usePrFilters((s) => s.sort);
   const groupBy = usePrFilters((s) => s.groupBy);
-  const labelStates = usePrFilters((s) => s.labelStates);
-  const repos = usePrFilters((s) => s.repos);
-  const states = usePrFilters((s) => s.states);
+  const statesForFetch = usePrFilters((s) => s.states);
   const setQuery = usePrFilters((s) => s.setQuery);
   const setSort = usePrFilters((s) => s.setSort);
   const setGroupBy = usePrFilters((s) => s.setGroupBy);
-  const toggleRepo = usePrFilters((s) => s.toggleRepo);
-  const clearRepos = usePrFilters((s) => s.clearRepos);
-  const cycleLabel = usePrFilters((s) => s.cycleLabel);
-  const clearLabels = usePrFilters((s) => s.clearLabels);
-  const toggleState = usePrFilters((s) => s.toggleState);
-  const clearStates = usePrFilters((s) => s.clearStates);
-  const ciFailing = usePrFilters((s) => s.ciFailing);
-  const toggleCiFailing = usePrFilters((s) => s.toggleCiFailing);
   const scope = usePrFilters((s) => s.scope);
   const setScope = usePrFilters((s) => s.setScope);
   const scrollPos = usePrFilters((s) => s.scrollPos);
@@ -130,7 +122,7 @@ export function PRsPage() {
   const watchedKey = useMemo(() => [...watched].sort().join(","), [watched]);
   // Open is the fast default; pull merged/closed only when the state filter
   // asks for them (a repo's closed history can be tens of thousands).
-  const includeClosed = states.includes("merged") || states.includes("closed");
+  const includeClosed = statesForFetch.includes("merged") || statesForFetch.includes("closed");
   const listState: ListState = includeClosed ? "all" : "open";
 
   // The search query that backs the list when no repos are watched.
@@ -178,27 +170,6 @@ export function PRsPage() {
     return data.filter((p) => ws.has(repoOf(p)));
   }, [forMe.data, watched]);
 
-  const allLabels = useMemo(() => {
-    const byName = new Map<string, Label>();
-    for (const p of prs) for (const l of p.labels) byName.set(l.name, l);
-    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [prs]);
-
-  const allRepos = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of prs) set.add(repoOf(p));
-    return [...set].sort();
-  }, [prs]);
-
-  const stateCounts = useMemo(() => {
-    const m = new Map<PrState, number>();
-    for (const p of prs) {
-      const s = prState(p);
-      m.set(s, (m.get(s) ?? 0) + 1);
-    }
-    return m;
-  }, [prs]);
-
   // Cheap, accurate per-state totals for the watched repos (via total_count),
   // so the State filter shows a count for every state — not just the loaded
   // ones. Independent of the (lazy) merged/closed list fetch.
@@ -218,70 +189,16 @@ export function PRsPage() {
       return { open, draft, merged, closed };
     },
   });
-  // What the State filter shows: accurate totals in the all-open queue, else the
-  // loaded-data counts (search modes load their full result set).
-  const filterStateCounts = useMemo<Map<PrState, number>>(() => {
-    if (allOpen && stateTotals.data) {
-      const d = stateTotals.data;
-      return new Map<PrState, number>([
-        ["open", d.open],
-        ["draft", d.draft],
-        ["merged", d.merged],
-        ["closed", d.closed],
-      ]);
-    }
-    return stateCounts;
-  }, [allOpen, stateTotals.data, stateCounts]);
 
-  // Defer the query used for FILTERING so typing stays responsive on the big
-  // queue — the input itself is still driven by the live `query` value.
-  const deferredQuery = useDeferredValue(query);
-
-  const displayed = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase();
-    const includeLabels = Object.entries(labelStates)
-      .filter(([, s]) => s === "include")
-      .map(([n]) => n);
-    const excludeLabels = Object.entries(labelStates)
-      .filter(([, s]) => s === "exclude")
-      .map(([n]) => n);
-
-    // Match title, author, or PR number (bare `1234` or `#1234`).
-    const qNum = q.replace(/^#/, "");
-    const filtered = prs.filter((p) => {
-      if (
-        q &&
-        !(
-          p.title.toLowerCase().includes(q) ||
-          p.user.login.toLowerCase().includes(q) ||
-          (qNum !== "" && String(p.number).includes(qNum))
-        )
-      ) {
-        return false;
-      }
-      if (states.length > 0 && !states.includes(prState(p))) return false;
-      if (repos.length > 0 && !repos.includes(repoOf(p))) return false;
-      if (ciFailing && ciMap.get(p.number) !== "failure") return false;
-      const names = new Set(p.labels.map((l) => l.name));
-      if (includeLabels.some((n) => !names.has(n))) return false;
-      if (excludeLabels.some((n) => names.has(n))) return false;
-      return true;
-    });
-    return filtered.sort((a, b) => {
-      switch (sort) {
-        case "updated-asc":
-          return +new Date(a.updated_at) - +new Date(b.updated_at);
-        case "created-desc":
-          return +new Date(b.created_at) - +new Date(a.created_at);
-        case "created-asc":
-          return +new Date(a.created_at) - +new Date(b.created_at);
-        case "title":
-          return a.title.localeCompare(b.title);
-        default:
-          return +new Date(b.updated_at) - +new Date(a.updated_at);
-      }
-    });
-  }, [prs, deferredQuery, labelStates, repos, states, sort, ciFailing, ciMap]);
+  const filters = usePrFilterModel({
+    prs,
+    allOpen,
+    stateTotals: stateTotals.data,
+    query,
+    sort,
+    ciMap,
+  });
+  const displayed = filters.displayed;
 
   const grouped = useMemo(() => groupPrs(displayed, groupBy), [displayed, groupBy]);
 
@@ -297,47 +214,7 @@ export function PRsPage() {
     return out;
   }, [grouped, groupBy]);
 
-  // In the watched/all-open queue, always offer every state so the user can
-  // select Merged/Closed to pull them in (they aren't loaded by default).
-  const presentStates = allOpen
-    ? STATE_ORDER
-    : STATE_ORDER.filter((s) => (stateCounts.get(s) ?? 0) > 0);
-  const filterCount =
-    states.length + repos.length + Object.keys(labelStates).length + (ciFailing ? 1 : 0);
-
-  function clearAllFilters() {
-    clearStates();
-    clearRepos();
-    clearLabels();
-    if (ciFailing) toggleCiFailing();
-  }
-
-  // Empty-state CTAs reset the text query too (not just the structured filters),
-  // so "Clear all filters" / "Adjust filters" truly empties everything.
-  function clearAllFiltersAndQuery() {
-    clearAllFilters();
-    setQuery("");
-  }
-
-  // Active filters as removable chips (Linear-style).
-  const chips: { key: string; label: string; onRemove: () => void }[] = [];
-  for (const s of states)
-    chips.push({ key: `s:${s}`, label: STATE_META[s].label, onRemove: () => toggleState(s) });
-  for (const r of repos) chips.push({ key: `r:${r}`, label: r, onRemove: () => toggleRepo(r) });
-  for (const [name, st] of Object.entries(labelStates)) {
-    chips.push({
-      key: `l:${name}`,
-      label: st === "exclude" ? `−${name}` : name,
-      // cycle order is off → include → exclude → off
-      onRemove: () => {
-        cycleLabel(name);
-        if (st === "include") cycleLabel(name);
-      },
-    });
-  }
-  if (ciFailing) chips.push({ key: "ci", label: "CI failing", onRemove: toggleCiFailing });
-
-  const filtering = query.trim().length > 0 || filterCount > 0;
+  const filtering = query.trim().length > 0 || filters.filterCount > 0;
   const scopeLabel =
     scope === "created"
       ? "you opened"
@@ -448,45 +325,29 @@ export function PRsPage() {
           />
         )}
         <FilterMenu
-          presentStates={presentStates}
-          stateCounts={filterStateCounts}
-          states={states}
-          onToggleState={toggleState}
-          allRepos={allRepos}
-          repos={repos}
-          onToggleRepo={toggleRepo}
-          allLabels={allLabels}
-          labelStates={labelStates}
-          onCycleLabel={cycleLabel}
-          ciFailing={ciFailing}
-          onToggleCiFailing={toggleCiFailing}
-          activeCount={filterCount}
-          onClearAll={clearAllFilters}
+          presentStates={filters.presentStates}
+          stateCounts={filters.filterStateCounts}
+          states={filters.states}
+          onSelectState={filters.selectStateFilter}
+          allRepos={filters.allRepos}
+          repos={filters.repos}
+          onToggleRepo={filters.toggleRepo}
+          allAuthors={filters.allAuthors}
+          authors={filters.authors}
+          onToggleAuthor={filters.toggleAuthor}
+          allLabels={filters.allLabels}
+          labelStates={filters.labelStates}
+          onCycleLabel={filters.cycleLabel}
+          ciFailing={filters.ciFailing}
+          onToggleCiFailing={filters.toggleCiFailing}
+          activeCount={filters.filterCount}
+          onClearAll={filters.clearAllFilters}
         />
         <DisplayMenu sort={sort} onSort={setSort} groupBy={groupBy} onGroup={setGroupBy} />
       </div>
 
-      {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 px-6 pb-2">
-          {chips.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={c.onRemove}
-              className="group inline-flex items-center gap-1 rounded-full bg-foreground/[0.06] px-2 py-0.5 text-xs text-foreground/80 ring-1 ring-foreground/[0.06] transition-colors hover:bg-foreground/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-              {c.label}
-              <X className="size-3 text-muted-foreground transition-colors group-hover:text-foreground" />
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="ml-0.5 border-l border-hairline pl-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Clear all
-          </button>
-        </div>
+      {filters.chips.length > 0 && (
+        <ActiveFilters chips={filters.chips} onClearAll={filters.clearAllFilters} />
       )}
 
       {/* Non-blocking: a badge data source went stale (counts/CI). */}
@@ -562,7 +423,7 @@ export function PRsPage() {
                 Watch repositories
               </Button>
             ) : filtering ? (
-              <Button variant="outline" size="sm" onClick={clearAllFiltersAndQuery}>
+              <Button variant="outline" size="sm" onClick={filters.clearAllFiltersAndQuery}>
                 Adjust filters
               </Button>
             ) : undefined
@@ -574,7 +435,7 @@ export function PRsPage() {
           title="No matches"
           description="No pull requests match your filters."
           action={
-            <Button variant="outline" size="sm" onClick={clearAllFiltersAndQuery}>
+            <Button variant="outline" size="sm" onClick={filters.clearAllFiltersAndQuery}>
               Clear all filters
             </Button>
           }
@@ -590,6 +451,199 @@ export function PRsPage() {
         />
       )}
     </div>
+  );
+}
+
+function ActiveFilters({
+  chips,
+  onClearAll,
+}: {
+  chips: ActiveFilterChip[];
+  onClearAll: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 border-b border-hairline/70 bg-foreground/[0.018] px-6 py-1.5">
+      <span className="inline-flex h-6 shrink-0 items-center gap-1.5 pr-1 text-[11px] font-medium text-muted-foreground/80">
+        <Filter className="size-3.5" strokeWidth={1.75} />
+        Filters
+      </span>
+      {chips.map((c) => (
+        <ActiveFilterToken key={c.key} chip={c} />
+      ))}
+      <button
+        type="button"
+        onClick={onClearAll}
+        className="ml-1 inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <X className="size-3" />
+        Clear
+      </button>
+    </div>
+  );
+}
+
+function ActiveFilterToken({ chip }: { chip: ActiveFilterChip }) {
+  const [open, setOpen] = useState<"operator" | "value" | null>(null);
+  const operator = chip.operator ?? "is";
+  return (
+    <div className="relative inline-flex h-7 max-w-[min(34rem,100%)] items-stretch rounded-lg border border-hairline bg-popover/70 text-xs text-foreground/85 shadow-xs">
+      <div className="inline-flex shrink-0 items-center gap-1.5 rounded-l-lg px-2 text-muted-foreground">
+        <Filter className="size-3.5" strokeWidth={1.75} />
+        <span className="font-medium">{chip.field}</span>
+      </div>
+      <div className="w-px bg-hairline" />
+      <button
+        type="button"
+        onClick={() => chip.operatorOptions && setOpen("operator")}
+        disabled={!chip.operatorOptions}
+        className="inline-flex shrink-0 items-center gap-1 px-2 text-foreground transition-colors enabled:hover:bg-foreground/[0.05] disabled:cursor-default"
+        aria-label={`Change ${chip.field} operator`}
+      >
+        {operator}
+        {chip.operatorOptions && <ChevronDown className="size-3 text-muted-foreground" />}
+      </button>
+      <div className="w-px bg-hairline" />
+      <button
+        type="button"
+        onClick={() => setOpen("value")}
+        className="inline-flex min-w-0 items-center gap-1.5 px-2 text-foreground transition-colors hover:bg-foreground/[0.05]"
+        aria-label={`Change ${chip.field} value`}
+      >
+        {chip.valueAvatars && chip.valueAvatars.length > 0 ? (
+          <span className="flex shrink-0 items-center -space-x-1">
+            {chip.valueAvatars.map((author) => (
+              <TooltipFor key={author.login} label={author.login}>
+                <img
+                  src={author.avatarUrl}
+                  alt=""
+                  className="size-4 rounded-full bg-background ring-1 ring-background"
+                />
+              </TooltipFor>
+            ))}
+            {chip.valueAvatarOverflow ? (
+              <TooltipFor label={`${chip.valueAvatarOverflow} more`}>
+                <span className="flex size-4 items-center justify-center rounded-full bg-foreground/[0.08] text-[9px] font-medium text-muted-foreground ring-1 ring-background">
+                  +{chip.valueAvatarOverflow}
+                </span>
+              </TooltipFor>
+            ) : null}
+          </span>
+        ) : chip.valueAvatarUrl ? (
+          <img
+            src={chip.valueAvatarUrl}
+            alt=""
+            className="size-4 shrink-0 rounded-full ring-1 ring-foreground/10"
+          />
+        ) : null}
+        {!chip.valueAvatars && <span className="min-w-0 truncate">{chip.value}</span>}
+        <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+      </button>
+      <div className="w-px bg-hairline" />
+      <button
+        type="button"
+        onClick={chip.onRemove}
+        className="inline-flex w-7 shrink-0 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+        aria-label={`Remove ${chip.field} ${operator} ${chip.value} filter`}
+      >
+        <X className="size-3.5" />
+      </button>
+
+      {open === "operator" && chip.operatorOptions && (
+        <FilterTokenMenu
+          options={chip.operatorOptions}
+          onClose={() => setOpen(null)}
+          onSelect={(value) => {
+            chip.onOperatorSelect?.(value);
+            setOpen(null);
+          }}
+        />
+      )}
+      {open === "value" && (
+        <FilterTokenMenu
+          options={chip.options}
+          onClose={() => setOpen(null)}
+          onSelect={chip.onSelect}
+          searchPlaceholder={`Search ${chip.field.toLowerCase()}...`}
+        />
+      )}
+    </div>
+  );
+}
+
+function FilterTokenMenu({
+  options,
+  onClose,
+  onSelect,
+  searchPlaceholder = "Search...",
+}: {
+  options: ActiveFilterOption[];
+  onClose: () => void;
+  onSelect: (value: string, additive: boolean) => void;
+  searchPlaceholder?: string;
+}) {
+  const [filter, setFilter] = useState("");
+  const searchable = options.length > 5;
+  const visibleOptions = useMemo(() => {
+    if (!searchable || !filter.trim()) return options;
+    const q = filter.trim().toLowerCase();
+    return options.filter((option) => option.label.toLowerCase().includes(q));
+  }, [filter, options, searchable]);
+
+  return (
+    <PopoverPanel onClose={onClose} align="left" width="w-64" className="overflow-hidden p-0">
+      {searchable && (
+        <div className="border-b border-hairline p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <input
+              autoFocus
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-7 w-full rounded-md bg-foreground/[0.04] pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-foreground/[0.06] focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+      )}
+      <div className="max-h-72 overflow-y-auto p-2">
+        {visibleOptions.length > 0 ? (
+          visibleOptions.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={(event) => onSelect(option.value, event.shiftKey)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.05]"
+              >
+                {option.avatarUrl ? (
+                  <img
+                    src={option.avatarUrl}
+                    alt=""
+                    className="size-4 shrink-0 rounded-full ring-1 ring-foreground/10"
+                  />
+                ) : Icon ? (
+                  <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                ) : option.color ? (
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: `#${option.color.replace(/^#/, "")}` }}
+                  />
+                ) : (
+                  <span className="size-3.5 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                <Check
+                  className={cn("size-3 shrink-0", option.selected ? "text-primary" : "opacity-0")}
+                />
+              </button>
+            );
+          })
+        ) : (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">No matches</p>
+        )}
+      </div>
+    </PopoverPanel>
   );
 }
 
@@ -833,10 +887,13 @@ function FilterMenu({
   presentStates,
   stateCounts,
   states,
-  onToggleState,
+  onSelectState,
   allRepos,
   repos,
   onToggleRepo,
+  allAuthors,
+  authors,
+  onToggleAuthor,
   allLabels,
   labelStates,
   onCycleLabel,
@@ -848,10 +905,13 @@ function FilterMenu({
   presentStates: PrState[];
   stateCounts: Map<PrState, number>;
   states: PrState[];
-  onToggleState: (s: PrState) => void;
+  onSelectState: (s: PrState, additive: boolean) => void;
   allRepos: string[];
   repos: string[];
   onToggleRepo: (r: string) => void;
+  allAuthors: AuthorFilterOption[];
+  authors: string[];
+  onToggleAuthor: (author: string) => void;
   allLabels: Label[];
   labelStates: Record<string, "include" | "exclude">;
   onCycleLabel: (name: string) => void;
@@ -860,60 +920,315 @@ function FilterMenu({
   activeCount: number;
   onClearAll: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [fieldQuery, setFieldQuery] = useState("");
+  const [activeField, setActiveField] = useState<FilterFieldKey>("state");
+  const close = () => setOpen(false);
+  const fields = useMemo<FilterField[]>(() => {
+    const out: FilterField[] = [
+      {
+        key: "status",
+        label: "CI failing",
+        icon: AlertTriangle,
+        valueCount: 1,
+      },
+    ];
+    if (presentStates.length > 0) {
+      out.push({
+        key: "state",
+        label: "State",
+        icon: GitPullRequest,
+        valueCount: presentStates.length,
+      });
+    }
+    if (allRepos.length > 1) {
+      out.push({ key: "repo", label: "Repository", icon: FolderGit2, valueCount: allRepos.length });
+    }
+    if (allAuthors.length > 0) {
+      out.push({ key: "author", label: "Author", icon: User, valueCount: allAuthors.length });
+    }
+    if (allLabels.length > 0) {
+      out.push({ key: "label", label: "Label", icon: ListFilter, valueCount: allLabels.length });
+    }
+    return out;
+  }, [allAuthors.length, allLabels.length, allRepos.length, presentStates.length]);
+  const visibleFields = useMemo(() => {
+    if (!fieldQuery.trim()) return fields;
+    const q = fieldQuery.trim().toLowerCase();
+    return fields.filter((field) => field.label.toLowerCase().includes(q));
+  }, [fieldQuery, fields]);
+
   return (
-    <Menu label="Filter" icon={Filter} count={activeCount} width="w-72">
-      <div className="max-h-[60vh] overflow-y-auto">
-        <PopoverSection title="Status">
-          <PopoverItem icon={AlertTriangle} checked={ciFailing} onClick={onToggleCiFailing}>
-            CI failing
-          </PopoverItem>
-        </PopoverSection>
-
-        {presentStates.length > 0 && (
-          <PopoverSection title="State">
-            {presentStates.map((s) => (
-              <PopoverItem
-                key={s}
-                icon={STATE_META[s].icon}
-                checked={states.includes(s)}
-                count={stateCounts.get(s)}
-                onClick={() => onToggleState(s)}
-              >
-                {STATE_META[s].label}
-              </PopoverItem>
-            ))}
-          </PopoverSection>
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors",
+          activeCount > 0 || open
+            ? "bg-foreground/[0.06] text-foreground"
+            : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
         )}
+      >
+        <ListFilter className="size-3.5" />
+        Add Filter
+        {activeCount > 0 && (
+          <span className="rounded-full bg-primary/20 px-1 text-[10px] font-medium tabular-nums text-primary">
+            {activeCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <PopoverPanel onClose={close} align="right" width="w-64" className="overflow-visible">
+          <div className="relative">
+            <div className="pb-1">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+                <input
+                  autoFocus
+                  value={fieldQuery}
+                  onChange={(event) => setFieldQuery(event.target.value)}
+                  placeholder="Filter..."
+                  className="h-7 w-full rounded-md bg-transparent pl-7 pr-8 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-foreground/[0.04]"
+                />
+                <span className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md bg-background/80 text-[10px] font-medium text-muted-foreground/80">
+                  F
+                </span>
+              </div>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {visibleFields.length > 0 ? (
+                visibleFields.map((field) => {
+                  const Icon = field.icon;
+                  const selected = activeField === field.key;
+                  return (
+                    <button
+                      key={field.key}
+                      type="button"
+                      onMouseEnter={() => setActiveField(field.key)}
+                      onFocus={() => setActiveField(field.key)}
+                      onClick={() => {
+                        setActiveField(field.key);
+                        if (field.key === "status") onToggleCiFailing();
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-foreground/[0.05]",
+                        selected && "bg-foreground/[0.05] text-foreground",
+                      )}
+                    >
+                      <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                      <span className="min-w-0 flex-1 truncate">{field.label}</span>
+                      {field.key === "status" ? (
+                        <Check
+                          className={cn(
+                            "size-3 shrink-0",
+                            ciFailing ? "text-primary" : "opacity-0",
+                          )}
+                        />
+                      ) : (
+                        <ChevronDown className="-rotate-90 size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">No filters found</p>
+              )}
+            </div>
+            {activeField !== "status" && (
+              <FilterValueFlyout
+                field={activeField}
+                presentStates={presentStates}
+                stateCounts={stateCounts}
+                states={states}
+                onSelectState={onSelectState}
+                allRepos={allRepos}
+                repos={repos}
+                onToggleRepo={onToggleRepo}
+                allAuthors={allAuthors}
+                authors={authors}
+                onToggleAuthor={onToggleAuthor}
+                allLabels={allLabels}
+                labelStates={labelStates}
+                onCycleLabel={onCycleLabel}
+              />
+            )}
+            {activeCount > 0 && (
+              <div className="mt-1 flex justify-end border-t border-hairline pt-1">
+                <button
+                  type="button"
+                  onClick={onClearAll}
+                  className="px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
+        </PopoverPanel>
+      )}
+    </div>
+  );
+}
 
-        {allRepos.length > 0 && (
-          <PopoverSection title="Repository">
-            {allRepos.map((r) => (
+type FilterFieldKey = "status" | "state" | "repo" | "author" | "label";
+
+type FilterField = {
+  key: FilterFieldKey;
+  label: string;
+  icon: LucideIcon;
+  valueCount: number;
+};
+
+function FilterValueFlyout({
+  field,
+  presentStates,
+  stateCounts,
+  states,
+  onSelectState,
+  allRepos,
+  repos,
+  onToggleRepo,
+  allAuthors,
+  authors,
+  onToggleAuthor,
+  allLabels,
+  labelStates,
+  onCycleLabel,
+}: {
+  field: FilterFieldKey;
+  presentStates: PrState[];
+  stateCounts: Map<PrState, number>;
+  states: PrState[];
+  onSelectState: (s: PrState, additive: boolean) => void;
+  allRepos: string[];
+  repos: string[];
+  onToggleRepo: (r: string) => void;
+  allAuthors: AuthorFilterOption[];
+  authors: string[];
+  onToggleAuthor: (author: string) => void;
+  allLabels: Label[];
+  labelStates: Record<string, "include" | "exclude">;
+  onCycleLabel: (name: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const config =
+    field === "state"
+      ? {
+          label: "state",
+          searchable: presentStates.length > 5,
+          count: presentStates.length,
+        }
+      : field === "repo"
+        ? { label: "repository", searchable: allRepos.length > 5, count: allRepos.length }
+        : field === "author"
+          ? { label: "author", searchable: allAuthors.length > 5, count: allAuthors.length }
+          : { label: "label", searchable: allLabels.length > 5, count: allLabels.length };
+  const q = query.trim().toLowerCase();
+  const visibleRepos = !q ? allRepos : allRepos.filter((repo) => repo.toLowerCase().includes(q));
+  const visibleAuthors = !q
+    ? allAuthors
+    : allAuthors.filter((author) => author.login.toLowerCase().includes(q));
+  const visibleLabels = !q
+    ? allLabels
+    : allLabels.filter((label) => label.name.toLowerCase().includes(q));
+
+  return (
+    <div className="absolute right-full top-0 z-40 mr-1 w-64 rounded-lg border border-hairline bg-popover p-2 shadow-xl">
+      {config.searchable && (
+        <div className="pb-1">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${config.label}...`}
+              className="h-7 w-full rounded-md bg-transparent pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-foreground/[0.04]"
+            />
+          </div>
+        </div>
+      )}
+      <div className="max-h-80 overflow-y-auto">
+        {field === "state" &&
+          presentStates.map((s) => (
+            <PopoverItem
+              key={s}
+              icon={STATE_META[s].icon}
+              checked={states.includes(s)}
+              count={stateCounts.get(s)}
+              onClick={(event) => onSelectState(s, event.shiftKey)}
+            >
+              {STATE_META[s].label}
+            </PopoverItem>
+          ))}
+
+        {field === "repo" &&
+          (visibleRepos.length > 0 ? (
+            visibleRepos.map((repo) => (
               <PopoverItem
-                key={r}
+                key={repo}
                 icon={FolderGit2}
-                checked={repos.includes(r)}
-                onClick={() => onToggleRepo(r)}
+                checked={repos.includes(repo)}
+                onClick={() => onToggleRepo(repo)}
               >
-                {r}
+                {repo}
               </PopoverItem>
-            ))}
-          </PopoverSection>
-        )}
+            ))
+          ) : (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">No repositories found</p>
+          ))}
 
-        {allLabels.length > 0 && (
-          <PopoverSection title="Labels">
-            <p className="px-2 pb-1 text-[11px] text-muted-foreground/50">
-              Click to cycle: include → exclude → off
-            </p>
-            {allLabels.map((l) => {
-              const st = labelStates[l.name];
+        {field === "author" &&
+          (visibleAuthors.length > 0 ? (
+            visibleAuthors.map((author) => (
+              <button
+                key={author.login}
+                type="button"
+                onClick={() => onToggleAuthor(author.login)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.05]"
+              >
+                <img
+                  src={author.avatarUrl}
+                  alt=""
+                  className="size-4 shrink-0 rounded-full ring-1 ring-foreground/10"
+                />
+                <span className="min-w-0 flex-1 truncate">{author.login}</span>
+                <Check
+                  className={cn(
+                    "size-3 shrink-0",
+                    authors.includes(author.login) ? "text-primary" : "opacity-0",
+                  )}
+                />
+              </button>
+            ))
+          ) : (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">No authors found</p>
+          ))}
+
+        {field === "label" &&
+          (visibleLabels.length > 0 ? (
+            visibleLabels.map((label) => {
+              const st = labelStates[label.name];
               return (
                 <button
-                  key={l.id}
+                  key={label.id}
                   type="button"
-                  onClick={() => onCycleLabel(l.name)}
+                  onClick={() => onCycleLabel(label.name)}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.05]"
                 >
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: `#${(label.color || "888888").replace(/^#/, "")}` }}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate",
+                      st === "exclude" && "line-through opacity-70",
+                    )}
+                  >
+                    {label.name}
+                  </span>
                   {st === "include" ? (
                     <Check className="size-3 shrink-0 text-primary" />
                   ) : st === "exclude" ? (
@@ -921,32 +1236,20 @@ function FilterMenu({
                   ) : (
                     <span className="size-3 shrink-0" />
                   )}
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: `#${(l.color || "888888").replace(/^#/, "")}` }}
-                    aria-hidden
-                  />
-                  <span className={cn("truncate", st === "exclude" && "line-through opacity-70")}>
-                    {l.name}
-                  </span>
                 </button>
               );
-            })}
-          </PopoverSection>
-        )}
+            })
+          ) : (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">No labels found</p>
+          ))}
       </div>
-      {activeCount > 0 && (
-        <div className="mt-1 flex justify-end border-t border-hairline pt-1">
-          <button
-            type="button"
-            onClick={onClearAll}
-            className="px-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Clear all
-          </button>
-        </div>
+      {config.count > 5 && (
+        <p className="mt-1 border-t border-hairline px-1 py-1.5 text-[11px] text-muted-foreground/70">
+          {config.count} {config.label}
+          {config.count === 1 ? "" : "s"}
+        </p>
       )}
-    </Menu>
+    </div>
   );
 }
 

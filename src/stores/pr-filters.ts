@@ -18,6 +18,7 @@ interface State {
   /** label name → include/exclude (absent = ignored). */
   labelStates: Record<string, LabelState>;
   repos: string[];
+  authors: string[];
   states: PrState[];
   ciFailing: boolean;
   /** Last list scrollTop, keyed by list scope (watchedKey or scope) so each queue restores its own position. */
@@ -29,6 +30,8 @@ interface State {
   setGroupBy: (g: GroupBy) => void;
   toggleRepo: (repo: string) => void;
   clearRepos: () => void;
+  toggleAuthor: (author: string) => void;
+  clearAuthors: () => void;
   cycleLabel: (name: string) => void;
   clearLabels: () => void;
   toggleState: (s: PrState) => void;
@@ -49,6 +52,7 @@ export const usePrFilters = create<State>()(
       groupBy: "none",
       labelStates: {},
       repos: [],
+      authors: [],
       states: [],
       ciFailing: false,
       scrollPos: {},
@@ -59,6 +63,8 @@ export const usePrFilters = create<State>()(
       setGroupBy: (groupBy) => set({ groupBy }),
       toggleRepo: (repo) => set({ repos: toggle(get().repos, repo) }),
       clearRepos: () => set({ repos: [] }),
+      toggleAuthor: (author) => set({ authors: toggle(get().authors, author) }),
+      clearAuthors: () => set({ authors: [] }),
       cycleLabel: (name) => {
         const next = { ...get().labelStates };
         if (!next[name]) next[name] = "include";
