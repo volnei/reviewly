@@ -4,13 +4,19 @@ import { persist } from "zustand/middleware";
 
 export type AccentId = "violet" | "blue" | "cyan" | "emerald" | "rose" | "pink";
 
+/** Dock-icon background variant (macOS). */
+export type AppIconBg = "white" | "black";
+
 interface State {
   /** Accent that drives `--primary` app-wide. "violet" keeps the theme default. */
   accent: AccentId;
   /** Kill animations + transitions across the app. */
   reduceMotion: boolean;
+  /** White- vs black-background app (Dock) icon. */
+  appIconBg: AppIconBg;
   setAccent: (a: AccentId) => void;
   setReduceMotion: (v: boolean) => void;
+  setAppIconBg: (v: AppIconBg) => void;
 }
 
 export const useAppearance = create<State>()(
@@ -18,8 +24,10 @@ export const useAppearance = create<State>()(
     (set) => ({
       accent: "violet",
       reduceMotion: false,
+      appIconBg: "white",
       setAccent: (accent) => set({ accent }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
+      setAppIconBg: (appIconBg) => set({ appIconBg }),
     }),
     { name: "reviewly.appearance", storage: sqlStorage<State>() },
   ),

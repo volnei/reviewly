@@ -51,3 +51,39 @@ pub fn get_launch_at_login(app: AppHandle) -> AppResult<bool> {
         .is_enabled()
         .map_err(|e| AppError::Other(format!("autostart: {e}")))
 }
+
+#[cfg(target_os = "macos")]
+const ICON_WHITE: &[u8] = include_bytes!("../../icons/app-icon-white.png");
+#[cfg(target_os = "macos")]
+const ICON_BLACK: &[u8] = include_bytes!("../../icons/app-icon-black.png");
+
+#[cfg(target_os = "macos")]
+fn apply_app_icon(bytes: &[u8]) {
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let data = NSData::with_bytes(bytes);
+    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+        let app = NSApplication::sharedApplication(mtm);
+        unsafe { app.setApplicationIconImage(Some(&image)) };
+    }
+}
+
+/// Swap the macOS Dock icon between the white- and black-background variants.
+#[tauri::command]
+pub fn set_app_icon(app: AppHandle, variant: String) -> AppResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let bytes: &'static [u8] = if variant == "black" { ICON_BLACK } else { ICON_WHITE };
+        let _ = app.run_on_main_thread(move || apply_app_icon(bytes));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (&app, &variant);
+    }
+    Ok(())
+}

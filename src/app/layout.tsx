@@ -15,6 +15,7 @@ import { useTrayNav } from "@/app/use-tray-nav";
 import { useUpdater } from "@/app/use-updater";
 import { AboutDialog } from "@/components/about-dialog";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
+import { invoke } from "@/lib/tauri";
 import { ACCENTS, useAppearance } from "@/stores/appearance";
 import { resolveTheme, useTheme } from "@/stores/theme";
 import { type ReactNode, useEffect, useState } from "react";
@@ -41,10 +42,11 @@ function useAppliedTheme(): "light" | "dark" {
   return resolved;
 }
 
-/** Apply the accent + reduce-motion preferences to <html>. */
+/** Apply the accent + reduce-motion + app-icon preferences. */
 function useAppliedAppearance() {
   const accent = useAppearance((s) => s.accent);
   const reduceMotion = useAppearance((s) => s.reduceMotion);
+  const appIconBg = useAppearance((s) => s.appIconBg);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -62,6 +64,11 @@ function useAppliedAppearance() {
   useEffect(() => {
     document.documentElement.toggleAttribute("data-reduce-motion", reduceMotion);
   }, [reduceMotion]);
+
+  // Swap the macOS Dock icon between the white/black-background variants.
+  useEffect(() => {
+    void invoke("set_app_icon", { variant: appIconBg }).catch(() => {});
+  }, [appIconBg]);
 }
 
 export function AppLayout({ children }: { children: ReactNode }) {

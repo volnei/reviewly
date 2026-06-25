@@ -240,6 +240,8 @@ function AppearanceSection() {
   const setAccent = useAppearance((s) => s.setAccent);
   const reduceMotion = useAppearance((s) => s.reduceMotion);
   const setReduceMotion = useAppearance((s) => s.setReduceMotion);
+  const appIconBg = useAppearance((s) => s.appIconBg);
+  const setAppIconBg = useAppearance((s) => s.setAppIconBg);
   return (
     <CollapsibleSection id="appearance" title="Appearance" icon={Palette}>
       <Card className="space-y-4">
@@ -298,6 +300,23 @@ function AppearanceSection() {
             description="Turn off animations and transitions across the app."
             checked={reduceMotion}
             onChange={setReduceMotion}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">App icon</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Background behind the kite in the Dock.
+            </p>
+          </div>
+          <Segmented
+            options={[
+              { value: "white", label: "White" },
+              { value: "black", label: "Black" },
+            ]}
+            value={appIconBg}
+            onChange={setAppIconBg}
           />
         </div>
       </Card>
