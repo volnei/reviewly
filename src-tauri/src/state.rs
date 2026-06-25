@@ -26,6 +26,11 @@ pub struct AppState {
     /// Running guided-tour task handles, keyed by PR — so a generation can be
     /// canceled (aborting the task kills the spawned AI CLI via kill_on_drop).
     pub ai_tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    /// Keys of Dependabot AI-fix jobs running in the background (`repo#number`),
+    /// so the UI can recover the "fixing" state after navigating away/refreshing.
+    pub dependabot_inflight: Arc<Mutex<HashSet<String>>>,
+    /// Running Dependabot AI-fix task handles, keyed the same way.
+    pub dependabot_tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     /// Whether the poller shows desktop notifications. Mirrors the Settings
     /// toggle (pushed from the frontend via `set_notifications_enabled`).
     pub notify_enabled: AtomicBool,
@@ -82,6 +87,8 @@ impl AppState {
             watched_repos: Arc::new(RwLock::new(Vec::new())),
             ai_inflight: Arc::new(Mutex::new(HashSet::new())),
             ai_tasks: Arc::new(Mutex::new(HashMap::new())),
+            dependabot_inflight: Arc::new(Mutex::new(HashSet::new())),
+            dependabot_tasks: Arc::new(Mutex::new(HashMap::new())),
             notify_enabled: AtomicBool::new(true),
             notify_reasons: Mutex::new(
                 ["review_requested", "mention", "comment", "ci_activity"]

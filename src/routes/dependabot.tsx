@@ -28,10 +28,10 @@ import { invoke } from "@/lib/tauri";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
+import { useDependabotGen } from "@/stores/dependabot-gen";
 import { useLocalRepos } from "@/stores/local-repos";
-import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ExternalLink, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
+import { Bot, Check, ExternalLink, Loader2, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -61,6 +61,14 @@ export function DependabotPage() {
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Recover the "fixing…" state for any AI fix still running in the background
+  // (the Rust task outlives navigating away or refreshing the webview).
+  useEffect(() => {
+    invoke<string[]>("dependabot_inflight")
+      .then((keys) => useDependabotGen.getState().restore(keys))
+      .catch(() => {});
   }, []);
 
   const list = (alerts.data ?? [])
@@ -216,26 +224,34 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
   // The AI fix runs in your local clone of this repo, if you have one.
   const local = useLocalRepos((s) => s.repos.find((r) => `${r.owner}/${r.repo}` === repo));
 
-  const aiFix = useMutation({
-    mutationFn: () =>
-      invoke<string>("gh_dependabot_ai_fix", {
-        path: local?.path ?? "",
-        package: pkg,
-        fixedVersion: fix ?? "",
-        manifestPath: manifest ?? null,
-        advisory: alert.security_advisory.summary,
-      }),
-    onSuccess: (url) =>
-      toast.success(`Draft PR opened — ${pkg}`, {
-        description: "Review the changes on GitHub before merging.",
-        action: { label: "Open PR", onClick: () => safeOpenUrl(url) },
-      }),
-    onError: (e) => toast.error(`AI fix failed — ${pkg}`, { description: String(e) }),
-  });
+  // The fix runs in a Rust background task, keyed by alert — so its state and
+  // result survive navigating away / refreshing (handled by `dependabot:done`).
+  const key = `${repo}#${alert.number}`;
+  const fixing = useDependabotGen((s) => !!s.inFlight[key]);
+  const prUrl = useDependabotGen((s) => s.result[key]);
+  const fixError = useDependabotGen((s) => s.error[key]);
 
   const [confirmFix, setConfirmFix] = useState(false);
+
+  // The AI branches off whatever base the user picks (default branch by default),
+  // so it never stacks on a leftover branch or sweeps in unrelated work.
+  const [base, setBase] = useState<string | null>(null);
+  const branches = useQuery({
+    queryKey: ["branches", local?.path],
+    queryFn: () =>
+      invoke<{ default: string; branches: string[] }>("gh_list_branches", {
+        path: local?.path ?? "",
+      }),
+    enabled: !!local && confirmFix,
+    staleTime: 60_000,
+  });
+  // Default the base to the repo's default branch once branches load.
+  useEffect(() => {
+    if (branches.data && base === null) setBase(branches.data.default);
+  }, [branches.data, base]);
+
   function runAiFix() {
-    if (!fix) return;
+    if (!fix || fixing) return;
     if (!local) {
       toast.error(`Clone ${repo} locally first`, {
         description:
@@ -244,6 +260,19 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
       return;
     }
     setConfirmFix(true);
+  }
+  function startFix() {
+    if (!fix || !local || !base) return;
+    useDependabotGen.getState().start(key);
+    invoke("gh_dependabot_ai_fix_bg", {
+      key,
+      path: local.path,
+      package: pkg,
+      fixedVersion: fix,
+      manifestPath: manifest ?? null,
+      advisory: alert.security_advisory.summary,
+      base,
+    }).catch((e) => useDependabotGen.getState().fail(key, String(e)));
   }
 
   return (
@@ -254,29 +283,71 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
         </span>
         <span className="font-mono text-foreground">{pkg}</span>
         {ecosystem && <span className="text-muted-foreground">{ecosystem}</span>}
-        <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {fix && (
-            <TooltipFor
-              label={
-                local
-                  ? "Let AI bump it, run the build/tests, and open a draft PR"
-                  : "Needs a local clone — click for how"
-              }
-            >
-              <Button size="xs" variant="ghost" loading={aiFix.isPending} onClick={runAiFix}>
-                <Bot className="size-3.5" />
-                Fix with AI
-              </Button>
+        <div className="ml-auto flex items-center gap-1.5">
+          {/* Persistent status — stays visible (even without hovering) so a fix
+              you kicked off and walked away from still reports back here. */}
+          {fixing && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Fixing…
+            </span>
+          )}
+          {!fixing && prUrl && (
+            <TooltipFor label="Open the draft PR on GitHub">
+              <button
+                type="button"
+                onClick={() => safeOpenUrl(prUrl)}
+                className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-medium text-success transition-opacity hover:underline hover:opacity-90"
+              >
+                <Check className="size-3" />
+                Draft PR opened
+                <ExternalLink className="size-3" />
+              </button>
             </TooltipFor>
           )}
-          <button
-            type="button"
-            onClick={() => safeOpenUrl(alert.html_url)}
-            className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ExternalLink className="size-3" />
-            Open
-          </button>
+          {!fixing && !prUrl && fixError && (
+            <TooltipFor label="Click to see why">
+              <button
+                type="button"
+                onClick={() =>
+                  toast.error(`AI fix failed · ${pkg}`, {
+                    description: fixError,
+                    duration: 12_000,
+                  })
+                }
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive transition-opacity hover:opacity-80"
+              >
+                <ShieldAlert className="size-3" />
+                Fix failed
+              </button>
+            </TooltipFor>
+          )}
+
+          {/* Actions — appear on hover/focus. */}
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {fix && !fixing && (
+              <TooltipFor
+                label={
+                  local
+                    ? "Let AI bump it, run the build/tests, and open a draft PR"
+                    : "Needs a local clone — click for how"
+                }
+              >
+                <Button size="xs" variant="ghost" onClick={runAiFix}>
+                  <Bot className="size-3.5" />
+                  {prUrl || fixError ? "Run again" : "Fix with AI"}
+                </Button>
+              </TooltipFor>
+            )}
+            <button
+              type="button"
+              onClick={() => safeOpenUrl(alert.html_url)}
+              className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ExternalLink className="size-3" />
+              Open
+            </button>
+          </div>
         </div>
       </div>
       <p className="mt-1 text-xs text-foreground/90">{alert.security_advisory.summary}</p>
@@ -295,12 +366,31 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
             <AlertDialogDescription>
               Let AI bump <span className="font-mono text-foreground">{pkg}</span> to{" "}
               <span className="font-mono text-foreground">{fix}</span>, run your build &amp; tests,
-              push a branch, and open a DRAFT PR for you to review.
+              push a fresh branch off the base you pick, and open a DRAFT PR for you to review.
             </AlertDialogDescription>
             {local && (
               <code className="mt-1 block truncate rounded-md bg-foreground/[0.04] px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
                 {local.path}
               </code>
+            )}
+            {local && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="shrink-0 text-xs text-muted-foreground">Branch from</span>
+                <Select value={base ?? ""} onValueChange={setBase}>
+                  <SelectTrigger size="sm" className="w-full text-xs text-foreground">
+                    <SelectValue
+                      placeholder={branches.isLoading ? "Loading branches…" : "Pick a base branch…"}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(branches.data?.branches ?? []).map((b) => (
+                      <SelectItem key={b} value={b} className="text-xs">
+                        {b}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -309,9 +399,10 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
             </AlertDialogClose>
             <Button
               size="sm"
+              disabled={!base}
               onClick={() => {
                 setConfirmFix(false);
-                aiFix.mutate();
+                startFix();
               }}
             >
               <Bot className="size-3.5" />

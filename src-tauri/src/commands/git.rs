@@ -1,10 +1,12 @@
 use crate::error::{AppError, AppResult};
+use crate::state::AppState;
 use base64::Engine;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
+use tauri::{AppHandle, Emitter, State};
 use tokio::process::Command;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -231,9 +233,10 @@ pub async fn gh_pr_create(
 /// Let the AI implement a Dependabot security fix end-to-end: branch off HEAD,
 /// run Claude (edit + shell) in the clone to bump the dependency / update the
 /// lockfile / build + test / fix fallout, commit, push, and open a DRAFT PR.
-/// Returns the PR URL. The clone path is the user's own local repo.
-#[tauri::command]
-pub async fn gh_dependabot_ai_fix(
+/// Returns the PR URL. The clone path is the user's own local repo. This is the
+/// worker; the UI calls `gh_dependabot_ai_fix_bg` so the long job survives
+/// navigation.
+async fn run_dependabot_ai_fix(
     path: String,
     package: String,
     fixed_version: String,
@@ -252,9 +255,25 @@ pub async fn gh_dependabot_ai_fix(
             })
             .collect()
     };
+    // Refuse on a dirty tree — `git add -A` below would otherwise sweep the
+    // user's uncommitted work into the fix commit (and push it).
+    if !git(&path, &["status", "--porcelain"]).await?.trim().is_empty() {
+        return Err(AppError::Other(
+            "Your working tree has uncommitted changes — commit or stash them first, then retry."
+                .into(),
+        ));
+    }
     let branch = format!("reviewly/fix-{}-{}", safe(&package), safe(&fixed_version));
-    // Fresh branch off the current HEAD (reset if it already exists).
-    git(&path, &["checkout", "-B", &branch]).await?;
+    // Branch off the chosen base (freshly fetched), so retries start clean from
+    // the base instead of stacking on a previous attempt's branch.
+    let base_branch = base.as_deref().filter(|b| !b.is_empty()).unwrap_or("HEAD");
+    if base_branch == "HEAD" {
+        git(&path, &["checkout", "-B", &branch]).await?;
+    } else {
+        git_net(&path, &["fetch", "origin", base_branch]).await?;
+        let from = format!("origin/{base_branch}");
+        git(&path, &["checkout", "-B", &branch, &from]).await?;
+    }
 
     let manifest_clause = match manifest_path.as_deref() {
         Some(m) if !m.is_empty() => format!(" (manifest: {m})"),
@@ -280,8 +299,20 @@ pub async fn gh_dependabot_ai_fix(
         "fix(deps): bump {package} to {fixed_version}\n\nResolves a Dependabot security advisory."
     );
     git(&path, &["commit", "-m", &commit_msg]).await?;
-    git_net(&path, &["push", "-u", "origin", &branch]).await?;
+    // Force-with-lease so a retry cleanly updates our own bot branch (the
+    // earlier non-fast-forward reject). Fetch the ref first so the lease has a
+    // baseline; ignore the error when the branch doesn't exist remotely yet.
+    let _ = git_net(&path, &["fetch", "origin", &branch]).await;
+    git_net(&path, &["push", "--force-with-lease", "-u", "origin", &branch]).await?;
 
+    // A retry just force-updated the branch — if a PR already exists for it,
+    // return that (now-updated) PR rather than failing on "already exists".
+    if let Ok(existing) = gh(&path, &["pr", "view", &branch, "--json", "url", "--jq", ".url"]).await {
+        let url = existing.trim();
+        if url.starts_with("http") {
+            return Ok(url.to_string());
+        }
+    }
     let title = format!("fix(deps): bump {package} to {fixed_version}");
     let body = format!(
         "Automated security fix opened by Reviewly (AI).\n\n**Advisory:** {advisory}\n\n**What the agent did:**\n\n{summary}"
@@ -289,11 +320,115 @@ pub async fn gh_dependabot_ai_fix(
     let mut args: Vec<&str> = vec![
         "pr", "create", "--draft", "--head", &branch, "--title", &title, "--body", &body,
     ];
-    if let Some(b) = base.as_deref() {
+    if base_branch != "HEAD" {
         args.push("--base");
-        args.push(b);
+        args.push(base_branch);
     }
     gh(&path, &args).await
+}
+
+/// List the repo's branches (from the local clone's remote-tracking refs) plus
+/// the default branch — to let the user pick what the AI fix should branch off.
+#[derive(Serialize)]
+pub struct BranchList {
+    default: String,
+    branches: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn gh_list_branches(path: String) -> AppResult<BranchList> {
+    let raw = git(
+        &path,
+        &["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
+    )
+    .await?;
+    let mut branches: Vec<String> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.ends_with("/HEAD"))
+        .map(|l| l.strip_prefix("origin/").unwrap_or(l).to_string())
+        .collect();
+    branches.sort();
+    branches.dedup();
+    let default = git(&path, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .await
+        .ok()
+        .map(|s| {
+            let s = s.trim();
+            s.strip_prefix("origin/").unwrap_or(s).to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            ["main", "master", "develop"]
+                .into_iter()
+                .find(|c| branches.iter().any(|b| b == c))
+                .map(String::from)
+        })
+        .or_else(|| branches.first().cloned())
+        .unwrap_or_else(|| "main".to_string());
+    Ok(BranchList { default, branches })
+}
+
+/// Run a Dependabot AI fix in the BACKGROUND, keyed by `key` (`repo#number`).
+/// Returns immediately; the result lands via a `dependabot:done` event
+/// `{ key, ok, url|error, package }`. The work runs in a Rust task, so it
+/// survives navigating away or refreshing the webview.
+#[tauri::command]
+pub async fn gh_dependabot_ai_fix_bg(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    key: String,
+    path: String,
+    package: String,
+    fixed_version: String,
+    manifest_path: Option<String>,
+    advisory: String,
+    base: Option<String>,
+) -> AppResult<()> {
+    {
+        let mut set = state.dependabot_inflight.lock().unwrap();
+        if set.contains(&key) {
+            return Ok(()); // already fixing this alert — don't double-spawn
+        }
+        set.insert(key.clone());
+    }
+    let inflight = state.dependabot_inflight.clone();
+    let tasks = state.dependabot_tasks.clone();
+    let task_key = key.clone();
+    let pkg = package.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        let result =
+            run_dependabot_ai_fix(path, package, fixed_version, manifest_path, advisory, base).await;
+        if let Ok(mut s) = inflight.lock() {
+            s.remove(&task_key);
+        }
+        if let Ok(mut t) = tasks.lock() {
+            t.remove(&task_key);
+        }
+        let payload = match result {
+            Ok(url) => serde_json::json!({
+                "key": task_key, "ok": true, "url": url, "package": pkg,
+            }),
+            Err(e) => serde_json::json!({
+                "key": task_key, "ok": false, "error": e.to_string(), "package": pkg,
+            }),
+        };
+        let _ = app.emit("dependabot:done", payload);
+    });
+    if let Ok(mut t) = state.dependabot_tasks.lock() {
+        t.insert(key, handle);
+    }
+    Ok(())
+}
+
+/// Alert keys whose Dependabot AI fix is currently running in the background.
+#[tauri::command]
+pub fn dependabot_inflight(state: State<'_, AppState>) -> Vec<String> {
+    state
+        .dependabot_inflight
+        .lock()
+        .map(|s| s.iter().cloned().collect())
+        .unwrap_or_default()
 }
 
 /// Let the AI resolve a PR's merge conflicts: check the PR out locally, merge
