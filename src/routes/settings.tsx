@@ -88,7 +88,12 @@ export function SettingsPage() {
                   <p className="text-sm text-foreground">{viewer.name ?? viewer.login}</p>
                   <p className="text-xs text-muted-foreground">@{viewer.login}</p>
                 </div>
-                <Button variant="destructive-outline" size="sm" onClick={signOut}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={signOut}
+                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
                   <LogOut className="size-3.5" />
                   Sign out
                 </Button>

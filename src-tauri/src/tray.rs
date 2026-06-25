@@ -64,8 +64,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
     if let Ok(img) = Image::from_bytes(TRAY_ICON_BYTES) {
         builder = builder.icon(img);
-        // Full-colour kite — not a monochrome template.
-        builder = builder.icon_as_template(false);
+        // Monochrome line-art kite — a template so it adapts to the menu bar.
+        builder = builder.icon_as_template(true);
     } else if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
