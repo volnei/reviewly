@@ -14,7 +14,14 @@ import { invoke, parseRepoUrl } from "@/lib/tauri";
 import { safeOpenUrl, toastRetry } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { useLocalRepos } from "@/stores/local-repos";
-import { type GroupBy, type PrScope, type SortKey, usePrFilters } from "@/stores/pr-filters";
+import {
+  type GroupBy,
+  type PrFilterGroup,
+  type PrFilterSnapshot,
+  type PrScope,
+  type SortKey,
+  usePrFilters,
+} from "@/stores/pr-filters";
 import { usePrView } from "@/stores/pr-view";
 import { useWatchedRepos } from "@/stores/watched-repos";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -27,6 +34,7 @@ import {
   ArrowDownWideNarrow,
   ArrowUp01,
   ArrowUpNarrowWide,
+  Bookmark,
   Check,
   ChevronDown,
   Filter,
@@ -40,8 +48,10 @@ import {
   PenLine,
   RefreshCw,
   RotateCw,
+  Save,
   Search,
   SlidersHorizontal,
+  Trash2,
   User,
   Users,
   X,
@@ -349,6 +359,7 @@ export function PRsPage() {
           activeCount={filters.filterCount}
           onClearAll={filters.clearAllFilters}
         />
+        <SavedViewsMenu />
         <DisplayMenu sort={sort} onSort={setSort} groupBy={groupBy} onGroup={setGroupBy} />
       </div>
 
@@ -1050,6 +1061,283 @@ function RefreshControl({
   );
 }
 
+function SavedViewsMenu() {
+  const scope = usePrFilters((s) => s.scope);
+  const query = usePrFilters((s) => s.query);
+  const sort = usePrFilters((s) => s.sort);
+  const groupBy = usePrFilters((s) => s.groupBy);
+  const labelStates = usePrFilters((s) => s.labelStates);
+  const repos = usePrFilters((s) => s.repos);
+  const authors = usePrFilters((s) => s.authors);
+  const states = usePrFilters((s) => s.states);
+  const ciFailing = usePrFilters((s) => s.ciFailing);
+  const filterGroups = usePrFilters((s) => s.filterGroups);
+  const saveFilterGroup = usePrFilters((s) => s.saveFilterGroup);
+  const applyFilterGroup = usePrFilters((s) => s.applyFilterGroup);
+  const renameFilterGroup = usePrFilters((s) => s.renameFilterGroup);
+  const updateFilterGroup = usePrFilters((s) => s.updateFilterGroup);
+  const deleteFilterGroup = usePrFilters((s) => s.deleteFilterGroup);
+  const [saving, setSaving] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+
+  const current = useMemo<PrFilterSnapshot>(
+    () => ({
+      scope,
+      query,
+      sort,
+      groupBy,
+      labelStates,
+      repos,
+      authors,
+      states,
+      ciFailing,
+    }),
+    [scope, query, sort, groupBy, labelStates, repos, authors, states, ciFailing],
+  );
+  const activeGroup = filterGroups.find((group) => filterSnapshotsEqual(group.filters, current));
+
+  const startSaving = () => {
+    setSaveName(suggestViewName(current));
+    setSaving(true);
+  };
+
+  const saveCurrent = () => {
+    const trimmed = saveName.trim();
+    if (!trimmed) return;
+    saveFilterGroup(trimmed, current);
+    setSaveName("");
+    setSaving(false);
+    toast.success(`Saved view "${trimmed}"`);
+  };
+
+  return (
+    <Menu label="Views" icon={Bookmark} width="w-80">
+      {(close) => (
+        <>
+          <PopoverSection title="Current">
+            {saving ? (
+              <form
+                className="space-y-1.5 px-2 py-1"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveCurrent();
+                }}
+              >
+                <input
+                  autoFocus
+                  value={saveName}
+                  onChange={(event) => setSaveName(event.target.value)}
+                  placeholder="View name"
+                  className="h-7 w-full rounded-md bg-foreground/[0.04] px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-foreground/[0.06] focus:ring-1 focus:ring-primary/30"
+                />
+                <div className="flex justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSaving(false)}
+                    className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!saveName.trim()}
+                    className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <PopoverItem icon={Save} onClick={startSaving}>
+                Save current view...
+              </PopoverItem>
+            )}
+            {activeGroup && (
+              <PopoverItem
+                icon={Bookmark}
+                onClick={() => {
+                  updateFilterGroup(activeGroup.id, current);
+                  toast.success(`Updated "${activeGroup.name}"`);
+                  close();
+                }}
+              >
+                Update "{activeGroup.name}"
+              </PopoverItem>
+            )}
+          </PopoverSection>
+
+          <PopoverSection title="Saved views">
+            {filterGroups.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-muted-foreground">
+                Save a view to jump back to this exact queue later.
+              </p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto">
+                {filterGroups.map((group) => (
+                  <SavedViewRow
+                    key={group.id}
+                    group={group}
+                    active={activeGroup?.id === group.id}
+                    renaming={renamingId === group.id}
+                    renameName={renameName}
+                    onRenameNameChange={setRenameName}
+                    onApply={() => {
+                      applyFilterGroup(group.id);
+                      toast.success(`Applied "${group.name}"`);
+                      close();
+                    }}
+                    onRename={() => {
+                      setRenamingId(group.id);
+                      setRenameName(group.name);
+                    }}
+                    onCancelRename={() => {
+                      setRenamingId(null);
+                      setRenameName("");
+                    }}
+                    onSubmitRename={() => {
+                      const trimmed = renameName.trim();
+                      if (!trimmed) return;
+                      if (trimmed !== group.name) {
+                        renameFilterGroup(group.id, trimmed);
+                        toast.success(`Renamed to "${trimmed}"`);
+                      }
+                      setRenamingId(null);
+                      setRenameName("");
+                    }}
+                    onUpdate={() => {
+                      updateFilterGroup(group.id, current);
+                      toast.success(`Updated "${group.name}"`);
+                    }}
+                    onDelete={() => {
+                      if (!window.confirm(`Delete "${group.name}"?`)) return;
+                      deleteFilterGroup(group.id);
+                      toast.success(`Deleted "${group.name}"`);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </PopoverSection>
+        </>
+      )}
+    </Menu>
+  );
+}
+
+function SavedViewRow({
+  group,
+  active,
+  renaming,
+  renameName,
+  onRenameNameChange,
+  onApply,
+  onRename,
+  onCancelRename,
+  onSubmitRename,
+  onUpdate,
+  onDelete,
+}: {
+  group: PrFilterGroup;
+  active: boolean;
+  renaming: boolean;
+  renameName: string;
+  onRenameNameChange: (name: string) => void;
+  onApply: () => void;
+  onRename: () => void;
+  onCancelRename: () => void;
+  onSubmitRename: () => void;
+  onUpdate: () => void;
+  onDelete: () => void;
+}) {
+  if (renaming) {
+    return (
+      <form
+        className="space-y-1.5 rounded-md px-2 py-1.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmitRename();
+        }}
+      >
+        <input
+          autoFocus
+          value={renameName}
+          onChange={(event) => onRenameNameChange(event.target.value)}
+          className="h-7 w-full rounded-md bg-foreground/[0.04] px-2 text-xs text-foreground outline-none focus:bg-foreground/[0.06] focus:ring-1 focus:ring-primary/30"
+        />
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            onClick={onCancelRename}
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!renameName.trim()}
+            className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+          >
+            Rename
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "group/view flex items-start gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-foreground/[0.05]",
+        active && "bg-foreground/[0.05]",
+      )}
+    >
+      <button type="button" onClick={onApply} className="min-w-0 flex-1 text-left">
+        <span className="flex items-center gap-2">
+          <Bookmark className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+          <span className="min-w-0 flex-1 truncate font-medium text-foreground/90">
+            {group.name}
+          </span>
+          <Check className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-0")} />
+        </span>
+        <span className="mt-0.5 block truncate pl-5 text-[11px] text-muted-foreground/75">
+          {summarizeSnapshot(group.filters)}
+        </span>
+      </button>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/view:opacity-100 group-focus-within/view:opacity-100">
+        <TooltipFor label="Update from current filters">
+          <button
+            type="button"
+            onClick={onUpdate}
+            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground"
+          >
+            <Save className="size-3" />
+          </button>
+        </TooltipFor>
+        <TooltipFor label="Rename view">
+          <button
+            type="button"
+            onClick={onRename}
+            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground"
+          >
+            <PenLine className="size-3" />
+          </button>
+        </TooltipFor>
+        <TooltipFor label="Delete view">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-3" />
+          </button>
+        </TooltipFor>
+      </div>
+    </div>
+  );
+}
+
 function DisplayMenu({
   sort,
   onSort,
@@ -1473,4 +1761,61 @@ function groupPrs(prs: PullSummary[], by: GroupBy): { label: string; items: Pull
   return Array.from(map.entries())
     .sort((a, b) => b[1].length - a[1].length)
     .map(([label, items]) => ({ label, items }));
+}
+
+function filterSnapshotsEqual(a: PrFilterSnapshot, b: PrFilterSnapshot): boolean {
+  return (
+    a.scope === b.scope &&
+    a.query === b.query &&
+    a.sort === b.sort &&
+    a.groupBy === b.groupBy &&
+    a.ciFailing === b.ciFailing &&
+    sameStringSet(a.repos, b.repos) &&
+    sameStringSet(a.authors, b.authors) &&
+    sameStringSet(a.states, b.states) &&
+    sameLabelStates(a.labelStates, b.labelStates)
+  );
+}
+
+function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const bs = new Set(b);
+  return a.every((value) => bs.has(value));
+}
+
+function sameLabelStates(
+  a: Record<string, "include" | "exclude">,
+  b: Record<string, "include" | "exclude">,
+): boolean {
+  const aEntries = Object.entries(a);
+  if (aEntries.length !== Object.keys(b).length) return false;
+  return aEntries.every(([name, state]) => b[name] === state);
+}
+
+function suggestViewName(snapshot: PrFilterSnapshot): string {
+  if (snapshot.ciFailing) return "Failing CI";
+  if (snapshot.repos.length === 1) return `${snapshot.repos[0]} queue`;
+  if (snapshot.authors.length === 1) return `${snapshot.authors[0]}'s PRs`;
+  if (snapshot.states.length === 1) return `${STATE_META[snapshot.states[0]].label} PRs`;
+  if (snapshot.query.trim()) return `Search: ${snapshot.query.trim()}`;
+  return scopeLabel(snapshot.scope);
+}
+
+function summarizeSnapshot(snapshot: PrFilterSnapshot): string {
+  const parts = [scopeLabel(snapshot.scope)];
+  if (snapshot.query.trim()) parts.push(`"${snapshot.query.trim()}"`);
+  if (snapshot.states.length > 0) {
+    parts.push(snapshot.states.map((state) => STATE_META[state].label).join(", "));
+  }
+  if (snapshot.repos.length > 0) parts.push(`${snapshot.repos.length} repo`);
+  if (snapshot.authors.length > 0) parts.push(`${snapshot.authors.length} author`);
+  const labelCount = Object.keys(snapshot.labelStates).length;
+  if (labelCount > 0) parts.push(`${labelCount} label`);
+  if (snapshot.ciFailing) parts.push("CI failing");
+  if (snapshot.groupBy !== "none") parts.push(`grouped by ${snapshot.groupBy}`);
+  return parts.join(" · ");
+}
+
+function scopeLabel(scope: PrScope): string {
+  return SCOPE_OPTIONS.find((option) => option.value === scope)?.label ?? "Pull requests";
 }

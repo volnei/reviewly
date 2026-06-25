@@ -12,12 +12,15 @@ import {
 } from "@/components/ui/command";
 import type { PullSummary } from "@/lib/tauri";
 import { parsePullUrl, parseRepoUrl } from "@/lib/tauri";
+import type { PrFilterSnapshot, PrScope } from "@/stores/pr-filters";
+import { usePrFilters } from "@/stores/pr-filters";
 import { useUi } from "@/stores/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
   Bell,
+  Bookmark,
   Bot,
   CornerDownLeft,
   FolderGit2,
@@ -44,6 +47,8 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [input, setInput] = useState("");
+  const filterGroups = usePrFilters((s) => s.filterGroups);
+  const applyFilterGroup = usePrFilters((s) => s.applyFilterGroup);
 
   const close = () => {
     setOpen(false);
@@ -108,6 +113,12 @@ export function CommandPalette() {
     close();
   };
 
+  const goFilterGroup = (id: string) => {
+    applyFilterGroup(id);
+    navigate({ to: "/prs" });
+    close();
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
       <CommandInput
@@ -158,6 +169,31 @@ export function CommandPalette() {
                   </span>
                 </CommandItem>
               ))}
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
+
+        {filterGroups.length > 0 && (
+          <>
+            <CommandGroup>
+              <Heading>Saved views</Heading>
+              {filterGroups.map((group) => {
+                const summary = summarizeFilterSnapshot(group.filters);
+                return (
+                  <CommandItem
+                    key={group.id}
+                    value={`${group.name} ${summary}`}
+                    onSelect={() => goFilterGroup(group.id)}
+                  >
+                    <Bookmark />
+                    <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                    <span className="ml-2 hidden min-w-0 max-w-72 truncate text-xs text-muted-foreground/70 sm:block">
+                      {summary}
+                    </span>
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
             <CommandSeparator />
           </>
@@ -226,6 +262,27 @@ export function CommandPalette() {
       </CommandFooter>
     </CommandDialog>
   );
+}
+
+function summarizeFilterSnapshot(snapshot: PrFilterSnapshot): string {
+  const parts = [scopeLabel(snapshot.scope)];
+  if (snapshot.query.trim()) parts.push(snapshot.query.trim());
+  if (snapshot.states.length > 0) parts.push(snapshot.states.join(", "));
+  if (snapshot.repos.length > 0) parts.push(snapshot.repos.join(" "));
+  if (snapshot.authors.length > 0) parts.push(snapshot.authors.join(" "));
+  const labels = Object.entries(snapshot.labelStates).map(([name, state]) =>
+    state === "exclude" ? `-${name}` : name,
+  );
+  if (labels.length > 0) parts.push(labels.join(" "));
+  if (snapshot.ciFailing) parts.push("CI failing");
+  if (snapshot.groupBy !== "none") parts.push(`grouped by ${snapshot.groupBy}`);
+  return parts.join(" · ");
+}
+
+function scopeLabel(scope: PrScope): string {
+  if (scope === "created") return "Created";
+  if (scope === "involved") return "Involved";
+  return "Review requested";
 }
 
 function Heading({ children }: { children: React.ReactNode }) {

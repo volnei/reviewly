@@ -8,6 +8,26 @@ export type SortKey = "updated-desc" | "updated-asc" | "created-desc" | "created
 export type LabelState = "include" | "exclude";
 export type PrScope = "review-requested" | "created" | "involved";
 
+export interface PrFilterSnapshot {
+  scope: PrScope;
+  query: string;
+  sort: SortKey;
+  groupBy: GroupBy;
+  labelStates: Record<string, LabelState>;
+  repos: string[];
+  authors: string[];
+  states: PrState[];
+  ciFailing: boolean;
+}
+
+export interface PrFilterGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  filters: PrFilterSnapshot;
+}
+
 interface State {
   /** Which PRs the list fetches: awaiting your review, authored, or involved. */
   scope: PrScope;
@@ -21,6 +41,7 @@ interface State {
   authors: string[];
   states: PrState[];
   ciFailing: boolean;
+  filterGroups: PrFilterGroup[];
   /** Last list scrollTop, keyed by list scope (watchedKey or scope) so each queue restores its own position. */
   scrollPos: Record<string, number>;
 
@@ -37,10 +58,28 @@ interface State {
   toggleState: (s: PrState) => void;
   clearStates: () => void;
   toggleCiFailing: () => void;
+  saveFilterGroup: (name: string, filters: PrFilterSnapshot) => void;
+  applyFilterGroup: (id: string) => void;
+  renameFilterGroup: (id: string, name: string) => void;
+  updateFilterGroup: (id: string, filters: PrFilterSnapshot) => void;
+  deleteFilterGroup: (id: string) => void;
 }
 
 const toggle = <T>(arr: T[], v: T): T[] =>
   arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+
+const makeId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+const cloneSnapshot = (filters: PrFilterSnapshot): PrFilterSnapshot => ({
+  ...filters,
+  labelStates: { ...filters.labelStates },
+  repos: [...filters.repos],
+  authors: [...filters.authors],
+  states: [...filters.states],
+});
 
 export const usePrFilters = create<State>()(
   persist(
@@ -55,6 +94,7 @@ export const usePrFilters = create<State>()(
       authors: [],
       states: [],
       ciFailing: false,
+      filterGroups: [],
       scrollPos: {},
 
       setQuery: (query) => set({ query }),
@@ -76,6 +116,42 @@ export const usePrFilters = create<State>()(
       toggleState: (s) => set({ states: toggle(get().states, s) }),
       clearStates: () => set({ states: [] }),
       toggleCiFailing: () => set({ ciFailing: !get().ciFailing }),
+      saveFilterGroup: (name, filters) => {
+        const now = Date.now();
+        set({
+          filterGroups: [
+            ...get().filterGroups,
+            {
+              id: makeId(),
+              name,
+              createdAt: now,
+              updatedAt: now,
+              filters: cloneSnapshot(filters),
+            },
+          ],
+        });
+      },
+      applyFilterGroup: (id) => {
+        const group = get().filterGroups.find((g) => g.id === id);
+        if (!group) return;
+        set(cloneSnapshot(group.filters));
+      },
+      renameFilterGroup: (id, name) =>
+        set({
+          filterGroups: get().filterGroups.map((group) =>
+            group.id === id ? { ...group, name, updatedAt: Date.now() } : group,
+          ),
+        }),
+      updateFilterGroup: (id, filters) =>
+        set({
+          filterGroups: get().filterGroups.map((group) =>
+            group.id === id
+              ? { ...group, filters: cloneSnapshot(filters), updatedAt: Date.now() }
+              : group,
+          ),
+        }),
+      deleteFilterGroup: (id) =>
+        set({ filterGroups: get().filterGroups.filter((group) => group.id !== id) }),
     }),
     { name: "reviewly.pr-filters", storage: sqlStorage<State>() },
   ),
