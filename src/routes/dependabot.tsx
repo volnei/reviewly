@@ -297,12 +297,12 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
               <span className="font-mono text-foreground">{fix}</span>, run your build &amp; tests,
               push a branch, and open a DRAFT PR for you to review.
             </AlertDialogDescription>
+            {local && (
+              <code className="mt-1 block truncate rounded-md bg-foreground/[0.04] px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                {local.path}
+              </code>
+            )}
           </AlertDialogHeader>
-          {local && (
-            <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
-              {local.path}
-            </p>
-          )}
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="outline" size="sm" />}>
               Cancel

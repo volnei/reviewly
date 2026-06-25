@@ -439,12 +439,12 @@ export function PrActions({ owner, repo, number, pr, nodeId }: Props) {
               <span className="font-mono text-foreground">{pr.base.ref}</span>, resolves every
               conflict, runs your build &amp; tests, commits the merge, and pushes to the PR branch.
             </AlertDialogDescription>
+            {localRepo && (
+              <code className="mt-1 block truncate rounded-md bg-foreground/[0.04] px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                {localRepo.path}
+              </code>
+            )}
           </AlertDialogHeader>
-          {localRepo && (
-            <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
-              {localRepo.path}
-            </p>
-          )}
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="outline" size="sm" />}>
               Cancel

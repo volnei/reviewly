@@ -513,34 +513,35 @@ function Tour({
   return (
     <div className="flex h-full flex-col">
       {/* tour controller */}
-      <div className="flex items-center gap-3 border-b border-hairline px-5 py-2.5">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <Sparkles className="size-3.5 shrink-0 text-primary" />
-          <span className="shrink-0">Guided tour</span>
-          {plan.summary && (
-            <>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="truncate text-foreground/80">{plan.summary}</span>
-            </>
-          )}
+      <div className="border-b border-hairline px-5 py-2.5">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Sparkles className="size-3.5 shrink-0 text-primary" />
+            <span>Guided tour</span>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <span className="mr-1 text-xs tabular-nums text-muted-foreground">
+              {Math.max(1, pos + 1)} / {visible.length}
+            </span>
+            <Button size="icon-sm" variant="ghost" disabled={atFirst} onClick={() => move(-1)}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button size="icon-sm" variant="ghost" disabled={atLast} onClick={() => move(1)}>
+              <ChevronRight className="size-4" />
+            </Button>
+            <IconButton
+              label="Regenerate tour"
+              icon={RefreshCw}
+              loading={regenerating}
+              onClick={onRegenerate}
+            />
+          </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <span className="mr-1 text-xs tabular-nums text-muted-foreground">
-            {Math.max(1, pos + 1)} / {visible.length}
-          </span>
-          <Button size="icon-sm" variant="ghost" disabled={atFirst} onClick={() => move(-1)}>
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button size="icon-sm" variant="ghost" disabled={atLast} onClick={() => move(1)}>
-            <ChevronRight className="size-4" />
-          </Button>
-          <IconButton
-            label="Regenerate tour"
-            icon={RefreshCw}
-            loading={regenerating}
-            onClick={onRegenerate}
-          />
-        </div>
+        {plan.summary && (
+          <p className="mt-1.5 text-xs leading-relaxed text-foreground/80 line-clamp-2">
+            {plan.summary}
+          </p>
+        )}
       </div>
 
       {/* staleness / provenance banner */}
