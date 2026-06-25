@@ -39,8 +39,8 @@ import { UserAvatar } from "@/components/user-avatar";
 import { UserHoverCard } from "@/components/user-hover-card";
 import type { AiAction } from "@/lib/ai-actions";
 import { buildReviewContext } from "@/lib/ai/context";
-import { celebrate } from "@/lib/confetti";
 import { relativeTime } from "@/lib/format";
+import { celebrate } from "@/lib/kite-release";
 import type {
   ActionsJob,
   ActionsStep,
