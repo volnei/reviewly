@@ -6,7 +6,7 @@ import { GUIDED_SYSTEM } from "@/lib/ai/prompts";
 import { useAiAvailable } from "@/lib/ai/use-ai-available";
 import { parsePatch } from "@/lib/diff";
 import { relativeTime } from "@/lib/format";
-import type { GuidedStep, StepKind } from "@/lib/guided";
+import type { GuidedStep, GuidedVerdict, StepKind } from "@/lib/guided";
 import { detectLanguage, highlightLine } from "@/lib/lang";
 import type { DraftComment, PullFile } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
@@ -16,6 +16,7 @@ import { type GuidedEntry, useGuided } from "@/stores/guided";
 import { useGuidedGen } from "@/stores/guided-gen";
 import { useLocalRepos } from "@/stores/local-repos";
 import { useReviewPrefs } from "@/stores/review-prefs";
+import { type ReviewEvent, useReviewVerdict } from "@/stores/review-verdict";
 import {
   AlertTriangle,
   ArrowRight,
@@ -25,6 +26,7 @@ import {
   Compass,
   FileCode,
   HelpCircle,
+  MessageSquare,
   RefreshCw,
   RotateCcw,
   Send,
@@ -69,6 +71,31 @@ const KIND: Record<
   },
   question: { icon: HelpCircle, text: "text-info", dot: "bg-info", label: "Question" },
   praise: { icon: ThumbsUp, text: "text-success", dot: "bg-success", label: "Nice" },
+};
+
+/** The tour's suggested verdict → its chip + the review event it seeds. */
+const VERDICT_META: Record<
+  GuidedVerdict,
+  { label: string; event: ReviewEvent; icon: ComponentType<{ className?: string }>; chip: string }
+> = {
+  approve: {
+    label: "Suggests approve",
+    event: "APPROVE",
+    icon: ThumbsUp,
+    chip: "text-success bg-success/12",
+  },
+  request_changes: {
+    label: "Suggests changes",
+    event: "REQUEST_CHANGES",
+    icon: AlertTriangle,
+    chip: "text-warning bg-warning/12",
+  },
+  comment: {
+    label: "Suggests comment",
+    event: "COMMENT",
+    icon: MessageSquare,
+    chip: "text-info bg-info/12",
+  },
 };
 
 /** Seconds elapsed while `running` is true; resets to 0 when it flips off. */
@@ -448,6 +475,41 @@ function Tour({
     setPosted((s) => new Set(s).add(idx));
   }
 
+  const setLastVerdict = useReviewVerdict((s) => s.setLast);
+  const verdict = plan.verdict ? VERDICT_META[plan.verdict] : null;
+  const suggestionIdxs = useMemo(
+    () => visible.filter((i) => !!plan.steps[i].suggestion),
+    [visible, plan.steps],
+  );
+
+  const jumpTo = useCallback((i: number) => {
+    stepRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(i);
+  }, []);
+
+  // Promote every (undismissed) suggested comment into the pending review at
+  // once, and seed the suggested verdict so the submit popover opens on it.
+  function draftAsReview() {
+    const fresh = suggestionIdxs.filter((i) => !posted.has(i));
+    for (const i of fresh) {
+      const s = plan.steps[i];
+      if (s.suggestion) addComment(s, i, s.suggestion);
+    }
+    if (plan.verdict) setLastVerdict(VERDICT_META[plan.verdict].event);
+    toast.success(
+      fresh.length > 0
+        ? `${fresh.length} comment${fresh.length === 1 ? "" : "s"} added to your review`
+        : "All suggestions are already in your review",
+      {
+        description: verdict
+          ? `${verdict.label.replace("Suggests", "Suggested verdict:")} — open Submit to finish`
+          : "Open Submit to finish",
+      },
+    );
+  }
+
+  const lastPos = visible.length - 1;
+
   return (
     <div className="flex h-full flex-col">
       {/* tour controller */}
@@ -501,10 +563,33 @@ function Tour({
           </Button>
         </div>
       ) : (
-        <p className="px-5 pt-2 text-xs text-muted-foreground/70">
-          Toured by {entry.provider === "codex" ? "Codex" : "Claude"} ·{" "}
-          {relativeTime(new Date(entry.generatedAt).toISOString())}
-        </p>
+        <div className="flex items-center gap-2 px-5 pt-2">
+          <p className="min-w-0 truncate text-xs text-muted-foreground/70">
+            Toured by {entry.provider === "codex" ? "Codex" : "Claude"} ·{" "}
+            {relativeTime(new Date(entry.generatedAt).toISOString())}
+          </p>
+          {(verdict || suggestionIdxs.length > 0) && (
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {verdict && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+                    verdict.chip,
+                  )}
+                >
+                  <verdict.icon className="size-3" />
+                  {verdict.label}
+                </span>
+              )}
+              {suggestionIdxs.length > 0 && (
+                <Button size="xs" onClick={draftAsReview}>
+                  <Sparkles className="size-3" />
+                  Draft as review
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* focus chips — narrow the tour to one kind for a fast risk pass */}
@@ -553,63 +638,163 @@ function Tour({
         />
       </div>
 
-      {/* No top padding here: container padding insets the sticky-stop, leaving
-          a gap above the pinned header. The spacer below scrolls away cleanly. */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-        <div aria-hidden className="h-4" />
-        {plan.tour && (
-          <div className="mb-5 rounded-lg bg-card/40 px-3.5 py-3">
-            <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Compass className="size-3.5 text-primary" />
-              How to read this PR
-            </p>
-            <MarkdownBody className="text-xs">{plan.tour}</MarkdownBody>
+      {/* Timeline spine (the journey at a glance) + the reading pane (the
+          focused stop). The spine reflects progress: filled up to the active
+          node, which glows in its kind colour. */}
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-hairline px-3 py-4 lg:block">
+          <p className="mb-2 px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
+            The tour
+          </p>
+          <div className="flex flex-col">
+            {visible.map((i, p) => {
+              const step = plan.steps[i];
+              const K = KIND[step.kind];
+              const done = p < pos;
+              const isActive = p === pos;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => jumpTo(i)}
+                  className={cn(
+                    "group flex w-full gap-2.5 rounded-md pr-2 text-left transition-colors hover:bg-foreground/[0.03]",
+                    isActive && "bg-foreground/[0.05]",
+                  )}
+                >
+                  <span className="relative flex w-4 shrink-0 flex-col items-center self-stretch">
+                    <span
+                      className={cn(
+                        "w-px flex-1",
+                        p === 0
+                          ? "bg-transparent"
+                          : p <= pos
+                            ? "bg-primary/55"
+                            : "bg-foreground/12",
+                      )}
+                    />
+                    <span className="relative flex size-3.5 items-center justify-center">
+                      {isActive && (
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "absolute inline-flex size-full rounded-full opacity-40 motion-safe:animate-ping",
+                            K.dot,
+                          )}
+                        />
+                      )}
+                      <span
+                        className={cn(
+                          "relative flex size-3.5 items-center justify-center rounded-full",
+                          done && "bg-primary text-background",
+                          isActive && cn(K.dot, "ring-4 ring-foreground/5"),
+                          !done &&
+                            !isActive &&
+                            cn("border-[1.5px] border-current bg-background", K.text),
+                        )}
+                      >
+                        {done && <Check className="size-2.5" strokeWidth={3} />}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "w-px flex-1",
+                        p === lastPos
+                          ? "bg-transparent"
+                          : p < pos
+                            ? "bg-primary/55"
+                            : "bg-foreground/12",
+                      )}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1 py-2">
+                    {isActive && (
+                      <span
+                        className={cn(
+                          "mb-0.5 block text-[10px] font-medium uppercase leading-none tracking-wide",
+                          K.text,
+                        )}
+                      >
+                        {K.label}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        "block truncate text-xs leading-snug",
+                        isActive
+                          ? "font-medium text-foreground"
+                          : done
+                            ? "text-muted-foreground"
+                            : "text-muted-foreground/55",
+                      )}
+                    >
+                      {step.title}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        )}
+        </aside>
 
-        {plan.steps.map((step, i) =>
-          visible.includes(i) ? (
-            <Step
-              key={i}
-              setRef={(el) => {
-                stepRefs.current[i] = el;
-              }}
-              step={step}
-              index={i}
-              files={files}
-              preferPost={preferPost}
-              posted={posted.has(i)}
-              onAdd={(body) => addComment(step, i, body)}
-              onPost={
-                onPostComment
-                  ? (body) => onPostComment({ path: step.path, line: step.line, body })
-                  : undefined
-              }
-              onDismiss={() => dismiss(prKey, i)}
-              onOpenFile={onOpenFile}
-            />
-          ) : null,
-        )}
+        {/* No top padding here: container padding insets the sticky-stop, leaving
+            a gap above the pinned header. The spacer below scrolls away cleanly. */}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+          <div aria-hidden className="h-4" />
+          {plan.tour && (
+            <div className="mb-5 rounded-lg bg-card/40 px-3.5 py-3">
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Compass className="size-3.5 text-primary" />
+                How to read this PR
+              </p>
+              <MarkdownBody className="text-xs">{plan.tour}</MarkdownBody>
+            </div>
+          )}
 
-        <div className="flex flex-col items-center gap-1.5 py-6">
-          {atLast ? (
-            <p className="text-xs text-muted-foreground">
-              {filter
-                ? `That's every ${KIND[filter].label.toLowerCase()} stop.`
-                : "That's the whole tour — happy reviewing."}
-            </p>
-          ) : (
-            <Button size="xs" variant="ghost" onClick={() => move(1)}>
-              Next stop
-              <ArrowRight className="size-3" />
-            </Button>
+          {plan.steps.map((step, i) =>
+            visible.includes(i) ? (
+              <Step
+                key={i}
+                setRef={(el) => {
+                  stepRefs.current[i] = el;
+                }}
+                step={step}
+                index={i}
+                files={files}
+                preferPost={preferPost}
+                posted={posted.has(i)}
+                onAdd={(body) => addComment(step, i, body)}
+                onPost={
+                  onPostComment
+                    ? (body) => onPostComment({ path: step.path, line: step.line, body })
+                    : undefined
+                }
+                onDismiss={() => dismiss(prKey, i)}
+                onOpenFile={onOpenFile}
+              />
+            ) : null,
           )}
-          {dismissedSet.size > 0 && (
-            <Button size="xs" variant="ghost" onClick={() => restoreDismissed(prKey)}>
-              <RotateCcw className="size-3" />
-              Restore {dismissedSet.size} dismissed
-            </Button>
-          )}
+
+          <div className="flex flex-col items-center gap-1.5 py-6">
+            {atLast ? (
+              <p className="text-xs text-muted-foreground">
+                {filter
+                  ? `That's every ${KIND[filter].label.toLowerCase()} stop.`
+                  : "That's the whole tour — happy reviewing."}
+              </p>
+            ) : (
+              <Button size="xs" variant="ghost" onClick={() => move(1)}>
+                Next stop
+                <ArrowRight className="size-3" />
+              </Button>
+            )}
+            {dismissedSet.size > 0 && (
+              <Button size="xs" variant="ghost" onClick={() => restoreDismissed(prKey)}>
+                <RotateCcw className="size-3" />
+                Restore {dismissedSet.size} dismissed
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -663,7 +848,7 @@ const Step = ({
   }
 
   return (
-    <section ref={setRef} className="scroll-mt-2">
+    <section ref={setRef} className="scroll-mt-2 animate-tour-fade-in">
       {/* sticky header — the current stop stays pinned while you read it.
           Opaque so the diff scrolls cleanly *under* it (no bleed-through). The
           pinning itself marks "where you are", so the row stays neutral. */}

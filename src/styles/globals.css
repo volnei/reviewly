@@ -189,6 +189,18 @@
   --animate-caret-blink: 1s ease-out infinite caret-blink;
   /* Guided-tour intro: a scan line sweeps the emblem ("reading the diff"). */
   --animate-tile-scan: tile-scan 1.9s ease-in-out infinite;
+  /* Guided-tour stops fade in as the walkthrough renders. Opacity-only so it
+     never creates a transform containing block (which would break the sticky
+     stop headers). */
+  --animate-tour-fade-in: tour-fade-in 320ms ease-out both;
+  @keyframes tour-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   @keyframes skeleton {
     to {
       background-position: -200% 0;

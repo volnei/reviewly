@@ -16,12 +16,23 @@ export interface GuidedStep {
   suggestion?: string;
 }
 
+/** The tour's overall recommendation, surfaced as a suggested review verdict. */
+export type GuidedVerdict = "approve" | "request_changes" | "comment";
+
 export interface GuidedPlan {
   /** One sentence: what this PR does. */
   summary: string;
   /** The reading strategy — where to start and why this order (markdown). */
   tour: string;
+  /** Optional overall recommendation after the walkthrough. */
+  verdict?: GuidedVerdict;
   steps: GuidedStep[];
+}
+
+/** Coerce a raw verdict string to a known value, or undefined. */
+function toVerdict(v: unknown): GuidedVerdict | undefined {
+  const s = typeof v === "string" ? v.toLowerCase().trim() : "";
+  return s === "approve" || s === "request_changes" || s === "comment" ? s : undefined;
 }
 
 const KINDS = new Set<StepKind>(["orient", "concern", "question", "praise"]);
@@ -127,6 +138,7 @@ export function parseGuided(content: string): GuidedPlan | null {
   // Fast path: a well-formed JSON object.
   let summary = "";
   let tour = "";
+  let verdict: GuidedVerdict | undefined;
   let rawSteps: unknown[] = [];
   const obj = tryJson(content.slice(start, end + 1));
   if (typeof obj === "object" && obj !== null) {
@@ -134,6 +146,7 @@ export function parseGuided(content: string): GuidedPlan | null {
     rawSteps = Array.isArray(r.steps) ? r.steps : Array.isArray(r.points) ? r.points : [];
     summary = typeof r.summary === "string" ? r.summary : "";
     tour = typeof r.tour === "string" ? r.tour : "";
+    verdict = toVerdict(r.verdict);
   }
 
   // Salvage path: parse failed, or the object was valid but carried no steps
@@ -145,6 +158,7 @@ export function parseGuided(content: string): GuidedPlan | null {
     if (!summary) summary = recovered.summary;
     if (!tour) tour = recovered.tour;
   }
+  if (!verdict) verdict = toVerdict(firstString(content, "verdict"));
 
   const steps: GuidedStep[] = [];
   for (const p of rawSteps) {
@@ -152,5 +166,5 @@ export function parseGuided(content: string): GuidedPlan | null {
     if (s) steps.push(s);
   }
   if (steps.length === 0) return null;
-  return { summary, tour, steps };
+  return { summary, tour, verdict, steps };
 }
