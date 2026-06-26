@@ -31,7 +31,17 @@ import { useDependabotRepo } from "@/stores/dependabot";
 import { useDependabotGen } from "@/stores/dependabot-gen";
 import { useLocalRepos } from "@/stores/local-repos";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Check, ExternalLink, Loader2, RefreshCw, ShieldAlert, ShieldOff } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  Bot,
+  Check,
+  ExternalLink,
+  FileCode,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  ShieldOff,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -202,7 +212,7 @@ export function DependabotPage() {
             description={`${repo} has no open Dependabot security alerts.`}
           />
         ) : (
-          <ul className="space-y-2 px-3 py-3">
+          <ul className="space-y-2.5 px-4 py-4">
             {list.map((a) => (
               <AlertRow key={a.number} alert={a} repo={repo} />
             ))}
@@ -221,8 +231,29 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
   const fix = alert.security_vulnerability?.first_patched_version?.identifier;
   const manifest = alert.dependency.manifest_path;
 
+  // Severity accent rail colour (matches the badge tone).
+  const sevBar =
+    sev === "critical" || sev === "high"
+      ? "bg-destructive"
+      : sev === "medium" || sev === "moderate"
+        ? "bg-warning"
+        : "bg-foreground/20";
+
   // The AI fix runs in your local clone of this repo, if you have one.
   const local = useLocalRepos((s) => s.repos.find((r) => `${r.owner}/${r.repo}` === repo));
+
+  // Open the fixed PR *inside Reviewly* (not GitHub) — parse its number from the
+  // url and route to the in-app PR view; fall back to external if it's unusual.
+  const navigate = useNavigate();
+  function openPr(url: string) {
+    const [o, r] = repo.split("/");
+    const number = url.match(/\/pull\/(\d+)/)?.[1];
+    if (o && r && number) {
+      navigate({ to: "/prs/$owner/$repo/$number", params: { owner: o, repo: r, number } });
+    } else {
+      safeOpenUrl(url);
+    }
+  }
 
   // The fix runs in a Rust background task, keyed by alert — so its state and
   // result survive navigating away / refreshing (handled by `dependabot:done`).
@@ -276,16 +307,58 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
   }
 
   return (
-    <li className="group rounded-lg border border-hairline p-3 transition-colors hover:border-border hover:bg-foreground/[0.02]">
-      <div className="flex items-center gap-2 text-xs">
-        <span className={cn("rounded-md px-1.5 py-0.5 font-medium capitalize", severityTone(sev))}>
-          {sev}
-        </span>
-        <span className="font-mono text-foreground">{pkg}</span>
-        {ecosystem && <span className="text-muted-foreground">{ecosystem}</span>}
-        <div className="ml-auto flex items-center gap-1.5">
-          {/* Persistent status — stays visible (even without hovering) so a fix
-              you kicked off and walked away from still reports back here. */}
+    <li className="group relative overflow-hidden rounded-xl border border-hairline bg-card/40 px-4 py-3.5 transition-colors hover:border-border hover:bg-card/70">
+      {/* severity accent rail */}
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", sevBar)} />
+
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              className={cn(
+                "rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                severityTone(sev),
+              )}
+            >
+              {sev}
+            </span>
+            <span className="truncate font-mono text-sm font-medium text-foreground">{pkg}</span>
+            {ecosystem && (
+              <span className="rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
+                {ecosystem}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/85">
+            {alert.security_advisory.summary}
+          </p>
+
+          {(manifest || range || fix) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+              {manifest && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-0.5 font-mono text-muted-foreground">
+                  <FileCode className="size-3" />
+                  {manifest}
+                </span>
+              )}
+              {range && (
+                <span className="rounded-md bg-foreground/[0.05] px-1.5 py-0.5 font-mono text-muted-foreground">
+                  {range}
+                </span>
+              )}
+              {fix && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-1.5 py-0.5 font-medium text-success">
+                  <Check className="size-3" />
+                  fixed in {fix}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* right: persistent status + hover actions */}
+        <div className="flex shrink-0 items-center gap-2.5">
           {fixing && (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Loader2 className="size-3 animate-spin" />
@@ -293,15 +366,14 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
             </span>
           )}
           {!fixing && prUrl && (
-            <TooltipFor label="Open the draft PR on GitHub">
+            <TooltipFor label="Open the draft PR in Reviewly">
               <button
                 type="button"
-                onClick={() => safeOpenUrl(prUrl)}
-                className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-medium text-success transition-opacity hover:underline hover:opacity-90"
+                onClick={() => openPr(prUrl)}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-success transition-opacity hover:underline hover:opacity-90"
               >
-                <Check className="size-3" />
+                <Check className="size-3.5" />
                 Draft PR opened
-                <ExternalLink className="size-3" />
               </button>
             </TooltipFor>
           )}
@@ -315,17 +387,18 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
                     duration: 12_000,
                   })
                 }
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive transition-opacity hover:opacity-80"
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-destructive transition-opacity hover:opacity-80"
               >
-                <ShieldAlert className="size-3" />
+                <ShieldAlert className="size-3.5" />
                 Fix failed
               </button>
             </TooltipFor>
           )}
 
-          {/* Actions — appear on hover/focus. */}
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            {fix && !fixing && (
+          {/* Actions — appear on hover/focus. The primary CTA only when idle; a
+              quiet "Run again" once a fix has produced a result. */}
+          <div className="flex items-center gap-2.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {fix && !fixing && !prUrl && !fixError && (
               <TooltipFor
                 label={
                   local
@@ -335,29 +408,35 @@ function AlertRow({ alert, repo }: { alert: DependabotAlert; repo: string }) {
               >
                 <Button size="xs" variant="ghost" onClick={runAiFix}>
                   <Bot className="size-3.5" />
-                  {prUrl || fixError ? "Run again" : "Fix with AI"}
+                  Fix with AI
                 </Button>
               </TooltipFor>
             )}
-            <button
-              type="button"
-              onClick={() => safeOpenUrl(alert.html_url)}
-              className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ExternalLink className="size-3" />
-              Open
-            </button>
+            {fix && !fixing && (prUrl || fixError) && (
+              <TooltipFor label="Run the AI fix again">
+                <button
+                  type="button"
+                  onClick={runAiFix}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <RefreshCw className="size-3" />
+                  Run again
+                </button>
+              </TooltipFor>
+            )}
+            <TooltipFor label="Open the alert on GitHub">
+              <button
+                type="button"
+                onClick={() => safeOpenUrl(alert.html_url)}
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ExternalLink className="size-3" />
+                Open
+              </button>
+            </TooltipFor>
           </div>
         </div>
       </div>
-      <p className="mt-1 text-xs text-foreground/90">{alert.security_advisory.summary}</p>
-      {(range || fix || alert.dependency.manifest_path) && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {alert.dependency.manifest_path}
-          {range && ` · ${range}`}
-          {fix && ` · fixed in ${fix}`}
-        </p>
-      )}
 
       <AlertDialog open={confirmFix} onOpenChange={setConfirmFix}>
         <AlertDialogPopup>
