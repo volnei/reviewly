@@ -928,6 +928,13 @@ export function PRDetailPage() {
                     label: `${owner}/${repo}#${number}`,
                     hint: d.title,
                     path: `/prs/${owner}/${repo}/${number}`,
+                    prState: d.merged
+                      ? ("merged" as const)
+                      : d.state === "closed"
+                        ? ("closed" as const)
+                        : d.draft
+                          ? ("draft" as const)
+                          : ("open" as const),
                   };
                   pinned ? unpin("pr", item.id) : pin(item);
                 }}
