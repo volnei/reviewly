@@ -207,16 +207,29 @@ jobs:
               # retries), and only once it's safely up, delete the old asset and
               # rename the temp into place. A PATCH rename is reliable; the old
               # manifest is removed only after the new one exists.
+              # Upload with curl, NOT `gh release upload` — gh deterministically
+              # fails here with "HTTP 400 Bad Content-Length" (broke v0.1.4),
+              # whereas curl sets Content-Length straight from the file. POST
+              # under a fresh TEMP name so a failed attempt never touches the
+              # live latest.json, clearing any leftover temp first so a retry
+              # can't 422 on "already_exists".
               up=0
               for attempt in 1 2 3 4 5; do
-                if gh release upload "$TAG" --repo "$REPO" --clobber "latest.json#latest.json.new"; then
-                  up=1; break
-                fi
-                echo "latest.json.new upload attempt $attempt failed; retrying in $((attempt * 5))s"
+                tmpid=$(gh api "repos/$REPO/releases/$rid/assets" \
+                  --jq '.[] | select(.name=="latest.json.new") | .id' 2>/dev/null || true)
+                [ -n "$tmpid" ] && gh api -X DELETE "repos/$REPO/releases/assets/$tmpid" >/dev/null 2>&1 || true
+                code=$(curl -sS -o /tmp/upload-resp.json -w '%{http_code}' -X POST \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  --data-binary @latest.json \
+                  "https://uploads.github.com/repos/$REPO/releases/$rid/assets?name=latest.json.new" || true)
+                if [ "$code" = "201" ]; then up=1; break; fi
+                echo "latest.json.new upload attempt $attempt failed (HTTP $code); retrying in $((attempt * 5))s"
                 sleep $((attempt * 5))
               done
               if [ "$up" != 1 ]; then
                 echo "::error::could not upload the updated latest.json after 5 attempts"
+                cat /tmp/upload-resp.json 2>/dev/null || true
                 exit 1
               fi
               oldid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json") | .id')
