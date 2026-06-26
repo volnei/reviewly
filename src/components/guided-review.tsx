@@ -66,7 +66,12 @@ const KIND: Record<
     label: string;
   }
 > = {
-  orient: { icon: Compass, text: "text-primary", dot: "bg-primary", label: "Orientation" },
+  orient: {
+    icon: Compass,
+    text: "text-muted-foreground",
+    dot: "bg-foreground/55",
+    label: "Orientation",
+  },
   concern: {
     icon: AlertTriangle,
     text: "text-warning",
@@ -697,7 +702,7 @@ function Tour({
         >
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Sparkles className="size-3.5 shrink-0 text-primary" />
+              <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />
               <span>Guided tour</span>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -844,7 +849,7 @@ function Tour({
                         p === 0
                           ? "bg-transparent"
                           : p <= pos
-                            ? "bg-primary/55"
+                            ? "bg-foreground/35"
                             : "bg-foreground/12",
                       )}
                     />
@@ -852,7 +857,7 @@ function Tour({
                       {isActive && (
                         <span
                           aria-hidden
-                          className="absolute inline-flex size-full rounded-full bg-primary opacity-40 motion-safe:animate-ping"
+                          className="absolute inline-flex size-full rounded-full bg-foreground opacity-20 motion-safe:animate-ping"
                         />
                       )}
                       {/* Fill encodes STATE (done/current = accent, ahead = hollow).
@@ -860,8 +865,8 @@ function Tour({
                       <span
                         className={cn(
                           "relative flex size-3.5 items-center justify-center rounded-full",
-                          done && "bg-primary text-background",
-                          isActive && "bg-primary ring-4 ring-primary/15",
+                          done && "bg-foreground/55 text-background",
+                          isActive && "bg-foreground/75 text-background ring-4 ring-foreground/10",
                           !done && !isActive && "border-[1.5px] border-foreground/25 bg-background",
                         )}
                       >
@@ -874,7 +879,7 @@ function Tour({
                         p === lastPos
                           ? "bg-transparent"
                           : p < pos
-                            ? "bg-primary/55"
+                            ? "bg-foreground/35"
                             : "bg-foreground/12",
                       )}
                     />
@@ -915,7 +920,7 @@ function Tour({
           {plan.tour && (
             <div className="mb-5 rounded-lg bg-card/40 px-3.5 py-3">
               <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Compass className="size-3.5 text-primary" />
+                <Compass className="size-3.5 text-muted-foreground" />
                 How to read this PR
               </p>
               <MarkdownBody className="text-xs">{plan.tour}</MarkdownBody>
@@ -1075,7 +1080,7 @@ const Step = ({
             rows={3}
             header={
               <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
-                <Sparkles className="size-3 text-primary" />
+                <Sparkles className="size-3 text-info" />
                 Suggested comment
               </span>
             }
@@ -1182,12 +1187,12 @@ function InlineDiff({
         return (
           <div
             key={i}
-            // One continuous primary bar marks the focused range — no per-line box.
+            // One continuous neutral bar marks the focused range — no per-line box.
             className={cn(
               "flex border-l-2 border-transparent",
               !hit && l.kind === "add" && "bg-success/[0.07]",
               !hit && l.kind === "del" && "bg-destructive/[0.07]",
-              hit && "border-primary/70 bg-primary/[0.14]",
+              hit && "border-foreground/50 bg-foreground/[0.08]",
             )}
           >
             <span className="w-10 shrink-0 select-none px-2 text-right text-muted-foreground/40 tabular-nums">
