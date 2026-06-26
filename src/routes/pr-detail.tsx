@@ -1110,7 +1110,7 @@ export function PRDetailPage() {
                     className={cn(
                       "flex size-6 items-center justify-center rounded transition-colors",
                       view === "guided"
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-foreground/[0.08] text-foreground"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
