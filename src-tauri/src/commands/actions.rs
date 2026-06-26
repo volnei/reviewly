@@ -727,3 +727,121 @@ pub async fn gh_list_review_threads(
         })
         .collect())
 }
+
+/* ─────────────────────── GitHub activity (settings card) ─────────────────────── */
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityDay {
+    date: String,
+    count: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Activity {
+    commits: u64,
+    merged_prs: u64,
+    days: Vec<ActivityDay>,
+}
+
+/// A year of GitHub activity for the settings card: total commit contributions,
+/// total merged PRs, and a per-day merged-PR count for the heatmap. `login` is
+/// the viewer's handle (the frontend already has it).
+#[tauri::command]
+pub async fn gh_activity(state: State<'_, AppState>, login: String) -> AppResult<Activity> {
+    let token = creds::require_token()?;
+    let now = chrono::Utc::now();
+    let from = now - chrono::Duration::days(365);
+    let from_date = from.format("%Y-%m-%d").to_string();
+    let from_dt = from.to_rfc3339();
+    let q = format!("is:pr is:merged author:{login} merged:>={from_date}");
+
+    let query = r#"query($q: String!, $from: DateTime!, $after: String) {
+        viewer { contributionsCollection(from: $from) { totalCommitContributions } }
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+            issueCount
+            pageInfo { hasNextPage endCursor }
+            nodes { ... on PullRequest { mergedAt } }
+        }
+    }"#;
+
+    #[derive(Deserialize)]
+    struct Resp {
+        viewer: V,
+        search: S,
+    }
+    #[derive(Deserialize)]
+    struct V {
+        #[serde(rename = "contributionsCollection")]
+        cc: Cc,
+    }
+    #[derive(Deserialize)]
+    struct Cc {
+        #[serde(rename = "totalCommitContributions")]
+        commits: u64,
+    }
+    #[derive(Deserialize)]
+    struct S {
+        #[serde(rename = "issueCount")]
+        issue_count: u64,
+        #[serde(rename = "pageInfo")]
+        page_info: Pi,
+        nodes: Vec<Node>,
+    }
+    #[derive(Deserialize)]
+    struct Pi {
+        #[serde(rename = "hasNextPage")]
+        has_next: bool,
+        #[serde(rename = "endCursor")]
+        end_cursor: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Node {
+        #[serde(rename = "mergedAt")]
+        merged_at: Option<String>,
+    }
+
+    let mut commits = 0u64;
+    let mut merged_prs = 0u64;
+    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut after: Option<String> = None;
+    // Page through the merged PRs (capped) so the heatmap is complete for most
+    // users without unbounded requests.
+    for _ in 0..6 {
+        let r: Resp = graphql(
+            &state,
+            &token,
+            query,
+            json!({ "q": q, "from": from_dt, "after": after }),
+        )
+        .await?;
+        commits = r.viewer.cc.commits;
+        merged_prs = r.search.issue_count;
+        for n in r.search.nodes {
+            if let Some(m) = n.merged_at {
+                if m.len() >= 10 {
+                    *counts.entry(m[..10].to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        if !r.search.page_info.has_next {
+            break;
+        }
+        after = r.search.page_info.end_cursor;
+        if after.is_none() {
+            break;
+        }
+    }
+
+    let mut days: Vec<ActivityDay> = counts
+        .into_iter()
+        .map(|(date, count)| ActivityDay { date, count })
+        .collect();
+    days.sort_by(|a, b| a.date.cmp(&b.date));
+    Ok(Activity {
+        commits,
+        merged_prs,
+        days,
+    })
+}

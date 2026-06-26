@@ -15,6 +15,7 @@ import { useRealtimeEvents } from "@/app/use-realtime-events";
 import { useTrayNav } from "@/app/use-tray-nav";
 import { useUpdater } from "@/app/use-updater";
 import { AboutDialog } from "@/components/about-dialog";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
 import { invoke } from "@/lib/tauri";
 import { ACCENTS, useAppearance } from "@/stores/appearance";
@@ -97,6 +98,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </div>
       <PinboardBar />
       <CommandPalette />
+      <SettingsDialog />
       <ShortcutsCheatsheet />
       <AboutDialog />
       <Toaster

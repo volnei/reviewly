@@ -366,6 +366,7 @@ pub fn run() {
             commands::actions::gh_delete_review_comment,
             commands::actions::gh_pr_node_id,
             commands::actions::gh_list_review_threads,
+            commands::actions::gh_activity,
             // ai
             commands::ai::ai_available,
             commands::ai::ai_review,

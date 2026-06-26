@@ -1,5 +1,6 @@
 import { Card } from "@/components/card";
 import { CollapsibleSection } from "@/components/collapsible-section";
+import { ContributionHeatmap } from "@/components/contribution-heatmap";
 import { PageHeader } from "@/components/page-header";
 import { Segmented } from "@/components/segmented";
 import { Button } from "@/components/ui/button";
@@ -24,12 +25,14 @@ import { NOTIF_REASONS, useNotifSettings } from "@/stores/notif-settings";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useTheme } from "@/stores/theme";
 import { useUi } from "@/stores/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Check,
   Compass,
   Eye,
+  GitCommitHorizontal,
+  GitMerge,
   Github,
   Lock,
   LogOut,
@@ -45,6 +48,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+type Activity = {
+  commits: number;
+  mergedPrs: number;
+  days: { date: string; count: number }[];
+};
 
 export function SettingsPage() {
   const viewer = useAuth((s) => s.viewer);
@@ -65,6 +74,14 @@ export function SettingsPage() {
     }
   }, []);
 
+  const activity = useQuery({
+    queryKey: ["gh-activity", viewer?.login],
+    queryFn: () => invoke<Activity>("gh_activity", { login: viewer?.login ?? "" }),
+    enabled: !!viewer?.login,
+    staleTime: 30 * 60_000,
+  });
+  const bestDay = activity.data?.days.reduce((m, d) => Math.max(m, d.count), 0) ?? 0;
+
   async function signOut() {
     await invoke("auth_sign_out");
     setAuth({ signedIn: false, viewer: null, loading: false });
@@ -80,24 +97,72 @@ export function SettingsPage() {
         <div className="space-y-5 px-6 py-5">
           <CollapsibleSection id="github" title="GitHub account" icon={Github}>
             {viewer ? (
-              <Card className="flex items-center gap-3">
-                <UserHoverCard user={viewer}>
-                  <img src={viewer.avatar_url} alt={viewer.login} className="size-9 rounded-full" />
-                </UserHoverCard>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-foreground">{viewer.name ?? viewer.login}</p>
-                  <p className="text-xs text-muted-foreground">@{viewer.login}</p>
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">Activity over the last year</span>
+                  {activity.data && (
+                    <div className="inline-flex items-center divide-x divide-hairline rounded-lg border border-hairline bg-foreground/[0.03] text-xs">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-muted-foreground">
+                        <GitCommitHorizontal className="size-3.5 text-success" />
+                        Commits{" "}
+                        <span className="font-medium tabular-nums text-success">
+                          {activity.data.commits}
+                        </span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-muted-foreground">
+                        <GitMerge className="size-3.5 text-success" />
+                        Merged PRs{" "}
+                        <span className="font-medium tabular-nums text-success">
+                          {activity.data.mergedPrs}
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-5 md:flex-row">
+                  <div className="flex w-full shrink-0 flex-col gap-3 md:w-48">
+                    <div className="flex items-center gap-3">
+                      <UserHoverCard user={viewer}>
+                        <img
+                          src={viewer.avatar_url}
+                          alt={viewer.login}
+                          className="size-9 rounded-full"
+                        />
+                      </UserHoverCard>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-foreground">
+                          {viewer.name ?? viewer.login}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">@{viewer.login}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Stat label="Total" value={activity.data?.mergedPrs ?? 0} />
+                      <Stat label="Best day" value={bestDay} />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {activity.isLoading ? (
+                      <div className="h-28 w-full animate-pulse rounded-lg bg-foreground/[0.04]" />
+                    ) : activity.data ? (
+                      <ContributionHeatmap days={activity.data.days} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Couldn't load activity.</p>
+                    )}
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="xs"
                   onClick={signOut}
                   className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <LogOut className="size-3.5" />
+                  <LogOut className="size-3" />
                   Sign out
                 </Button>
-              </Card>
+              </div>
             ) : (
               <Card className="text-xs text-muted-foreground">Not signed in.</Card>
             )}
@@ -500,7 +565,9 @@ function BehaviorSection() {
             }
           >
             <SelectTrigger size="sm" className="w-44 text-xs text-foreground">
-              <SelectValue />
+              <SelectValue>
+                {(v) => LANDING_OPTIONS.find((o) => o.value === v)?.label ?? String(v)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {LANDING_OPTIONS.map((o) => (
@@ -563,7 +630,9 @@ function NotificationsSection() {
               </div>
               <Select value={String(pollSecs)} onValueChange={(v) => v && setPollSecs(Number(v))}>
                 <SelectTrigger size="sm" className="w-36 text-xs text-foreground">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v) => POLL_OPTIONS.find((o) => String(o.secs) === v)?.label ?? String(v)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {POLL_OPTIONS.map((o) => (
@@ -845,5 +914,14 @@ function OpenAiField({
         className="w-full"
       />
     </label>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-foreground/[0.04] px-3 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="font-mono text-lg tabular-nums text-foreground">{value}</p>
+    </div>
   );
 }

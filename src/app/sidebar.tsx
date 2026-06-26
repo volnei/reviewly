@@ -4,6 +4,7 @@ import type { DependabotAlert, Notification } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
+import { useUi } from "@/stores/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Bell, Bot, FolderGit2, GitPullRequest, type LucideIcon, Settings } from "lucide-react";
@@ -24,6 +25,8 @@ const NAV: NavItem[] = [
 
 export function Sidebar() {
   const { location } = useRouterState();
+  const settingsOpen = useUi((s) => s.settingsOpen);
+  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   // Shared with the Notifications page cache; drives the unread badge.
   const notifs = useQuery({
     queryKey: ["notifications"],
@@ -110,7 +113,8 @@ export function Sidebar() {
             icon: Settings,
             shortcut: "⌘,",
           }}
-          active={location.pathname.startsWith("/settings")}
+          active={settingsOpen || location.pathname.startsWith("/settings")}
+          onSelect={() => setSettingsOpen(true)}
         />
       </div>
     </aside>
@@ -129,6 +133,7 @@ function RailItem({
   badgeTone = "primary",
   pending = false,
   pendingLabel,
+  onSelect,
 }: {
   item: NavItem;
   active: boolean;
@@ -138,40 +143,51 @@ function RailItem({
   /** Count not yet known (loading/error) — show a neutral dot, never "0". */
   pending?: boolean;
   pendingLabel?: string;
+  /** When set, the item runs this action (opens a modal) instead of navigating. */
+  onSelect?: () => void;
 }) {
   const Icon = item.icon;
+  const cls = cn(
+    "group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+    active
+      ? "text-foreground bg-foreground/[0.09]"
+      : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
+  );
+  const inner = (
+    <>
+      <Icon className="size-[16px]" strokeWidth={1.5} />
+      {pending ? (
+        <span
+          className="pointer-events-none absolute -right-1 -top-1 size-2 rounded-full bg-muted-foreground/50 ring-2 ring-background"
+          aria-label={pendingLabel}
+        />
+      ) : (
+        badge > 0 && (
+          <span
+            className={cn(
+              "pointer-events-none absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-medium leading-none tabular-nums ring-2 ring-background",
+              badgeTone === "warning"
+                ? "bg-warning text-white"
+                : "bg-primary text-primary-foreground",
+            )}
+          >
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )
+      )}
+    </>
+  );
   return (
     <TooltipFor label={item.label} shortcut={item.shortcut} side="right">
-      <Link
-        to={item.to}
-        className={cn(
-          "group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-          active
-            ? "text-foreground bg-foreground/[0.09]"
-            : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
-        )}
-      >
-        <Icon className="size-[16px]" strokeWidth={1.5} />
-        {pending ? (
-          <span
-            className="pointer-events-none absolute -right-1 -top-1 size-2 rounded-full bg-muted-foreground/50 ring-2 ring-background"
-            aria-label={pendingLabel}
-          />
-        ) : (
-          badge > 0 && (
-            <span
-              className={cn(
-                "pointer-events-none absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-medium leading-none tabular-nums ring-2 ring-background",
-                badgeTone === "warning"
-                  ? "bg-warning text-white"
-                  : "bg-primary text-primary-foreground",
-              )}
-            >
-              {badge > 9 ? "9+" : badge}
-            </span>
-          )
-        )}
-      </Link>
+      {onSelect ? (
+        <button type="button" onClick={onSelect} className={cls}>
+          {inner}
+        </button>
+      ) : (
+        <Link to={item.to} className={cls}>
+          {inner}
+        </Link>
+      )}
     </TooltipFor>
   );
 }

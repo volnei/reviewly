@@ -8,6 +8,9 @@ interface UiState {
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
   togglePalette: () => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  toggleSettings: () => void;
 
   aboutOpen: boolean;
   setAboutOpen: (open: boolean) => void;
@@ -46,6 +49,9 @@ export const useUi = create<UiState>()(
       paletteOpen: false,
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
+      settingsOpen: false,
+      setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+      toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
 
       aboutOpen: false,
       setAboutOpen: (aboutOpen) => set({ aboutOpen }),

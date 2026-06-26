@@ -53,7 +53,8 @@ export function useGlobalShortcuts() {
           if (gTimer) clearTimeout(gTimer);
           if (GO[k]) {
             e.preventDefault();
-            navigate({ to: GO[k] });
+            if (GO[k] === "/settings") useUi.getState().setSettingsOpen(true);
+            else navigate({ to: GO[k] });
           }
           return;
         }
@@ -106,7 +107,8 @@ export function useGlobalShortcuts() {
       const dest = map[e.key];
       if (dest) {
         e.preventDefault();
-        navigate({ to: dest });
+        if (dest === "/settings") useUi.getState().setSettingsOpen(true);
+        else navigate({ to: dest });
       }
     }
     window.addEventListener("keydown", onKey);

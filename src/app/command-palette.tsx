@@ -44,6 +44,7 @@ interface LoadedPr {
 export function CommandPalette() {
   const open = useUi((s) => s.paletteOpen);
   const setOpen = useUi((s) => s.setPaletteOpen);
+  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [input, setInput] = useState("");
@@ -221,7 +222,12 @@ export function CommandPalette() {
             <Bot /> <span>Dependabot</span>
             <CommandShortcut>⌘5</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => go("/settings")}>
+          <CommandItem
+            onSelect={() => {
+              setOpen(false);
+              setSettingsOpen(true);
+            }}
+          >
             <Settings /> <span>Settings</span>
             <CommandShortcut>⌘,</CommandShortcut>
           </CommandItem>
