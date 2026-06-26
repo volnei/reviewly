@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type PinnedKind = "pr" | "commit" | "file";
+export type PinnedPrState = "open" | "draft" | "merged" | "closed";
 
 export interface PinnedItem {
   kind: PinnedKind;
@@ -10,6 +11,7 @@ export interface PinnedItem {
   label: string;
   hint?: string;
   path: string;
+  prState?: PinnedPrState;
   pinnedAt: number;
 }
 
