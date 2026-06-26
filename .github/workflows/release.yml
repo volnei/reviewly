@@ -199,19 +199,35 @@ jobs:
               fi
             done
             if [ "$changed" = 1 ]; then
-              # Replace the manifest. `gh release upload` (with or without
-              # --clobber) intermittently fails here with HTTP 400 "Bad
-              # Content-Length", which can leave the release without any
-              # latest.json. Delete the old asset via the API, then upload the
-              # new one with curl straight to the uploads endpoint — curl sets
-              # Content-Length from the file, sidestepping the gh bug.
-              aid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json") | .id')
-              [ -n "$aid" ] && gh api -X DELETE "repos/$REPO/releases/assets/$aid" >/dev/null || true
-              curl -sS --fail-with-body -X POST \
-                -H "Authorization: token $GH_TOKEN" \
-                -H "Content-Type: application/json" \
-                --data-binary @latest.json \
-                "https://uploads.github.com/repos/$REPO/releases/$rid/assets?name=latest.json" >/dev/null
-              echo "latest.json updated to renamed installers"
+              # Swap in the rewritten manifest WITHOUT ever leaving the release
+              # bare. The old delete-then-upload could fail mid-way (gh and curl
+              # both intermittently 400/422 here) and remove latest.json
+              # entirely — breaking auto-update (happened on v0.1.2 and v0.1.3).
+              # Instead: upload the new file under a TEMP name first (with
+              # retries), and only once it's safely up, delete the old asset and
+              # rename the temp into place. A PATCH rename is reliable; the old
+              # manifest is removed only after the new one exists.
+              up=0
+              for attempt in 1 2 3 4 5; do
+                if gh release upload "$TAG" --repo "$REPO" --clobber "latest.json#latest.json.new"; then
+                  up=1; break
+                fi
+                echo "latest.json.new upload attempt $attempt failed; retrying in $((attempt * 5))s"
+                sleep $((attempt * 5))
+              done
+              if [ "$up" != 1 ]; then
+                echo "::error::could not upload the updated latest.json after 5 attempts"
+                exit 1
+              fi
+              oldid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json") | .id')
+              [ -n "$oldid" ] && gh api -X DELETE "repos/$REPO/releases/assets/$oldid" >/dev/null || true
+              newid=$(gh api "repos/$REPO/releases/$rid/assets" --jq '.[] | select(.name=="latest.json.new") | .id')
+              gh api -X PATCH "repos/$REPO/releases/assets/$newid" -f name="latest.json" >/dev/null
+              if gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qx latest.json; then
+                echo "latest.json updated to renamed installers"
+              else
+                echo "::error::latest.json missing after swap — auto-update would break"
+                exit 1
+              fi
             fi
           fi
