@@ -52,6 +52,8 @@ interface Props {
   onPostComment?: (c: { path: string; line: number; body: string }) => Promise<void>;
   /** Open a file in the diff (when the reader wants the full context). */
   onOpenFile: (path: string, line?: number) => void;
+  /** Report whether the guided reading pane has scrolled past its intro. */
+  onScrolledChange?: (scrolled: boolean) => void;
 }
 
 const KIND: Record<
@@ -125,6 +127,7 @@ export function GuidedReview({
   onAddComment,
   onPostComment,
   onOpenFile,
+  onScrolledChange,
 }: Props) {
   const provider = useAiProvider((s) => s.provider);
   const { available } = useAiAvailable();
@@ -214,6 +217,7 @@ export function GuidedReview({
       onAddComment={onAddComment}
       onPostComment={onPostComment}
       onOpenFile={onOpenFile}
+      onScrolledChange={onScrolledChange}
     />
   );
 }
@@ -433,6 +437,7 @@ function Tour({
   onAddComment,
   onPostComment,
   onOpenFile,
+  onScrolledChange,
 }: {
   prKey: string;
   entry: GuidedEntry;
@@ -443,6 +448,7 @@ function Tour({
   onAddComment: (c: DraftComment) => void;
   onPostComment?: (c: { path: string; line: number; body: string }) => Promise<void>;
   onOpenFile: (path: string, line?: number) => void;
+  onScrolledChange?: (scrolled: boolean) => void;
 }) {
   const plan = entry.plan;
   const total = plan.steps.length;
@@ -454,11 +460,13 @@ function Tour({
   const [active, setActive] = useState(() => Math.min(entry.lastActive, total - 1));
   const [posted, setPosted] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<StepKind | null>(null);
+  const [tourScrolled, setTourScrolled] = useState(false);
   // 82: lets the reviewer keep a stale tour — acknowledges staleness and hides
   // the banner without discarding the (still useful) walkthrough.
   const [staleAck, setStaleAck] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stepRefs = useRef<(HTMLElement | null)[]>([]);
+  const scrolledRef = useRef(false);
 
   // While a programmatic jump (click a node / next / prev) is smooth-scrolling,
   // hold the chosen stop active until the scroll actually arrives — otherwise
@@ -535,6 +543,29 @@ function Tour({
     markSeen(prKey, active);
     setLastActive(prKey, active);
   }, [prKey, active, markSeen, setLastActive]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+
+    function syncScrolled() {
+      if (!root) return;
+      const next = root.scrollTop > 12;
+      if (next === scrolledRef.current) return;
+      scrolledRef.current = next;
+      setTourScrolled(next);
+      onScrolledChange?.(next);
+    }
+
+    syncScrolled();
+    root.addEventListener("scroll", syncScrolled, { passive: true });
+    return () => {
+      root.removeEventListener("scroll", syncScrolled);
+      scrolledRef.current = false;
+      setTourScrolled(false);
+      onScrolledChange?.(false);
+    };
+  }, [onScrolledChange]);
 
   // Keyboard nav: j/↓ next, k/↑ prev, o open file, x dismiss, Enter/d next
   // undismissed stop. Ignored while typing.
@@ -649,35 +680,50 @@ function Tour({
   return (
     <div className="flex h-full flex-col">
       {/* tour controller */}
-      <div className="border-b border-hairline px-5 py-2.5">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Sparkles className="size-3.5 shrink-0 text-primary" />
-            <span>Guided tour</span>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <span className="mr-1 text-xs tabular-nums text-muted-foreground">
-              {Math.max(1, pos + 1)} / {visible.length}
-            </span>
-            <Button size="icon-sm" variant="ghost" disabled={atFirst} onClick={() => move(-1)}>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button size="icon-sm" variant="ghost" disabled={atLast} onClick={() => move(1)}>
-              <ChevronRight className="size-4" />
-            </Button>
-            <IconButton
-              label="Regenerate tour"
-              icon={RefreshCw}
-              loading={regenerating}
-              onClick={onRegenerate}
-            />
-          </div>
-        </div>
-        {plan.summary && (
-          <p className="mt-1.5 text-xs leading-relaxed text-foreground/80 line-clamp-2">
-            {plan.summary}
-          </p>
+      <div
+        className={cn(
+          "overflow-hidden border-b border-hairline transition-[max-height,opacity,transform,padding] duration-300 ease-out motion-reduce:transition-none",
+          tourScrolled
+            ? "pointer-events-none max-h-0 -translate-y-1 px-5 py-0 opacity-0"
+            : "max-h-28 translate-y-0 px-5 py-2.5 opacity-100",
         )}
+        aria-hidden={tourScrolled}
+      >
+        <div
+          className={cn(
+            "transition-opacity duration-200 ease-out motion-reduce:transition-none",
+            tourScrolled ? "opacity-0" : "opacity-100",
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Sparkles className="size-3.5 shrink-0 text-primary" />
+              <span>Guided tour</span>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <span className="mr-1 text-xs tabular-nums text-muted-foreground">
+                {Math.max(1, pos + 1)} / {visible.length}
+              </span>
+              <Button size="icon-sm" variant="ghost" disabled={atFirst} onClick={() => move(-1)}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button size="icon-sm" variant="ghost" disabled={atLast} onClick={() => move(1)}>
+                <ChevronRight className="size-4" />
+              </Button>
+              <IconButton
+                label="Regenerate tour"
+                icon={RefreshCw}
+                loading={regenerating}
+                onClick={onRegenerate}
+              />
+            </div>
+          </div>
+          {plan.summary && (
+            <p className="mt-1.5 text-xs leading-relaxed text-foreground/80 line-clamp-2">
+              {plan.summary}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* staleness / provenance banner */}

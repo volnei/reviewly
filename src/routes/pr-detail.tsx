@@ -197,6 +197,7 @@ export function PRDetailPage() {
   const [focusNonce, setFocusNonce] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [guidedScrolled, setGuidedScrolled] = useState(false);
 
   // Jump from a pending review comment (in the submit dialog) to its file+line.
   const jumpToDraftComment = (c: { path: string; line?: number | null }) => {
@@ -209,6 +210,10 @@ export function PRDetailPage() {
     setView("unified");
   };
   const [titleDraft, setTitleDraft] = useState("");
+
+  useEffect(() => {
+    if (tab !== "files" || view !== "guided") setGuidedScrolled(false);
+  }, [tab, view]);
 
   const prKey = { owner, repo, number };
   const draft = useReviewDraft((s) => s.drafts[`${owner}/${repo}#${number}`]);
@@ -772,15 +777,22 @@ export function PRDetailPage() {
 
   const d = detail.data;
   const pinned = isPinned("pr", `${owner}/${repo}#${number}`);
+  const compactGuidedHeader = tab === "files" && view === "guided" && guidedScrolled;
 
   return (
     <div className="relative flex h-full flex-col">
       {/* Header */}
-      <header className="flex flex-col gap-y-3 border-b border-hairline px-6 py-4">
+      <header
+        className={cn(
+          "flex flex-col border-b border-hairline px-6 transition-[gap,padding] duration-300 ease-out motion-reduce:transition-none",
+          compactGuidedHeader ? "gap-y-2 py-2.5" : "gap-y-3 py-4",
+        )}
+      >
         <div className="flex items-start gap-3">
           <GitPullRequest
             className={cn(
-              "mt-1 size-5 shrink-0",
+              "shrink-0 transition-all duration-300 ease-out motion-reduce:transition-none",
+              compactGuidedHeader ? "mt-0.5 size-4" : "mt-1 size-5",
               d.merged
                 ? "text-purple-400"
                 : d.state === "closed"
@@ -811,7 +823,12 @@ export function PRDetailPage() {
                 />
               ) : (
                 <>
-                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                  <h1
+                    className={cn(
+                      "truncate font-semibold tracking-tight text-foreground transition-[font-size,line-height] duration-300 ease-out motion-reduce:transition-none",
+                      compactGuidedHeader ? "text-sm leading-5" : "text-xl",
+                    )}
+                  >
                     {d.title}
                   </h1>
                   <span className="ml-1 shrink-0 text-xs text-muted-foreground">
@@ -833,60 +850,70 @@ export function PRDetailPage() {
                 </>
               )}
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <UserHoverCard user={d.user}>
-                  <UserAvatar user={d.user} className="size-5 ring-1 ring-border/50" />
-                </UserHoverCard>
-                <span className="text-foreground/80">{d.user.login}</span>
-              </span>
-              <span className="text-muted-foreground/60">·</span>
-              <span className="inline-flex items-center gap-1.5 font-mono">
-                {d.head.ref}
-                <ArrowRight className="size-3.5 text-muted-foreground/50" />
-                {d.base.ref}
-              </span>
-              <span className="text-muted-foreground/60">·</span>
-              <span>updated {relativeTime(d.updated_at)}</span>
-              {localRepo && (
-                <>
-                  <span className="text-muted-foreground/60">·</span>
-                  <TooltipFor label="Check out this PR in the local clone">
-                    <button
-                      type="button"
-                      aria-label="Check out this PR locally"
-                      onClick={() => checkoutLocal.mutate()}
-                      disabled={checkoutLocal.isPending}
-                      className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                    >
-                      <Download
-                        className={cn("size-3.5", checkoutLocal.isPending && "animate-pulse")}
-                      />
-                    </button>
-                  </TooltipFor>
-                </>
+            <div
+              className={cn(
+                "overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out motion-reduce:transition-none",
+                compactGuidedHeader
+                  ? "pointer-events-none mt-0 max-h-0 -translate-y-1 opacity-0"
+                  : "mt-1 max-h-24 translate-y-0 opacity-100",
               )}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <LabelPicker
-                owner={owner}
-                repo={repo}
-                number={number}
-                current={labels}
-                onChange={applyLabels}
-              />
-              {previewLinks.map((l) => (
-                <button
-                  key={l.host}
-                  type="button"
-                  onClick={() => safeOpenUrl(l.url)}
-                  aria-label={l.url}
-                  className="inline-flex items-center gap-1 rounded-full bg-info/15 px-2 py-0.5 text-xs text-info transition-colors hover:bg-info/25"
-                >
-                  <Rocket className="size-3" strokeWidth={2} />
-                  {l.host}
-                </button>
-              ))}
+              aria-hidden={compactGuidedHeader}
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <UserHoverCard user={d.user}>
+                    <UserAvatar user={d.user} className="size-5 ring-1 ring-border/50" />
+                  </UserHoverCard>
+                  <span className="text-foreground/80">{d.user.login}</span>
+                </span>
+                <span className="text-muted-foreground/60">·</span>
+                <span className="inline-flex items-center gap-1.5 font-mono">
+                  {d.head.ref}
+                  <ArrowRight className="size-3.5 text-muted-foreground/50" />
+                  {d.base.ref}
+                </span>
+                <span className="text-muted-foreground/60">·</span>
+                <span>updated {relativeTime(d.updated_at)}</span>
+                {localRepo && (
+                  <>
+                    <span className="text-muted-foreground/60">·</span>
+                    <TooltipFor label="Check out this PR in the local clone">
+                      <button
+                        type="button"
+                        aria-label="Check out this PR locally"
+                        onClick={() => checkoutLocal.mutate()}
+                        disabled={checkoutLocal.isPending}
+                        className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                      >
+                        <Download
+                          className={cn("size-3.5", checkoutLocal.isPending && "animate-pulse")}
+                        />
+                      </button>
+                    </TooltipFor>
+                  </>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <LabelPicker
+                  owner={owner}
+                  repo={repo}
+                  number={number}
+                  current={labels}
+                  onChange={applyLabels}
+                />
+                {previewLinks.map((l) => (
+                  <button
+                    key={l.host}
+                    type="button"
+                    onClick={() => safeOpenUrl(l.url)}
+                    aria-label={l.url}
+                    className="inline-flex items-center gap-1 rounded-full bg-info/15 px-2 py-0.5 text-xs text-info transition-colors hover:bg-info/25"
+                  >
+                    <Rocket className="size-3" strokeWidth={2} />
+                    {l.host}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -1131,6 +1158,7 @@ export function PRDetailPage() {
               }
               setView("unified");
             }}
+            onScrolledChange={setGuidedScrolled}
           />
         )}
 
