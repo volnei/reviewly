@@ -472,25 +472,11 @@ function ActionCard({
         done && "opacity-70",
       )}
     >
-      <div className="flex items-center gap-2">
-        <Icon className={cn("size-3.5 shrink-0", tone.text)} strokeWidth={2} />
-        <span className="text-xs font-medium text-foreground">{actionTitle(action)}</span>
-        {done ? (
-          <span className="ml-auto inline-flex items-center gap-1 text-xs text-success">
-            <Check className="size-3.5" strokeWidth={2.5} />
-            Posted
-          </span>
-        ) : (
-          <Button
-            size="xs"
-            variant={tone.destructive ? "destructive" : "default"}
-            className="ml-auto"
-            loading={status === "running"}
-            onClick={run}
-          >
-            Confirm & post
-          </Button>
-        )}
+      <div className="flex items-start gap-2">
+        <Icon className={cn("mt-0.5 size-3.5 shrink-0", tone.text)} strokeWidth={2} />
+        <span className="min-w-0 break-words text-xs font-medium text-foreground">
+          {actionTitle(action)}
+        </span>
       </div>
       {body && (
         <div className="mt-1.5 max-w-none text-xs text-foreground/85">
@@ -498,6 +484,25 @@ function ActionCard({
         </div>
       )}
       {status === "error" && error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
+      {/* The action lives below the comment so a long file path can't push it
+          off the card. */}
+      <div className="mt-2.5 flex justify-end">
+        {done ? (
+          <span className="inline-flex items-center gap-1 text-xs text-success">
+            <Check className="size-3.5" strokeWidth={2.5} />
+            Posted
+          </span>
+        ) : (
+          <Button
+            size="xs"
+            variant={tone.destructive ? "destructive" : "default"}
+            loading={status === "running"}
+            onClick={run}
+          >
+            Confirm & post
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
