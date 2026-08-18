@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Boxes,
+  Copy,
   ExternalLink,
   Ghost,
   GitBranch,
@@ -121,6 +122,90 @@ async function scanAll(
 const problemCount = (r: RepoHealth): number =>
   r.cycles.length + r.mismatches.length + r.scan.crossings.length + r.phantoms.length;
 
+/**
+ * The workspace report as paste-ready markdown. Written for an AGENT, not for a
+ * human who already saw the page: every finding is self-contained (package,
+ * path, line, count) and phrased as the change to make, so pasting it into a
+ * coding assistant is a complete work order with no follow-up questions.
+ */
+function buildReport(r: RepoHealth): string {
+  const kindOf = (from: string, to: string): string =>
+    r.scan.dep_edges.find((e) => e.from === from && e.to === to)?.kind ?? "undeclared";
+  const dirOf = (name: string): string => r.scan.packages.find((p) => p.name === name)?.dir ?? "";
+  const lines: string[] = [
+    `# Turborepo health — ${r.owner}/${r.repo}`,
+    "",
+    `Repo root: ${r.path}`,
+    `${r.scan.packages.length} packages · ${r.scan.edges.length} internal edges · dependency chains up to ${r.depth} deep`,
+    "",
+  ];
+
+  lines.push(`## Dependency cycles (${r.cycles.length})`);
+  if (r.cycles.length === 0) lines.push("None — the package graph is a DAG.");
+  for (const scc of r.cycles) {
+    const path = realCyclePath(scc, r.scan);
+    const hops = path
+      .slice(0, -1)
+      .map((from, i) => `${from} → ${path[i + 1]} (${kindOf(from, path[i + 1])})`)
+      .join(", ");
+    lines.push(
+      `- Cycle: ${path.join(" → ")}. Edges: ${hops}. Break it by removing or inverting one of these declarations (a devDependencies back-edge is usually the one to cut).`,
+    );
+  }
+  lines.push("");
+
+  lines.push(`## Phantom dependencies (${r.phantoms.length})`);
+  if (r.phantoms.length === 0) lines.push("None — every member import is declared.");
+  for (const u of r.phantoms) {
+    lines.push(
+      `- ${u.from_pkg} imports ${u.target} ${u.count}× without declaring it (e.g. ${u.example_file}:${u.example_line}). Fix: add "${u.target}" to the dependencies of ${dirOf(u.from_pkg)}/package.json.`,
+    );
+  }
+  lines.push("");
+
+  lines.push(`## Version mismatches (${r.mismatches.length})`);
+  if (r.mismatches.length === 0)
+    lines.push("None — every external dependency has one version range.");
+  for (const m of r.mismatches) {
+    const total = m.versions.reduce((n, v) => n + v.packages.length, 0);
+    const outliers = m.versions
+      .slice(1)
+      .map((v) => `${v.version} in ${v.packages.join(", ")}`)
+      .join("; ");
+    lines.push(
+      `- ${m.name}: align to ${m.majority} (${m.versions[0].packages.length} of ${total} already there). Outliers: ${outliers}.`,
+    );
+  }
+  lines.push("");
+
+  lines.push(`## Boundary crossings (${r.scan.crossings.length})`);
+  if (r.scan.crossings.length === 0)
+    lines.push("None — no import reaches into another package's internals.");
+  for (const c of r.scan.crossings) {
+    lines.push(
+      `- ${c.file}:${c.line} imports "${c.spec}" — reaches into ${c.target}'s internals. Fix: import from ${c.target}'s public surface, or export what is needed.`,
+    );
+  }
+
+  if (r.unused.length > 0) {
+    lines.push("");
+    lines.push(`## Declared but never imported (${r.unused.length}) — verify before removing`);
+    lines.push(
+      "No import found in scanned source; may still be used by scripts, configs, or binaries.",
+    );
+    for (const e of r.unused) lines.push(`- ${e.from} → ${e.to} (${e.kind})`);
+  }
+  return lines.join("\n");
+}
+
+/** Copy `text`, with the toast the rest of the app uses. */
+function copyReport(text: string, what: string): void {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => toast.success(`${what} copied — paste it to your agent`))
+    .catch(() => toast.error("Couldn't copy to clipboard"));
+}
+
 export function TurborepoPage() {
   const localRepos = useLocalRepos((s) => s.repos);
   const health = useQuery({
@@ -155,17 +240,33 @@ export function TurborepoPage() {
             : `${repos.length} workspace${repos.length === 1 ? "" : "s"} · ${totalProblems} finding${totalProblems === 1 ? "" : "s"}`
         }
         actions={
-          <TooltipFor label="Re-scan the workspaces">
-            <button
-              type="button"
-              aria-label="Re-scan"
-              onClick={() => health.refetch()}
-              disabled={health.isFetching}
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
-            >
-              <RefreshCw className={health.isFetching ? "size-3.5 animate-spin" : "size-3.5"} />
-            </button>
-          </TooltipFor>
+          <div className="flex items-center gap-1">
+            {repos.length > 0 && (
+              <TooltipFor label="Copy every workspace's findings as a prompt for your agent">
+                <button
+                  type="button"
+                  aria-label="Copy full report"
+                  onClick={() =>
+                    copyReport(repos.map(buildReport).join("\n\n---\n\n"), "Full report")
+                  }
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+                >
+                  <Copy className="size-3.5" />
+                </button>
+              </TooltipFor>
+            )}
+            <TooltipFor label="Re-scan the workspaces">
+              <button
+                type="button"
+                aria-label="Re-scan"
+                onClick={() => health.refetch()}
+                disabled={health.isFetching}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className={health.isFetching ? "size-3.5 animate-spin" : "size-3.5"} />
+              </button>
+            </TooltipFor>
+          </div>
         }
       />
       <ScrollArea className="flex-1">
@@ -184,7 +285,7 @@ export function TurborepoPage() {
             description="None of your local clones carries a turbo.json at its root."
           />
         ) : (
-          <div className="flex flex-col gap-8 px-6 py-4">
+          <div className="flex select-text flex-col gap-8 px-6 py-4">
             {repos.map((r) => (
               <WorkspaceSection key={r.path} r={r} onOpenFile={(f) => openFile(r.path, f)} />
             ))}
