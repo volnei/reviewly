@@ -16,15 +16,26 @@ import {
   layersKey,
   reconcileLayers,
 } from "@/lib/layers";
+import { type Workspace, buildPackagePlan } from "@/lib/monorepo";
 import type { PullFile } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABEL, aiInvokeArgs, useAiProvider } from "@/stores/ai";
 import { useLayers } from "@/stores/layers";
 import { useLayersGen } from "@/stores/layers-gen";
+import { useLocalRepos } from "@/stores/local-repos";
 import { useReviewPrefs } from "@/stores/review-prefs";
 import { useViewedFiles } from "@/stores/viewed-files";
-import { AlertTriangle, Check, Layers, RefreshCw, SplitSquareVertical, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  Boxes,
+  Check,
+  Layers,
+  RefreshCw,
+  SplitSquareVertical,
+  X,
+} from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 
@@ -170,6 +181,13 @@ interface BarProps {
  */
 export function LayerBar(props: BarProps) {
   const { scope, prKey, files, headSha, viewedKey, onSelectFile } = props;
+  // The PR's local clone, when one exists — detection reads the workspace from
+  // disk, so without a clone there is nothing to detect.
+  const localRepos = useLocalRepos((s) => s.repos);
+  const cwd = useMemo(() => {
+    const [owner, repo] = prKey.split("#")[0].split("/");
+    return localRepos.find((r) => r.owner === owner && r.repo === repo)?.path ?? null;
+  }, [prKey, localRepos]);
   const provider = useAiProvider((s) => s.provider);
   const { available } = useAiAvailable();
   const aiInstructions = useReviewPrefs((s) => s.aiInstructions);
@@ -205,6 +223,25 @@ export function LayerBar(props: BarProps) {
       prompt: `${LAYERED_SYSTEM}${custom}\n\n# Pull request\n${buildLayerContext(props.context, files)}`,
     }).catch((e) => useLayersGen.getState().fail(prKey, String(e)));
   }, [prKey, headSha, aiInstructions, props.context, files]);
+
+  // Is this repo's local clone a Turborepo? Silent when it isn't: the query
+  // returns null and the by-package split simply never appears.
+  const workspace = useQuery({
+    queryKey: ["monorepo-workspace", cwd],
+    queryFn: () => invoke<Workspace | null>("monorepo_workspace", { path: cwd ?? "" }),
+    enabled: !!cwd,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const ws = workspace.data ?? null;
+
+  const splitByPackage = useCallback(() => {
+    if (!ws) return;
+    useLayers
+      .getState()
+      .set(prKey, buildPackagePlan(files, ws), { headSha: headSha ?? "", source: "turborepo" });
+    useLayersGen.getState().clear(prKey);
+  }, [prKey, files, headSha, ws]);
 
   const splitByStructure = useCallback(() => {
     useLayers
@@ -282,6 +319,14 @@ export function LayerBar(props: BarProps) {
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {ws && (
+              <TooltipFor label="Layers from the repo's own package graph, in dependency order">
+                <Button size="sm" variant="outline" onClick={splitByPackage}>
+                  <Boxes className="size-3.5" />
+                  Split by package
+                </Button>
+              </TooltipFor>
+            )}
             <Button size="sm" variant="outline" onClick={splitByStructure}>
               <SplitSquareVertical className="size-3.5" />
               Split by structure
@@ -318,10 +363,14 @@ export function LayerBar(props: BarProps) {
         <span className="text-xs text-muted-foreground">
           Layer {index + 1} of {plan.layers.length}
           {remaining === 0 ? " · all read" : ` · ${remaining} left`}
-          {entry?.source === "structure" ? " · structural split" : ""}
+          {entry?.source === "structure"
+            ? " · structural split"
+            : entry?.source === "turborepo"
+              ? " · by package"
+              : ""}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {entry?.source === "structure" && canUseAi && (
+          {(entry?.source === "structure" || entry?.source === "turborepo") && canUseAi && (
             <TooltipFor label="Replace the structural split with a semantic one">
               <Button size="xs" variant="ghost" onClick={planWithAi}>
                 Plan with {aiName}
@@ -333,7 +382,13 @@ export function LayerBar(props: BarProps) {
               size="icon-xs"
               variant="ghost"
               aria-label="Re-split this PR"
-              onClick={entry?.source === "structure" ? splitByStructure : planWithAi}
+              onClick={
+                entry?.source === "turborepo"
+                  ? splitByPackage
+                  : entry?.source === "structure"
+                    ? splitByStructure
+                    : planWithAi
+              }
             >
               <RefreshCw className="size-3.5" />
             </Button>
@@ -351,7 +406,13 @@ export function LayerBar(props: BarProps) {
           </span>
           <button
             type="button"
-            onClick={entry?.source === "structure" ? splitByStructure : planWithAi}
+            onClick={
+              entry?.source === "turborepo"
+                ? splitByPackage
+                : entry?.source === "structure"
+                  ? splitByStructure
+                  : planWithAi
+            }
             className="ml-auto shrink-0 underline underline-offset-2 hover:no-underline"
           >
             Split again

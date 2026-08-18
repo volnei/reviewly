@@ -5,6 +5,7 @@ pub mod attachments;
 pub mod auth;
 pub mod comments;
 pub mod git;
+pub mod monorepo;
 pub mod notifications;
 pub mod pulls;
 pub mod reviews;
