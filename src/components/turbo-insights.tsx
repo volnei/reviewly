@@ -196,7 +196,6 @@ function Section<T>({
       ) : (
         <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
           {items.map((item, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static list, no reorder
             <div key={i}>{render(item)}</div>
           ))}
         </div>
