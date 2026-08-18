@@ -296,3 +296,95 @@ export function boundaryCrossings(files: PullFile[], ws: Workspace): BoundaryCro
   }
   return out;
 }
+
+/** An actual directed cycle through `scc`, as a path ending where it starts —
+ * Tarjan yields the *members*, but showing them alphabetically joined by
+ * arrows would draw edges that don't exist. This walks real edges. */
+export function realCyclePath(scc: string[], ws: Workspace): string[] {
+  const inScc = new Set(scc);
+  const adj = new Map<string, string[]>();
+  for (const [from, to] of ws.edges) {
+    if (inScc.has(from) && inScc.has(to)) {
+      const list = adj.get(from);
+      if (list) list.push(to);
+      else adj.set(from, [to]);
+    }
+  }
+  const start = scc[0];
+  const path: string[] = [start];
+  const seen = new Set([start]);
+  let cur = start;
+  // Greedy walk: inside one SCC every node reaches every other, so following
+  // any unvisited edge (or closing back to start) always terminates.
+  for (let i = 0; i < scc.length * 2; i++) {
+    const nexts = adj.get(cur) ?? [];
+    if (nexts.includes(start) && path.length > 1) return [...path, start];
+    const next = nexts.find((n) => !seen.has(n)) ?? nexts[0];
+    if (next === undefined) break;
+    if (seen.has(next)) return [...path.slice(path.indexOf(next)), next];
+    path.push(next);
+    seen.add(next);
+    cur = next;
+  }
+  return [...scc, scc[0]];
+}
+
+/** Per-package graph position: what it pulls in, who sits on top of it, and
+ * how far a change to it ripples. */
+export interface PackageStats {
+  name: string;
+  dir: string;
+  /** Workspace packages it depends on directly. */
+  deps: number;
+  /** Packages that depend on it directly. */
+  dependents: number;
+  /** Packages that depend on it directly or transitively — the blast radius. */
+  blast: number;
+}
+
+export function packageStats(ws: Workspace): PackageStats[] {
+  const depCount = new Map<string, number>();
+  const dependentCount = new Map<string, number>();
+  for (const [from, to] of ws.edges) {
+    depCount.set(from, (depCount.get(from) ?? 0) + 1);
+    dependentCount.set(to, (dependentCount.get(to) ?? 0) + 1);
+  }
+  return ws.packages
+    .map((p) => ({
+      name: p.name,
+      dir: p.dir,
+      deps: depCount.get(p.name) ?? 0,
+      dependents: dependentCount.get(p.name) ?? 0,
+      blast: dependentsOf(new Set([p.name]), ws).size,
+    }))
+    .sort(
+      (a, b) => b.blast - a.blast || b.dependents - a.dependents || a.name.localeCompare(b.name),
+    );
+}
+
+/** Length in edges of the longest dependency chain — how deep a rebuild can
+ * cascade. Back-edges (cycles) count zero so the walk terminates. */
+export function graphDepth(ws: Workspace): number {
+  const adj = new Map<string, string[]>();
+  for (const [from, to] of ws.edges) {
+    const list = adj.get(from);
+    if (list) list.push(to);
+    else adj.set(from, [to]);
+  }
+  const memo = new Map<string, number>();
+  const onStack = new Set<string>();
+  const depth = (n: string): number => {
+    const hit = memo.get(n);
+    if (hit !== undefined) return hit;
+    if (onStack.has(n)) return 0;
+    onStack.add(n);
+    let best = 0;
+    for (const next of adj.get(n) ?? []) best = Math.max(best, 1 + depth(next));
+    onStack.delete(n);
+    memo.set(n, best);
+    return best;
+  };
+  let max = 0;
+  for (const p of ws.packages) max = Math.max(max, depth(p.name));
+  return max;
+}

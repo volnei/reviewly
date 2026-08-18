@@ -22,7 +22,16 @@ import {
 /** The slice of the Rust WorkspaceScan the badge needs. */
 interface TurboScanLite extends Workspace {
   crossings: unknown[];
+  dep_edges: { from: string; to: string }[];
+  member_uses: { from_pkg: string; target: string }[];
   deps: { package: string; name: string; version: string }[];
+}
+
+/** Member imports with no declared dependency — must match the page's rule so
+ * the rail number and the page header never disagree. */
+function phantomCount(scan: TurboScanLite): number {
+  const declared = new Set(scan.dep_edges.map((e) => `${e.from}→${e.to}`));
+  return scan.member_uses.filter((u) => !declared.has(`${u.from_pkg}→${u.target}`)).length;
 }
 
 /** External deps declared with more than one version range across packages. */
@@ -111,7 +120,11 @@ export function Sidebar() {
       let n = 0;
       for (const scan of scans) {
         if (!scan) continue;
-        n += findCycles(scan).length + scan.crossings.length + mismatchCount(scan.deps);
+        n +=
+          findCycles(scan).length +
+          scan.crossings.length +
+          mismatchCount(scan.deps) +
+          phantomCount(scan);
       }
       return n;
     },

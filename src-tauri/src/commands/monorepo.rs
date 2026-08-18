@@ -158,6 +158,29 @@ pub struct RepoCrossing {
     pub target: String,
 }
 
+/// One declared workspace-internal dependency, with which section declares it
+/// — the section is what tells you how to BREAK a cycle (a devDependencies
+/// back-edge is usually the one to cut).
+#[derive(Serialize)]
+pub struct DepEdge {
+    pub from: String,
+    pub to: String,
+    pub kind: String,
+}
+
+/// Aggregated source-level use of one member by another — every import shape,
+/// public or deep. Aggregated because a large workspace has thousands of
+/// member imports and the client only needs the pair, the volume, and one
+/// example location; the full list would be payload for its own sake.
+#[derive(Serialize)]
+pub struct MemberUse {
+    pub from_pkg: String,
+    pub target: String,
+    pub count: u32,
+    pub example_file: String,
+    pub example_line: u32,
+}
+
 /// One external dependency declared by one member package.
 #[derive(Serialize)]
 pub struct PackageDep {
@@ -174,7 +197,9 @@ pub struct PackageDep {
 pub struct WorkspaceScan {
     pub packages: Vec<WorkspacePackage>,
     pub edges: Vec<(String, String)>,
+    pub dep_edges: Vec<DepEdge>,
     pub crossings: Vec<RepoCrossing>,
+    pub member_uses: Vec<MemberUse>,
     pub deps: Vec<PackageDep>,
 }
 
@@ -227,6 +252,7 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
         packages.iter().map(|(n, d, _)| (n.clone(), d.clone())).collect();
 
     let mut edges = Vec::new();
+    let mut dep_edges = Vec::new();
     let mut deps = Vec::new();
     for (name, _, json) in &packages {
         for key in ["dependencies", "devDependencies", "peerDependencies"] {
@@ -237,6 +263,11 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
                     }
                     if names.contains(dep.as_str()) {
                         edges.push((name.clone(), dep.clone()));
+                        dep_edges.push(DepEdge {
+                            from: name.clone(),
+                            to: dep.clone(),
+                            kind: key.to_string(),
+                        });
                     } else if let Some(v) = ver.as_str() {
                         deps.push(PackageDep {
                             package: name.clone(),
@@ -252,7 +283,9 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
     edges.dedup();
 
     let mut crossings = Vec::new();
-    'pkgs: for (pkg_name, pkg_dir) in &members {
+    let mut uses: std::collections::HashMap<(String, String), (u32, String, u32)> =
+        std::collections::HashMap::new();
+    for (pkg_name, pkg_dir) in &members {
         let mut stack = vec![root.join(pkg_dir)];
         while let Some(dir) = stack.pop() {
             let Ok(rd) = std::fs::read_dir(&dir) else { continue };
@@ -284,7 +317,15 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
                 let file_dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("").to_string();
                 for (i, line) in src.lines().enumerate() {
                     for spec in import_specs(line) {
-                        if let Some(target) = crossing_target(spec, pkg_name, &file_dir, &members) {
+                        let Some((target, deep)) = import_target(spec, pkg_name, &file_dir, &members)
+                        else {
+                            continue;
+                        };
+                        let entry = uses
+                            .entry((pkg_name.clone(), target.clone()))
+                            .or_insert((0, rel.clone(), (i + 1) as u32));
+                        entry.0 += 1;
+                        if deep && crossings.len() < MAX_CROSSINGS {
                             crossings.push(RepoCrossing {
                                 file: rel.clone(),
                                 line: (i + 1) as u32,
@@ -292,9 +333,6 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
                                 from_pkg: pkg_name.clone(),
                                 target,
                             });
-                            if crossings.len() >= MAX_CROSSINGS {
-                                break 'pkgs;
-                            }
                         }
                     }
                 }
@@ -302,6 +340,17 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
         }
     }
     crossings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+    let mut member_uses: Vec<MemberUse> = uses
+        .into_iter()
+        .map(|((from_pkg, target), (count, example_file, example_line))| MemberUse {
+            from_pkg,
+            target,
+            count,
+            example_file,
+            example_line,
+        })
+        .collect();
+    member_uses.sort_by(|a, b| a.from_pkg.cmp(&b.from_pkg).then(a.target.cmp(&b.target)));
 
     Some(WorkspaceScan {
         packages: members
@@ -309,7 +358,9 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
             .map(|(name, dir)| WorkspacePackage { name, dir })
             .collect(),
         edges,
+        dep_edges,
         crossings,
+        member_uses,
         deps,
     })
 }
@@ -347,16 +398,18 @@ fn import_specs(line: &str) -> Vec<&str> {
     out
 }
 
-/// The package whose internals `spec` reaches into, when it crosses a boundary.
-/// Mirrors the client-side rules: deep bare imports into src/dist/lib, and
-/// relative paths escaping into a different member. Subpath exports
-/// ("@acme/ui/styles.css") stay legitimate.
-fn crossing_target(
+/// Which member `spec` imports, and whether it crosses into internals.
+/// A relative path escaping its own package is always a crossing; a bare
+/// specifier is a legitimate use of the target's public surface unless the
+/// subpath reaches into src/dist/lib. Subpath exports ("@acme/ui/styles.css")
+/// stay legitimate — but still count as USE, which phantom-dependency
+/// detection needs.
+fn import_target(
     spec: &str,
     own_pkg: &str,
     file_dir: &str,
     members: &[(String, String)],
-) -> Option<String> {
+) -> Option<(String, bool)> {
     if spec.starts_with('.') {
         let mut parts: Vec<&str> = if file_dir.is_empty() {
             Vec::new()
@@ -375,15 +428,19 @@ fn crossing_target(
         let resolved = parts.join("/");
         let target = owner_of_member(&resolved, members)
             .or_else(|| owner_of_member(&format!("{resolved}/x"), members))?;
-        return (target != own_pkg).then_some(target);
+        return (target != own_pkg).then_some((target, true));
     }
     for (name, _) in members {
-        if name != own_pkg {
-            if let Some(sub) = spec.strip_prefix(&format!("{name}/")) {
-                if sub.starts_with("src/") || sub.starts_with("dist/") || sub.starts_with("lib/") {
-                    return Some(name.clone());
-                }
-            }
+        if name == own_pkg {
+            continue;
+        }
+        if spec == name {
+            return Some((name.clone(), false));
+        }
+        if let Some(sub) = spec.strip_prefix(&format!("{name}/")) {
+            let deep =
+                sub.starts_with("src/") || sub.starts_with("dist/") || sub.starts_with("lib/");
+            return Some((name.clone(), deep));
         }
     }
     None
@@ -452,6 +509,16 @@ mod tests {
             &dir.join("packages/web/src/page.ts"),
             "import { b } from \"@acme/ui/src/button\";\nimport { ok } from \"@acme/ui\";\nimport { x } from \"../../ui/src/x\";\n",
         );
+        // core imports ui but declares nothing — a phantom dependency the
+        // client detects by joining member_uses against dep_edges.
+        write(
+            &dir.join("packages/core/package.json"),
+            r#"{"name":"@acme/core"}"#,
+        );
+        write(
+            &dir.join("packages/core/src/thing.ts"),
+            "import { ok } from \"@acme/ui\";\n",
+        );
 
         let scan = monorepo_scan(dir.to_string_lossy().into_owned())
             .await
@@ -465,6 +532,18 @@ mod tests {
         // External dep recorded per package — the client groups the mismatch.
         let reacts: Vec<_> = scan.deps.iter().filter(|d| d.name == "react").collect();
         assert_eq!(reacts.len(), 2);
+        // Typed edges carry the declaring section.
+        assert!(scan
+            .dep_edges
+            .iter()
+            .any(|e| e.from == "@acme/web" && e.to == "@acme/ui" && e.kind == "dependencies"));
+        // Aggregated uses include PUBLIC imports, which crossings do not: core
+        // uses ui once with no declared edge — the phantom the client flags.
+        assert!(scan
+            .member_uses
+            .iter()
+            .any(|u| u.from_pkg == "@acme/core" && u.target == "@acme/ui" && u.count == 1));
+        assert!(!scan.dep_edges.iter().any(|e| e.from == "@acme/core"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
