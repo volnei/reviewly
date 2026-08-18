@@ -22,6 +22,7 @@ import {
   Bell,
   Bookmark,
   Bot,
+  Boxes,
   CornerDownLeft,
   FolderGit2,
   GitPullRequest,
@@ -217,6 +218,10 @@ export function CommandPalette() {
           <CommandItem onSelect={() => go("/notifications")}>
             <Bell /> <span>Notifications</span>
             <CommandShortcut>⌘4</CommandShortcut>
+          </CommandItem>
+          <CommandItem onSelect={() => go("/turborepo")}>
+            <Boxes className="size-4" />
+            Turborepo
           </CommandItem>
           <CommandItem onSelect={() => go("/dependabot")}>
             <Bot /> <span>Dependabot</span>

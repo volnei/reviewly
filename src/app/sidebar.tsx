@@ -1,13 +1,42 @@
 import { ReviewlyGlyph } from "@/components/reviewly-glyph";
 import { TooltipFor } from "@/components/tooltip-for";
+import { type Workspace, findCycles } from "@/lib/monorepo";
 import type { DependabotAlert, Notification } from "@/lib/tauri";
 import { invoke } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useDependabotRepo } from "@/stores/dependabot";
+import { useLocalRepos } from "@/stores/local-repos";
 import { useUi } from "@/stores/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, Bot, FolderGit2, GitPullRequest, type LucideIcon, Settings } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Boxes,
+  FolderGit2,
+  GitPullRequest,
+  type LucideIcon,
+  Settings,
+} from "lucide-react";
+
+/** The slice of the Rust WorkspaceScan the badge needs. */
+interface TurboScanLite extends Workspace {
+  crossings: unknown[];
+  deps: { package: string; name: string; version: string }[];
+}
+
+/** External deps declared with more than one version range across packages. */
+function mismatchCount(deps: TurboScanLite["deps"]): number {
+  const versions = new Map<string, Set<string>>();
+  for (const d of deps) {
+    const set = versions.get(d.name) ?? new Set<string>();
+    set.add(d.version);
+    versions.set(d.name, set);
+  }
+  let n = 0;
+  for (const set of versions.values()) if (set.size > 1) n++;
+  return n;
+}
 
 type NavItem = {
   to: string;
@@ -21,6 +50,7 @@ const NAV: NavItem[] = [
   { to: "/repos", label: "Repositories", icon: FolderGit2, shortcut: "⌘3" },
   { to: "/notifications", label: "Notifications", icon: Bell, shortcut: "⌘4" },
   { to: "/dependabot", label: "Dependabot", icon: Bot, shortcut: "⌘5" },
+  { to: "/turborepo", label: "Turborepo", icon: Boxes, shortcut: "⌘6" },
 ];
 
 export function Sidebar() {
@@ -65,8 +95,40 @@ export function Sidebar() {
   });
   const dependabotCount = (dependabotAlerts.data ?? []).filter((a) => a.state === "open").length;
 
+  // Workspace findings across every local Turborepo clone — cycles, version
+  // mismatches, boundary crossings — mirroring the Dependabot badge: an amber
+  // count you notice from the corner of your eye. Non-monorepo clones return
+  // null and cost one cheap round trip each, cached for 5 minutes.
+  const localRepos = useLocalRepos((s) => s.repos);
+  const turboHealth = useQuery({
+    queryKey: ["turborepo-badge", localRepos.map((r) => r.path).join(":")],
+    queryFn: async () => {
+      const scans = await Promise.all(
+        localRepos.map((r) =>
+          invoke<TurboScanLite | null>("monorepo_scan", { path: r.path }).catch(() => null),
+        ),
+      );
+      let n = 0;
+      for (const scan of scans) {
+        if (!scan) continue;
+        n += findCycles(scan).length + scan.crossings.length + mismatchCount(scan.deps);
+      }
+      return n;
+    },
+    enabled: localRepos.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const turboCount = turboHealth.data ?? 0;
+
   const badgeFor = (to: string): number =>
-    to === "/notifications" ? unread : to === "/dependabot" ? dependabotCount : 0;
+    to === "/notifications"
+      ? unread
+      : to === "/dependabot"
+        ? dependabotCount
+        : to === "/turborepo"
+          ? turboCount
+          : 0;
 
   return (
     <aside className="flex h-full w-14 shrink-0 flex-col items-center bg-sidebar/40 py-2">
@@ -90,7 +152,9 @@ export function Sidebar() {
             active={isActive(item.to, location.pathname)}
             badge={item.to === "/prs" ? toReview : badgeFor(item.to)}
             // Dependabot is a security alert → amber, not the primary accent.
-            badgeTone={item.to === "/dependabot" ? "warning" : "primary"}
+            badgeTone={
+              item.to === "/dependabot" || item.to === "/turborepo" ? "warning" : "primary"
+            }
             // While the review-queue count is loading or errored, show a neutral
             // dot instead of "0" so a genuine empty queue reads differently.
             pending={item.to === "/prs" && reviewPending}

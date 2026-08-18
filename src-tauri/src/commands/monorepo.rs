@@ -34,50 +34,7 @@ pub async fn monorepo_workspace(path: String) -> AppResult<Option<Workspace>> {
         return Ok(None);
     }
 
-    let globs = workspace_globs(root);
-    if globs.is_empty() {
-        return Ok(None);
-    }
-
-    // Resolve globs to package dirs. Only the `dir/*` (one level) and literal
-    // forms are supported — that covers the overwhelmingly common layouts
-    // ("apps/*", "packages/*"); anything fancier simply contributes nothing
-    // rather than erroring, so detection degrades to fewer packages, not a
-    // broken screen.
-    let mut packages: Vec<(String, String, serde_json::Value)> = Vec::new();
-    for glob in &globs {
-        let dirs: Vec<std::path::PathBuf> = if let Some(base) = glob.strip_suffix("/*") {
-            match std::fs::read_dir(root.join(base)) {
-                Ok(rd) => rd
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .filter(|p| p.is_dir())
-                    .collect(),
-                Err(_) => continue,
-            }
-        } else if !glob.contains('*') {
-            vec![root.join(glob)]
-        } else {
-            continue;
-        };
-        for dir in dirs {
-            let Ok(raw) = std::fs::read_to_string(dir.join("package.json")) else {
-                continue;
-            };
-            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
-                continue;
-            };
-            let Some(name) = json.get("name").and_then(|n| n.as_str()) else {
-                continue;
-            };
-            let rel = dir
-                .strip_prefix(root)
-                .unwrap_or(&dir)
-                .to_string_lossy()
-                .replace('\\', "/");
-            packages.push((name.to_string(), rel, json));
-        }
-    }
+    let packages = load_packages(root);
     if packages.is_empty() {
         return Ok(None);
     }
@@ -108,6 +65,49 @@ pub async fn monorepo_workspace(path: String) -> AppResult<Option<Workspace>> {
             .collect(),
         edges,
     }))
+}
+
+/// Resolve workspace globs to member packages: (name, dir relative to root,
+/// parsed package.json). Only the `dir/*` (one level) and literal forms are
+/// supported — that covers the overwhelmingly common layouts ("apps/*",
+/// "packages/*"); anything fancier contributes nothing rather than erroring,
+/// so detection degrades to fewer packages, not a broken screen.
+fn load_packages(root: &Path) -> Vec<(String, String, serde_json::Value)> {
+    let mut packages = Vec::new();
+    for glob in workspace_globs(root) {
+        let dirs: Vec<std::path::PathBuf> = if let Some(base) = glob.strip_suffix("/*") {
+            match std::fs::read_dir(root.join(base)) {
+                Ok(rd) => rd
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .collect(),
+                Err(_) => continue,
+            }
+        } else if !glob.contains('*') {
+            vec![root.join(&glob)]
+        } else {
+            continue;
+        };
+        for dir in dirs {
+            let Ok(raw) = std::fs::read_to_string(dir.join("package.json")) else {
+                continue;
+            };
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                continue;
+            };
+            let Some(name) = json.get("name").and_then(|n| n.as_str()) else {
+                continue;
+            };
+            let rel = dir
+                .strip_prefix(root)
+                .unwrap_or(&dir)
+                .to_string_lossy()
+                .replace('\\', "/");
+            packages.push((name.to_string(), rel, json));
+        }
+    }
+    packages
 }
 
 /// Workspace member globs, from package.json `workspaces` (array or object
@@ -143,6 +143,250 @@ fn workspace_globs(root: &Path) -> Vec<String> {
             .collect();
     }
     Vec::new()
+}
+
+/* ─────────────────────── workspace-wide health scan ─────────────────────── */
+
+/// One import in the repo that reaches across a package boundary into another
+/// package's internals.
+#[derive(Serialize)]
+pub struct RepoCrossing {
+    pub file: String,
+    pub line: u32,
+    pub spec: String,
+    pub from_pkg: String,
+    pub target: String,
+}
+
+/// One external dependency declared by one member package.
+#[derive(Serialize)]
+pub struct PackageDep {
+    pub package: String,
+    pub name: String,
+    pub version: String,
+}
+
+/// Everything the Turborepo health page needs in one round trip: the graph
+/// (cycles are computed client-side, where the algorithm already exists for the
+/// PR view), every boundary crossing in the source tree, and each member's
+/// external dependencies (version mismatches are grouped client-side).
+#[derive(Serialize)]
+pub struct WorkspaceScan {
+    pub packages: Vec<WorkspacePackage>,
+    pub edges: Vec<(String, String)>,
+    pub crossings: Vec<RepoCrossing>,
+    pub deps: Vec<PackageDep>,
+}
+
+/// Directories that are build output or vendored code — imports inside them are
+/// not the repo's own sins.
+const SKIP_DIRS: [&str; 9] = [
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    ".next",
+    ".turbo",
+    ".cache",
+];
+const SOURCE_EXTS: [&str; 8] = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts"];
+/// Enough to fill a page many times over; a repo with more has a linting
+/// problem, not a reviewing one, and an unbounded payload helps nobody.
+const MAX_CROSSINGS: usize = 400;
+
+/// Scan a Turborepo clone for workspace-wide problems. `None` when the repo
+/// isn't a Turborepo. Unlike the per-PR insights, this reads the whole source
+/// tree — it answers "what is wrong with my monorepo", not "what does this PR
+/// change".
+#[tauri::command]
+pub async fn monorepo_scan(path: String) -> AppResult<Option<WorkspaceScan>> {
+    // File walking is honest blocking IO over potentially thousands of files;
+    // keep it off the async runtime's core threads.
+    let out = tauri::async_runtime::spawn_blocking(move || scan_sync(&path))
+        .await
+        .map_err(|e| crate::error::AppError::Other(format!("scan task failed: {e}")))?;
+    Ok(out)
+}
+
+fn scan_sync(path: &str) -> Option<WorkspaceScan> {
+    let root = Path::new(path);
+    if !root.join("turbo.json").is_file() && !root.join("turbo.jsonc").is_file() {
+        return None;
+    }
+    let packages = load_packages(root);
+    if packages.is_empty() {
+        return None;
+    }
+    let names: std::collections::HashSet<String> =
+        packages.iter().map(|(n, _, _)| n.clone()).collect();
+    // (name, dir) pairs — the owned shape every helper below works over, so no
+    // borrow of `packages` outlives its move into the result.
+    let members: Vec<(String, String)> =
+        packages.iter().map(|(n, d, _)| (n.clone(), d.clone())).collect();
+
+    let mut edges = Vec::new();
+    let mut deps = Vec::new();
+    for (name, _, json) in &packages {
+        for key in ["dependencies", "devDependencies", "peerDependencies"] {
+            if let Some(obj) = json.get(key).and_then(|d| d.as_object()) {
+                for (dep, ver) in obj {
+                    if dep == name {
+                        continue;
+                    }
+                    if names.contains(dep.as_str()) {
+                        edges.push((name.clone(), dep.clone()));
+                    } else if let Some(v) = ver.as_str() {
+                        deps.push(PackageDep {
+                            package: name.clone(),
+                            name: dep.clone(),
+                            version: v.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    edges.sort();
+    edges.dedup();
+
+    let mut crossings = Vec::new();
+    'pkgs: for (pkg_name, pkg_dir) in &members {
+        let mut stack = vec![root.join(pkg_dir)];
+        while let Some(dir) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for entry in rd.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                let fname = entry.file_name().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    if !SKIP_DIRS.contains(&fname.as_str()) {
+                        stack.push(p);
+                    }
+                    continue;
+                }
+                let Some(ext) = p.extension().and_then(|e| e.to_str()) else {
+                    continue;
+                };
+                if !SOURCE_EXTS.contains(&ext) {
+                    continue;
+                }
+                let Ok(meta) = p.metadata() else { continue };
+                if meta.len() > 1_000_000 {
+                    continue; // bundled/generated, not hand-written source
+                }
+                let Ok(src) = std::fs::read_to_string(&p) else { continue };
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let file_dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("").to_string();
+                for (i, line) in src.lines().enumerate() {
+                    for spec in import_specs(line) {
+                        if let Some(target) = crossing_target(spec, pkg_name, &file_dir, &members) {
+                            crossings.push(RepoCrossing {
+                                file: rel.clone(),
+                                line: (i + 1) as u32,
+                                spec: spec.to_string(),
+                                from_pkg: pkg_name.clone(),
+                                target,
+                            });
+                            if crossings.len() >= MAX_CROSSINGS {
+                                break 'pkgs;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    crossings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+
+    Some(WorkspaceScan {
+        packages: members
+            .into_iter()
+            .map(|(name, dir)| WorkspacePackage { name, dir })
+            .collect(),
+        edges,
+        crossings,
+        deps,
+    })
+}
+
+/// Longest-prefix package lookup, mirroring the client's `ownerOf`.
+fn owner_of_member(rel: &str, members: &[(String, String)]) -> Option<String> {
+    let mut best: Option<(&str, usize)> = None;
+    for (name, dir) in members {
+        let prefix = format!("{dir}/");
+        if rel.starts_with(&prefix) && best.is_none_or(|(_, l)| prefix.len() > l) {
+            best = Some((name.as_str(), prefix.len()));
+        }
+    }
+    best.map(|(n, _)| n.to_string())
+}
+
+/// Import specifiers on one source line — `from "x"`, `import("x")`,
+/// `require("x")`. Hand-parsed; the shapes are rigid enough that a regex
+/// dependency isn't worth it.
+fn import_specs(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for lead in ["from ", "import(", "import (", "require(", "require ("] {
+        let mut rest = line;
+        while let Some(at) = rest.find(lead) {
+            let after = &rest[at + lead.len()..];
+            let after = after.trim_start();
+            if let Some(q) = after.chars().next().filter(|c| *c == '"' || *c == '\'') {
+                if let Some(end) = after[1..].find(q) {
+                    out.push(&after[1..1 + end]);
+                }
+            }
+            rest = &rest[at + lead.len()..];
+        }
+    }
+    out
+}
+
+/// The package whose internals `spec` reaches into, when it crosses a boundary.
+/// Mirrors the client-side rules: deep bare imports into src/dist/lib, and
+/// relative paths escaping into a different member. Subpath exports
+/// ("@acme/ui/styles.css") stay legitimate.
+fn crossing_target(
+    spec: &str,
+    own_pkg: &str,
+    file_dir: &str,
+    members: &[(String, String)],
+) -> Option<String> {
+    if spec.starts_with('.') {
+        let mut parts: Vec<&str> = if file_dir.is_empty() {
+            Vec::new()
+        } else {
+            file_dir.split('/').collect()
+        };
+        for seg in spec.split('/') {
+            match seg {
+                "" | "." => {}
+                ".." => {
+                    parts.pop()?;
+                }
+                s => parts.push(s),
+            }
+        }
+        let resolved = parts.join("/");
+        let target = owner_of_member(&resolved, members)
+            .or_else(|| owner_of_member(&format!("{resolved}/x"), members))?;
+        return (target != own_pkg).then_some(target);
+    }
+    for (name, _) in members {
+        if name != own_pkg {
+            if let Some(sub) = spec.strip_prefix(&format!("{name}/")) {
+                if sub.starts_with("src/") || sub.starts_with("dist/") || sub.starts_with("lib/") {
+                    return Some(name.clone());
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -183,6 +427,44 @@ mod tests {
         assert_eq!(ws.edges, vec![("@acme/web".into(), "@acme/ui".into())]);
         let web = ws.packages.iter().find(|p| p.name == "@acme/web").unwrap();
         assert_eq!(web.dir, "apps/web");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn scan_finds_crossings_and_deps() {
+        let dir = std::env::temp_dir().join(format!("rvw-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write(&dir.join("turbo.json"), "{}");
+        write(
+            &dir.join("package.json"),
+            r#"{"name":"root","workspaces":["packages/*"]}"#,
+        );
+        write(
+            &dir.join("packages/ui/package.json"),
+            r#"{"name":"@acme/ui","dependencies":{"react":"^18.2.0"}}"#,
+        );
+        write(
+            &dir.join("packages/web/package.json"),
+            r#"{"name":"@acme/web","dependencies":{"@acme/ui":"*","react":"^18.3.1"}}"#,
+        );
+        write(
+            &dir.join("packages/web/src/page.ts"),
+            "import { b } from \"@acme/ui/src/button\";\nimport { ok } from \"@acme/ui\";\nimport { x } from \"../../ui/src/x\";\n",
+        );
+
+        let scan = monorepo_scan(dir.to_string_lossy().into_owned())
+            .await
+            .unwrap()
+            .expect("scanned");
+        // Deep bare import AND relative escape, each once; the public import not.
+        assert_eq!(scan.crossings.len(), 2, "{:?}", scan.crossings.iter().map(|c| &c.spec).collect::<Vec<_>>());
+        assert!(scan.crossings.iter().all(|c| c.target == "@acme/ui"));
+        assert!(scan.crossings.iter().any(|c| c.line == 1));
+        assert!(scan.crossings.iter().any(|c| c.line == 3));
+        // External dep recorded per package — the client groups the mismatch.
+        let reacts: Vec<_> = scan.deps.iter().filter(|d| d.name == "react").collect();
+        assert_eq!(reacts.len(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

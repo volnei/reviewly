@@ -68,6 +68,12 @@ const notificationsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/routes/notifications"), "NotificationsPage"),
 });
 
+const turborepoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/turborepo",
+  component: lazyRouteComponent(() => import("@/routes/turborepo"), "TurborepoPage"),
+});
+
 const dependabotRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dependabot",
@@ -108,6 +114,7 @@ const routeTree = rootRoute.addChildren([
   repoDetailRoute,
   notificationsRoute,
   dependabotRoute,
+  turborepoRoute,
   settingsRoute,
   chatRoute,
 ]);

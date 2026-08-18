@@ -283,6 +283,7 @@ pub fn run() {
             commands::pulls::gh_get_file_content,
             // local git workspace
             commands::monorepo::monorepo_workspace,
+            commands::monorepo::monorepo_scan,
             commands::git::git_repo_info,
             commands::git::git_clone,
             commands::git::list_dir,

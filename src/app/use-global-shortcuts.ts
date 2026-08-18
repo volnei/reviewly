@@ -28,6 +28,7 @@ export function useGlobalShortcuts() {
       l: "/repos",
       n: "/notifications",
       a: "/dependabot",
+      t: "/turborepo",
       s: "/settings",
     };
 
@@ -102,6 +103,7 @@ export function useGlobalShortcuts() {
         "3": "/repos",
         "4": "/notifications",
         "5": "/dependabot",
+        "6": "/turborepo",
         ",": "/settings",
       };
       const dest = map[e.key];
