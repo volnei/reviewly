@@ -1,3 +1,4 @@
+import { parsePatch } from "@/lib/diff";
 import type { LayerPlan, ReviewLayer } from "@/lib/layers";
 import type { PullFile } from "@/lib/tauri";
 
@@ -145,4 +146,153 @@ export function buildPackagePlan(files: PullFile[], ws: Workspace): LayerPlan {
     strategy: `Packages in dependency order, from the repo's own graph — each layer only depends on layers already read.${cycleNote}`,
     layers,
   };
+}
+
+/* ─────────────────────────── workspace insights ─────────────────────────── */
+
+/** Dependency cycles in the workspace: every strongly-connected component with
+ * more than one member (or a self-edge). A cycle is invisible in any diff and
+ * exactly the kind of thing a reviewer is expected to catch — so it is computed
+ * from the graph, not from the change. */
+export function findCycles(ws: Workspace): string[][] {
+  // Tarjan. The graphs are tiny (tens of packages), recursion is fine.
+  const adj = new Map<string, string[]>();
+  for (const p of ws.packages) adj.set(p.name, []);
+  for (const [from, to] of ws.edges) adj.get(from)?.push(to);
+
+  let index = 0;
+  const idx = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const cycles: string[][] = [];
+
+  const strongconnect = (v: string): void => {
+    idx.set(v, index);
+    low.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of adj.get(v) ?? []) {
+      if (!idx.has(w)) {
+        strongconnect(w);
+        low.set(v, Math.min(low.get(v) ?? 0, low.get(w) ?? 0));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v) ?? 0, idx.get(w) ?? 0));
+      }
+    }
+    if (low.get(v) === idx.get(v)) {
+      const scc: string[] = [];
+      while (true) {
+        const w = stack.pop();
+        if (w === undefined) break;
+        onStack.delete(w);
+        scc.push(w);
+        if (w === v) break;
+      }
+      const selfLoop = scc.length === 1 && (adj.get(v) ?? []).includes(v);
+      if (scc.length > 1 || selfLoop) cycles.push(scc.sort());
+    }
+  };
+  for (const p of ws.packages) {
+    if (!idx.has(p.name)) strongconnect(p.name);
+  }
+  return cycles;
+}
+
+/** One import in this diff that reaches across a package boundary into another
+ * package's internals. */
+export interface BoundaryCrossing {
+  file: string;
+  /** New-file line of the added import. */
+  line: number;
+  /** The import specifier as written. */
+  spec: string;
+  /** The package whose internals are being reached into. */
+  target: string;
+  /** How it crosses: a deep bare import ("@acme/ui/src/…") or a relative path
+   * escaping its own package ("../../ui/src/…"). */
+  kind: "deep-import" | "relative-escape";
+}
+
+const IMPORT_RE = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)["']([^"']+)["']/g;
+
+/** Resolve `spec` relative to `fromDir`, collapsing `.` and `..`. Returns null
+ * when the path escapes the repo root. */
+function resolveRelative(fromDir: string, spec: string): string | null {
+  const parts = fromDir === "" ? [] : fromDir.split("/");
+  for (const seg of spec.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  return parts.join("/");
+}
+
+/**
+ * Scan the ADDED lines of a PR for imports that cross into another workspace
+ * package's internals. Two shapes count, both diff-provable:
+ *
+ * - a bare specifier reaching past a package's public surface into `src/` or
+ *   `dist/` ("@acme/ui/src/button") — subpath exports like "@acme/ui/styles.css"
+ *   are deliberately NOT flagged, since packages legitimately export subpaths;
+ * - a relative path that walks out of its own package and lands inside a
+ *   different one ("../../packages/ui/src/x"), which no exports map sanctions.
+ *
+ * Only added lines are scanned: a pre-existing crossing is the repo's debt, not
+ * this PR's.
+ */
+export function boundaryCrossings(files: PullFile[], ws: Workspace): BoundaryCrossing[] {
+  const out: BoundaryCrossing[] = [];
+  for (const f of files) {
+    if (!f.patch) continue;
+    const owner = ownerOf(f.filename, ws);
+    if (owner === null) continue; // root files play by different rules
+    const fileDir = f.filename.split("/").slice(0, -1).join("/");
+    for (const hunk of parsePatch(f.patch)) {
+      for (const line of hunk.lines) {
+        if (line.kind !== "add" || line.newLine === null) continue;
+        for (const m of line.text.matchAll(IMPORT_RE)) {
+          const spec = m[1];
+          if (spec.startsWith(".")) {
+            const resolved = resolveRelative(fileDir, spec);
+            if (resolved === null) continue;
+            const target = ownerOf(resolved, ws) ?? ownerOf(`${resolved}/x`, ws);
+            if (target !== null && target !== owner) {
+              out.push({
+                file: f.filename,
+                line: line.newLine,
+                spec,
+                target,
+                kind: "relative-escape",
+              });
+            }
+          } else {
+            const pkg = ws.packages.find((p) => p.name !== owner && spec.startsWith(`${p.name}/`));
+            if (pkg) {
+              const subpath = spec.slice(pkg.name.length + 1);
+              if (
+                subpath.startsWith("src/") ||
+                subpath.startsWith("dist/") ||
+                subpath.startsWith("lib/")
+              ) {
+                out.push({
+                  file: f.filename,
+                  line: line.newLine,
+                  spec,
+                  target: pkg.name,
+                  kind: "deep-import",
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
 }

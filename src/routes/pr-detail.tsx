@@ -17,6 +17,7 @@ import { ReviewThreadGroup } from "@/components/review-thread";
 import { Segmented } from "@/components/segmented";
 import { StackRail } from "@/components/stack-rail";
 import { TooltipFor } from "@/components/tooltip-for";
+import { TurboInsights } from "@/components/turbo-insights";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -1125,6 +1126,22 @@ export function PRDetailPage() {
                   <span className="text-success">+{d.additions ?? 0}</span>
                   <span className="text-destructive">−{d.deletions ?? 0}</span>
                 </span>
+              )}
+              {localRepo && fileList.length > 0 && (
+                <TurboInsights
+                  clonePath={localRepo.path}
+                  prKey={prViewKey}
+                  headSha={headSha}
+                  files={fileList}
+                  onOpenFile={(path, line) => {
+                    setActiveFile(path);
+                    if (line != null) {
+                      setFocusLine(line);
+                      setFocusNonce((n) => n + 1);
+                    }
+                    if (view === "guided") setView("unified");
+                  }}
+                />
               )}
               {view !== "guided" && vk && current && (
                 <TooltipFor label="Mark viewed & jump to next file (n) · [ ] to move between files">
