@@ -44,6 +44,18 @@ const GENERATED_FILE_PATTERNS = [
 
 const SNAPSHOT_PATTERNS = [/__snapshots__\//, /\.snap$/];
 
+const TEST_PATTERNS = [
+  /(^|\/)(tests?|__tests__|spec|e2e|cypress|fixtures?)\//,
+  /\.(test|spec)\.[a-z]+$/,
+  /_test\.(go|py|rb|rs)$/,
+  /_spec\.rb$/,
+];
+
+/** True when the path is a test file or lives under a test directory. */
+export function isTestFile(path: string): boolean {
+  return TEST_PATTERNS.some((r) => r.test(path));
+}
+
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
