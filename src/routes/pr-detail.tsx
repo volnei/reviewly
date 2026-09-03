@@ -41,6 +41,7 @@ import { UserHoverCard } from "@/components/user-hover-card";
 import type { AiAction } from "@/lib/ai-actions";
 import { buildReviewContext } from "@/lib/ai/context";
 import { parsePatch } from "@/lib/diff";
+import { isTestFile } from "@/lib/focus";
 import { relativeTime } from "@/lib/format";
 import { celebrate } from "@/lib/kite-release";
 import type {
@@ -429,6 +430,18 @@ export function PRDetailPage() {
           : "text-muted-foreground";
   const fileList = files.data ?? [];
   const filteredThreads = threads.data ?? [];
+
+  // Lines changed in non-test files only; shown as a tooltip on the +/− badge.
+  const sourceStats = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    for (const f of files.data ?? []) {
+      if (isTestFile(f.filename)) continue;
+      additions += f.additions;
+      deletions += f.deletions;
+    }
+    return { additions, deletions };
+  }, [files.data]);
 
   // Viewed-files state, also used to drive "mark viewed & next".
   const vk = headSha ? viewedKey(owner, repo, number, headSha) : null;
@@ -1118,13 +1131,27 @@ export function PRDetailPage() {
           {tab === "files" && (
             <div className="ml-auto flex items-center gap-2">
               {(d.additions ?? d.deletions) != null && (
-                <span
-                  className="mr-0.5 flex items-center gap-1.5 font-display text-xs tabular-nums"
-                  aria-label={`${d.additions ?? 0} additions, ${d.deletions ?? 0} deletions`}
+                <TooltipFor
+                  label={
+                    files.data ? (
+                      <>
+                        <span className="text-success">+{sourceStats.additions}</span>{" "}
+                        <span className="text-destructive">−{sourceStats.deletions}</span>{" "}
+                        <span className="text-muted-foreground">excluding tests</span>
+                      </>
+                    ) : (
+                      "Loading files…"
+                    )
+                  }
                 >
-                  <span className="text-success">+{d.additions ?? 0}</span>
-                  <span className="text-destructive">−{d.deletions ?? 0}</span>
-                </span>
+                  <span
+                    className="mr-0.5 flex cursor-help items-center gap-1.5 font-display text-xs tabular-nums"
+                    aria-label={`${d.additions ?? 0} additions, ${d.deletions ?? 0} deletions`}
+                  >
+                    <span className="text-success">+{d.additions ?? 0}</span>
+                    <span className="text-destructive">−{d.deletions ?? 0}</span>
+                  </span>
+                </TooltipFor>
               )}
               {view !== "guided" && vk && current && (
                 <TooltipFor label="Mark viewed & jump to next file (n) · [ ] to move between files">

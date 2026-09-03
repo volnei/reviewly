@@ -1,5 +1,5 @@
 import { extractObjects, firstString, stripFence, toArray, toStringArray } from "@/lib/ai/json";
-import { classify } from "@/lib/focus";
+import { classify, isTestFile } from "@/lib/focus";
 import type { PullFile } from "@/lib/tauri";
 
 /**
@@ -260,11 +260,7 @@ const BUCKETS: Bucket[] = [
     focus: ["Each behaviour changed above has a test", "No test asserts the old behaviour"],
     risk: "low",
     rank: 70,
-    match: (p) =>
-      has(p, /(^|\/)(tests?|__tests__|spec|e2e|cypress|fixtures?)\//) ||
-      has(p, /\.(test|spec)\.[a-z]+$/) ||
-      has(p, /_test\.(go|py|rb|rs)$/) ||
-      has(p, /_spec\.rb$/),
+    match: (p) => isTestFile(p),
   },
   {
     id: "docs",
