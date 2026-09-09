@@ -59,7 +59,7 @@ function useAppliedAppearance() {
       root.style.setProperty("--primary", a.primary);
       root.style.setProperty("--primary-foreground", a.foreground);
     } else {
-      // Violet — let the theme's own light/dark values stand.
+      // Ink — let the theme's own light/dark values stand.
       root.style.removeProperty("--primary");
       root.style.removeProperty("--primary-foreground");
     }

@@ -1,60 +1,63 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Cal Sans Text (variable, 300–700) from the official @calcom package — UI font */
-@import "@calcom/cal-sans-ui/text.css";
-/* JetBrains Mono for code/data */
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
+/* IBM Plex — one family for UI (Sans) and code (Mono). They share a skeleton,
+   so the boundary between chrome and diff reads as designed, not glued. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* The Cal Sans UI font reads heavy, so dial the prominent weights down a
-   notch app-wide — `font-semibold` (titles) and `font-bold` lose a little
-   weight while `font-medium` is untouched. */
+/* Only three weights are loaded (400/500/600); `font-bold` caps at 600 so
+   nothing falls back to a synthesized heavy face. */
 @theme {
-  --font-weight-semibold: 550;
+  --font-weight-semibold: 600;
   --font-weight-bold: 600;
 }
 
 :root {
-  --radius: 0.625rem; /* 10px — Raycast-ish generous */
+  --radius: 0.5rem; /* 8px — md 6, lg 8, xl 10 */
 
-  /* Base palette — warm stone, ready for vibrancy */
-  --background: oklch(0.165 0.008 65);
-  --foreground: oklch(0.97 0.005 75);
+  /* Base palette — neutral graphite, zero chroma. Colour is reserved for
+   * meaning: amber for findings, green/red for diff and state. */
+  --background: oklch(0.2 0 0);
+  --foreground: oklch(0.94 0 0);
 
-  /* Surfaces — lightly translucent over the dark tint so vibrancy peeks through */
-  --card: oklch(0.215 0.008 65 / 0.78);
-  --card-foreground: oklch(0.97 0.005 75);
-  --popover: oklch(0.195 0.008 65 / 0.92);
-  --popover-foreground: oklch(0.98 0.005 75);
+  /* Surfaces — one tint step up, lightly translucent so vibrancy peeks through */
+  --card: oklch(0.235 0 0 / 0.78);
+  --card-foreground: oklch(0.94 0 0);
+  --popover: oklch(0.215 0 0 / 0.94);
+  --popover-foreground: oklch(0.96 0 0);
 
-  /* Accent: premium indigo / violet */
-  --primary: oklch(0.6 0.19 268);
-  --primary-foreground: oklch(0.98 0.012 268);
+  /* The one action colour is ink: light on dark, dark on light. Settings can
+   * still swap in a hue (see stores/appearance). */
+  --primary: oklch(0.94 0 0);
+  --primary-foreground: oklch(0.16 0 0);
 
-  --secondary: oklch(0.255 0.008 65 / 0.7);
-  --secondary-foreground: oklch(0.97 0.005 75);
+  --secondary: oklch(0.27 0 0 / 0.7);
+  --secondary-foreground: oklch(0.94 0 0);
 
-  --muted: oklch(0.225 0.008 65 / 0.5);
+  --muted: oklch(0.245 0 0 / 0.5);
   /* Secondary text carries most of the app (counts, timestamps, paths, hints)
    * and it sits on TRANSLUCENT surfaces, so the vibrancy behind eats some of
    * its contrast — it needs to be lighter than a flat-surface theme would set
    * it. Also lifts every `text-muted-foreground/70`-style dim-down. */
-  --muted-foreground: oklch(0.715 0.008 65);
+  --muted-foreground: oklch(0.72 0 0);
 
-  --accent: oklch(0.27 0.008 65 / 0.6);
-  --accent-foreground: oklch(0.98 0.005 75);
+  --accent: oklch(0.29 0 0 / 0.6);
+  --accent-foreground: oklch(0.96 0 0);
 
-  --destructive: oklch(0.66 0.22 25);
+  --destructive: oklch(0.66 0.17 25);
   --destructive-foreground: oklch(0.98 0.01 25);
-  --success: oklch(0.7 0.16 145);
-  --success-foreground: oklch(0.92 0.1 145);
-  --warning: oklch(0.78 0.14 75);
-  --warning-foreground: oklch(0.92 0.1 75);
-  --info: oklch(0.7 0.16 240);
-  --info-foreground: oklch(0.92 0.1 240);
+  --success: oklch(0.68 0.13 150);
+  --success-foreground: oklch(0.92 0.08 150);
+  --warning: oklch(0.74 0.14 80);
+  --warning-foreground: oklch(0.92 0.08 80);
+  --info: oklch(0.72 0.05 240);
+  --info-foreground: oklch(0.92 0.03 240);
 
   /* ── Edges: there are exactly three levels, and no others. ──────────────
    * 1. NONE — the default for anything inline: chips, kbds, counters, pills,
@@ -69,24 +72,23 @@
    *    real work: it detaches the surface from whatever is behind it.
    * When in doubt it's level 1. Reach for 3 only if the thing can overlap
    * something it isn't part of. */
-  --border: oklch(0.38 0.008 65 / 0.55);
-  --hairline: oklch(0.4 0.008 65 / 0.14);
-  --input: oklch(0.32 0.008 65 / 0.6);
-  --ring: oklch(0.6 0.19 268 / 0.55);
+  --border: oklch(0.42 0 0 / 0.55);
+  --hairline: oklch(0.45 0 0 / 0.14);
+  --input: oklch(0.34 0 0 / 0.6);
+  --ring: oklch(0.94 0 0 / 0.4);
 
   /* Sidebar — slightly different surface */
-  --sidebar: oklch(0.18 0.008 65 / 0.72);
-  --sidebar-foreground: oklch(0.85 0.008 75);
-  --sidebar-border: oklch(0.3 0.008 65 / 0.35);
-  --sidebar-accent: oklch(0.28 0.008 65 / 0.6);
-  --sidebar-accent-foreground: oklch(0.98 0.005 75);
-  --sidebar-primary: oklch(0.6 0.19 268);
-  --sidebar-primary-foreground: oklch(0.98 0.012 268);
-  --sidebar-ring: oklch(0.6 0.19 268 / 0.55);
+  --sidebar: oklch(0.19 0 0 / 0.72);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-border: oklch(0.32 0 0 / 0.35);
+  --sidebar-accent: oklch(0.29 0 0 / 0.6);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.94 0 0);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-ring: oklch(0.94 0 0 / 0.4);
 
-  --font-sans: "Cal Sans Text", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter",
-    sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-display: var(--font-sans);
 }
 
@@ -106,52 +108,52 @@
 :root.light {
   color-scheme: light;
 
-  /* Base = soft warm grey so near-white cards lift off it. */
-  --background: oklch(0.955 0.005 80);
-  --foreground: oklch(0.24 0.012 60);
+  /* Base = neutral light grey so white cards lift off it. */
+  --background: oklch(0.965 0 0);
+  --foreground: oklch(0.22 0 0);
 
-  /* Translucent white surfaces → backdrop-blur frosts the gradient behind. */
+  /* Translucent white surfaces → backdrop-blur frosts the backdrop behind. */
   --card: oklch(1 0 0 / 0.66);
-  --card-foreground: oklch(0.24 0.012 60);
-  --popover: oklch(1 0 0 / 0.86);
-  --popover-foreground: oklch(0.22 0.012 60);
+  --card-foreground: oklch(0.22 0 0);
+  --popover: oklch(1 0 0 / 0.88);
+  --popover-foreground: oklch(0.2 0 0);
 
-  --primary: oklch(0.55 0.2 268);
-  --primary-foreground: oklch(0.99 0.01 268);
+  --primary: oklch(0.22 0 0);
+  --primary-foreground: oklch(0.98 0 0);
 
   --secondary: oklch(1 0 0 / 0.6);
-  --secondary-foreground: oklch(0.3 0.012 60);
+  --secondary-foreground: oklch(0.3 0 0);
 
-  --muted: oklch(0.9 0.006 80 / 0.6);
+  --muted: oklch(0.9 0 0 / 0.6);
   /* Same reasoning as dark, mirrored: darker, not lighter. */
-  --muted-foreground: oklch(0.465 0.014 60);
+  --muted-foreground: oklch(0.47 0 0);
 
-  --accent: oklch(0.92 0.008 80 / 0.7);
-  --accent-foreground: oklch(0.26 0.012 60);
+  --accent: oklch(0.92 0 0 / 0.7);
+  --accent-foreground: oklch(0.24 0 0);
 
-  --destructive: oklch(0.56 0.22 25);
+  --destructive: oklch(0.56 0.19 25);
   --destructive-foreground: oklch(0.99 0.01 25);
-  --success: oklch(0.55 0.15 150);
+  --success: oklch(0.52 0.13 150);
   --success-foreground: oklch(0.98 0.02 150);
-  --warning: oklch(0.62 0.14 70);
-  --warning-foreground: oklch(0.99 0.02 70);
-  --info: oklch(0.54 0.16 245);
-  --info-foreground: oklch(0.98 0.02 245);
+  --warning: oklch(0.6 0.13 80);
+  --warning-foreground: oklch(0.99 0.02 80);
+  --info: oklch(0.5 0.05 240);
+  --info-foreground: oklch(0.98 0.02 240);
 
   /* Light needs slightly more present structure than dark. */
-  --border: oklch(0.5 0.012 70 / 0.45);
-  --hairline: oklch(0.5 0.012 70 / 0.18);
-  --input: oklch(0.6 0.01 70 / 0.45);
-  --ring: oklch(0.55 0.2 268 / 0.5);
+  --border: oklch(0.5 0 0 / 0.45);
+  --hairline: oklch(0.5 0 0 / 0.18);
+  --input: oklch(0.6 0 0 / 0.45);
+  --ring: oklch(0.22 0 0 / 0.4);
 
   --sidebar: oklch(1 0 0 / 0.5);
-  --sidebar-foreground: oklch(0.32 0.012 60);
-  --sidebar-border: oklch(0.5 0.012 70 / 0.22);
+  --sidebar-foreground: oklch(0.32 0 0);
+  --sidebar-border: oklch(0.5 0 0 / 0.22);
   --sidebar-accent: oklch(1 0 0 / 0.7);
-  --sidebar-accent-foreground: oklch(0.24 0.012 60);
-  --sidebar-primary: oklch(0.55 0.2 268);
-  --sidebar-primary-foreground: oklch(0.99 0.01 268);
-  --sidebar-ring: oklch(0.55 0.2 268 / 0.5);
+  --sidebar-accent-foreground: oklch(0.24 0 0);
+  --sidebar-primary: oklch(0.22 0 0);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.22 0 0 / 0.4);
 }
 
 @theme inline {
@@ -277,13 +279,13 @@
 
   html {
     /* Opaque fallback for non-vibrancy platforms (linux/win10) */
-    background: oklch(0.17 0.008 65);
+    background: oklch(0.2 0 0);
   }
 
   body {
     font-family: var(--font-sans);
     font-size: 0.875rem; /* 14px @ root=16, scales with html font-size for zoom */
-    font-weight: 300;
+    font-weight: 400;
     line-height: 1.55;
     letter-spacing: -0.005em;
     -webkit-font-smoothing: antialiased;
@@ -296,11 +298,7 @@
        content. */
     user-select: none;
     -webkit-user-select: none;
-    background: radial-gradient(
-        ellipse 60% 55% at 0% 0%,
-        rgba(255, 255, 255, 0.09),
-        transparent 60%
-      ), var(--color-background);
+    background: var(--color-background);
   }
 
   /* Default headings to a lighter weight than browser default */
@@ -324,11 +322,7 @@
     background: transparent;
   }
   html.has-vibrancy body {
-    background: radial-gradient(
-        ellipse 60% 55% at 0% 0%,
-        rgba(255, 255, 255, 0.09),
-        transparent 60%
-      ), color-mix(in oklch, oklch(0.165 0.008 65) 88%, transparent);
+    background: color-mix(in oklch, oklch(0.2 0 0) 88%, transparent);
   }
 
   /* Light theme: paint an OPAQUE light background so the dark macOS vibrancy
@@ -340,18 +334,9 @@
   html.light.has-vibrancy {
     background: var(--color-background);
   }
-  /* Soft, premium gradient mesh: a warm highlight from the top-left and a
-     faint indigo wash from the bottom-right give the light theme atmosphere
-     and something for the frosted (backdrop-blur) surfaces to pick up. */
   html.light body,
   html.light.has-vibrancy body {
-    background: radial-gradient(
-        ellipse 90% 70% at 8% -5%,
-        oklch(0.99 0.025 90 / 0.8),
-        transparent 55%
-      ), radial-gradient(ellipse 80% 80% at 100% 105%, oklch(0.7 0.13 268 / 0.16), transparent 60%),
-      var(--color-background);
-    background-attachment: fixed;
+    background: var(--color-background);
   }
 
   input,
@@ -418,17 +403,16 @@
      A gentle, layered drop-shadow on translucent/blurred panels lifts them
      off the gradient backdrop. */
   html.light [class*="backdrop-blur"] {
-    box-shadow: 0 1px 2px oklch(0.4 0.02 70 / 0.06), 0 8px 24px -12px oklch(0.4 0.02 70 / 0.18);
+    box-shadow: 0 1px 2px oklch(0.4 0 0 / 0.06), 0 8px 24px -12px oklch(0.4 0 0 / 0.18);
   }
 
+  /* Primary is ink, so selection can't lean on it (white text on a white-ish
+     wash would vanish): a mid-grey wash keeps the text readable in both themes. */
   ::selection {
-    background: color-mix(in oklch, var(--color-primary) 45%, transparent);
+    background: oklch(0.55 0 0 / 0.5);
   }
-
-  /* Light theme: the foreground is dark and translucent over white reads too
-     muddy for selected text — push the primary mix higher for legible contrast. */
   :root.light ::selection {
-    background: color-mix(in oklch, var(--color-primary) 58%, transparent);
+    background: oklch(0.7 0 0 / 0.55);
   }
 
   /* Slim scrollbars */
@@ -453,11 +437,11 @@
   /* Light theme: the foreground-tinted thumb gets heavy on white — use a
      softer warm-grey thumb that darkens a touch on hover. */
   :root.light ::-webkit-scrollbar-thumb {
-    background: oklch(0.5 0.012 70 / 0.3);
+    background: oklch(0.5 0 0 / 0.3);
     background-clip: padding-box;
   }
   :root.light ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.5 0.012 70 / 0.45);
+    background: oklch(0.5 0 0 / 0.45);
     background-clip: padding-box;
   }
 }
@@ -570,7 +554,7 @@
 .prose-code-block {
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: oklch(0.135 0.008 65);
+  background: oklch(0.16 0 0);
   overflow: hidden;
   margin: 0.5rem 0;
 }
@@ -628,7 +612,7 @@
 
 /* Fallback for bare <pre> (when content is not in our wrapper). */
 .prose-reviewly pre:not(.prose-code-block pre) {
-  background: oklch(0.135 0.008 65);
+  background: oklch(0.16 0 0);
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.85rem 0.95rem;
@@ -777,7 +761,7 @@
   font-style: italic;
 }
 .token.punctuation {
-  color: oklch(0.72 0.008 65);
+  color: oklch(0.72 0 0);
 }
 .token.namespace {
   opacity: 0.7;

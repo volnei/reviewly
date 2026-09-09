@@ -2,13 +2,13 @@ import { sqlStorage } from "@/lib/sql-storage";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AccentId = "violet" | "blue" | "cyan" | "emerald" | "rose" | "pink";
+export type AccentId = "ink" | "violet" | "blue" | "cyan" | "emerald" | "rose" | "pink";
 
 /** Dock-icon background variant (macOS). */
 export type AppIconBg = "white" | "black";
 
 interface State {
-  /** Accent that drives `--primary` app-wide. "violet" keeps the theme default. */
+  /** Accent that drives `--primary` app-wide. "ink" keeps the theme default. */
   accent: AccentId;
   /** Kill animations + transitions across the app. */
   reduceMotion: boolean;
@@ -22,7 +22,7 @@ interface State {
 export const useAppearance = create<State>()(
   persist(
     (set) => ({
-      accent: "violet",
+      accent: "ink",
       reduceMotion: false,
       appIconBg: "white",
       setAccent: (accent) => set({ accent }),
@@ -37,6 +37,9 @@ export const useAppearance = create<State>()(
  * Accent presets. `primary` is the `--primary` override (null = leave the
  * theme's own value, which differs per light/dark). `swatch` is what the picker
  * dot shows. `foreground` keeps text legible on a filled accent.
+ *
+ * "ink" is first so an unknown persisted id (e.g. the pre-2.0 "violet"
+ * default) falls back to it via `ACCENTS[0]`.
  */
 export const ACCENTS: {
   id: AccentId;
@@ -46,10 +49,17 @@ export const ACCENTS: {
   foreground: string;
 }[] = [
   {
+    id: "ink",
+    label: "Ink",
+    swatch: "oklch(0.72 0 0)",
+    primary: null,
+    foreground: "oklch(0.16 0 0)",
+  },
+  {
     id: "violet",
     label: "Violet",
     swatch: "oklch(0.6 0.19 268)",
-    primary: null,
+    primary: "oklch(0.6 0.19 268)",
     foreground: "oklch(0.98 0.012 268)",
   },
   {
