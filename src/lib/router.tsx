@@ -1,6 +1,6 @@
 import { AppLayout, ChatWindowLayout } from "@/app/layout";
 import { CrashFallback } from "@/components/error-boundary";
-import { DashboardPage } from "@/routes/dashboard";
+import { HomePage } from "@/routes/home";
 import {
   Outlet,
   createRootRoute,
@@ -41,7 +41,7 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: DashboardPage,
+  component: HomePage,
 });
 
 const onboardingRoute = createRoute({
