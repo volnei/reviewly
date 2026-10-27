@@ -1226,20 +1226,6 @@ mark.dm {
   color: var(--ink-2);
   font-size: 13px;
 }
-.home-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  padding: 9px 14px;
-  font-size: 12px;
-}
-.home-primary:hover {
-  opacity: 0.85;
-}
 .home-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2511,11 +2497,6 @@ mark.dm {
 .home-metric svg {
   color: var(--ink-3);
 }
-.home-primary {
-  min-height: 32px;
-  padding-block: 6px;
-  box-shadow: inset 0 1px 0 #ffffff20;
-}
 .work-list .review-row {
   border-radius: 6px;
   min-height: 80px;
@@ -3212,45 +3193,54 @@ mark.dm {
   color: #f4eee2;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
 }
-.stack-hopper-dialog-header {
-  padding: 13px 18px;
-  border-bottom: 1px solid #2a2830;
-  background: #18171d;
-}
-.stack-hopper-dialog-header [data-slot="dialog-title"] {
-  color: #f5f0e8;
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.stack-hopper-dialog-header [data-slot="dialog-description"] {
-  color: #9692a2;
-  font-size: 11px;
-}
-.stack-hopper-dialog > [data-slot="button"] {
-  color: #aaa6b4;
-}
 .stack-hopper-shell {
-  padding: 12px 18px 14px;
+  padding: 0;
   background: #111016;
 }
 .stack-hopper-hud {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 14px;
   display: flex;
   justify-content: flex-end;
-  gap: 16px;
-  margin-bottom: 7px;
-  color: #898594;
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  color: #f4eee2;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  background: transparent;
+  text-shadow: 1px 1px 0 #153d59, 2px 2px 0 #8b4934;
+  pointer-events: none;
 }
+.stack-hopper-hud span { display: flex; align-items: baseline; gap: 6px; }
+.stack-hopper-hud b { color: #ffd66b; font-size: 10px; font-weight: 500; }
 .stack-hopper-screen {
   position: relative;
-  width: min(100%, 640px);
-  margin-inline: auto;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 7px;
+}
+.stack-hopper-screen::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, transparent 54%, rgba(7, 18, 25, 0.24) 100%),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(10, 25, 32, 0.02) 0,
+      rgba(10, 25, 32, 0.02) 2px,
+      rgba(5, 15, 20, 0.13) 3px
+    );
+  box-shadow: inset 0 0 28px rgba(5, 15, 22, 0.2);
+  content: "";
+  pointer-events: none;
 }
 .stack-hopper-canvas {
   display: block;
@@ -3258,9 +3248,10 @@ mark.dm {
   height: auto;
   aspect-ratio: 10 / 7;
   border: 0;
-  border-radius: 2px;
+  border-radius: 7px;
   background: #54b8dc;
-  image-rendering: auto;
+  image-rendering: pixelated;
+  filter: saturate(1.08) contrast(1.04);
   outline: none;
   box-shadow: none;
 }
@@ -3269,17 +3260,17 @@ mark.dm {
 }
 .stack-hopper-message {
   position: absolute;
+  z-index: 2;
   top: 50%;
   left: 50%;
   display: grid;
-  width: min(54%, 260px);
+  width: auto;
   translate: -50% -50%;
   justify-items: center;
-  padding: 15px 18px 14px;
+  padding: 0;
   border: 0;
-  border-radius: 3px;
-  background: rgba(8, 35, 55, 0.88);
-  box-shadow: 3px 3px 0 rgba(242, 184, 78, 0.58);
+  background: transparent;
+  box-shadow: none;
   color: #f4eee2;
   text-align: center;
   pointer-events: none;
@@ -3288,10 +3279,10 @@ mark.dm {
   top: 14px;
   left: 14px;
   width: auto;
-  min-width: 176px;
+  min-width: 0;
   translate: 0;
   justify-items: start;
-  padding: 10px 12px;
+  padding: 0;
   text-align: left;
 }
 .stack-hopper-message.ready strong {
@@ -3301,23 +3292,37 @@ mark.dm {
 .stack-hopper-message strong {
   color: #fff4df;
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
-  letter-spacing: -0.04em;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 2px 2px 0 #153d59, 4px 4px 0 #8b4934;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .stack-hopper-message p {
-  margin-top: 6px;
-  color: #aaa4b1;
-  font-size: 11px;
+  margin-top: 11px;
+  color: #fff0bd;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-shadow: 1px 1px 0 #153d59, 2px 2px 0 #8b4934;
+  text-transform: uppercase;
 }
 .stack-hopper-controls {
+  position: absolute;
+  z-index: 3;
+  bottom: 12px;
+  left: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  max-width: 540px;
-  margin: 12px auto 0;
+  margin: 0;
+  padding: 5px 6px 5px 10px;
+  translate: -50% 0;
+  background: rgba(8, 35, 55, 0.82);
+  border-radius: 4px;
 }
 .stack-hopper-controls [data-slot="button"] {
   min-width: 104px;
@@ -3358,6 +3363,14 @@ mark.dm {
   color: #666270;
   font-style: normal;
   text-transform: uppercase;
+}
+.stack-hopper-exit-shortcut {
+  gap: 3px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(244, 238, 226, 0.16);
+}
+.stack-hopper-exit-shortcut em {
+  margin-left: 0;
 }
 .stack-hopper-controls .stack-hopper-action.is-running {
   min-width: 0;
@@ -4386,10 +4399,6 @@ mark.dm {
     align-items: flex-start;
     flex-direction: column;
     gap: 14px;
-  }
-  .home-primary {
-    width: 100%;
-    justify-content: space-between;
   }
   .home-metrics {
     grid-template-columns: 1fr;

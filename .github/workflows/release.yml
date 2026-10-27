@@ -78,7 +78,29 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 7942008688acad538e64933b82465dc614fe7536
+          # `bun lint` lives on the official canary channel for now. The
+          # channel name is supported by setup-bun; a raw revision is not.
+          bun-version: canary
+
+      - name: Validate release version
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected="${TAG#v}"
+          package_version=$(bun -e 'console.log(require("./package.json").version)')
+          tauri_version=$(bun -e 'console.log(require("./src-tauri/tauri.conf.json").version)')
+          cargo_version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          for entry in "package.json:$package_version" "tauri.conf.json:$tauri_version" "Cargo.toml:$cargo_version"; do
+            file="${entry%%:*}"
+            version="${entry#*:}"
+            if [ "$version" != "$expected" ]; then
+              echo "::error::$file says $version, but release tag is $TAG"
+              exit 1
+            fi
+          done
+          echo "Release version $expected is consistent across app manifests."
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

@@ -66,6 +66,29 @@ function GameCanvas({ open }: { open: boolean }) {
     let frame = 0;
     let previousTime = performance.now();
     let accumulator = 0;
+    let audioContext: AudioContext | null = null;
+
+    const playBoostSound = () => {
+      audioContext ??= new AudioContext();
+      const context = audioContext;
+      const play = () => {
+        if (context.state === "closed") return;
+        const now = context.currentTime;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "square";
+        oscillator.frequency.setValueAtTime(240, now);
+        oscillator.frequency.exponentialRampToValueAtTime(520, now + 0.075);
+        gain.gain.setValueAtTime(0.035, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.095);
+      };
+      if (context.state === "suspended") void context.resume().then(play).catch(() => {});
+      else play();
+    };
 
     const changePhase = (next: GamePhase) => {
       game.phase = next;
@@ -87,6 +110,7 @@ function GameCanvas({ open }: { open: boolean }) {
       accumulator = 0;
       setScore(0);
       setPhase("running");
+      playBoostSound();
       focusCanvas();
     };
     const doBoost = () => {
@@ -95,7 +119,10 @@ function GameCanvas({ open }: { open: boolean }) {
         return;
       }
       if (game.phase === "paused") changePhase("running");
-      else boost(game);
+      else {
+        boost(game);
+        playBoostSound();
+      }
     };
     const pause = () => {
       if (game.phase === "running") changePhase("paused");
@@ -142,6 +169,7 @@ function GameCanvas({ open }: { open: boolean }) {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", onBlur);
       disposeStackHopperScene(view);
+      if (audioContext) void audioContext.close();
     };
   }, [open]);
 
@@ -156,10 +184,6 @@ function GameCanvas({ open }: { open: boolean }) {
 
   return (
     <div className="stack-hopper-shell">
-      <div className="stack-hopper-hud" aria-live="polite">
-        <span className="tnum">Score {score.toString().padStart(2, "0")}</span>
-        <span className="tnum">Best {best.toString().padStart(2, "0")}</span>
-      </div>
       <div className="stack-hopper-screen">
         <canvas
           ref={canvasRef}
@@ -170,6 +194,14 @@ function GameCanvas({ open }: { open: boolean }) {
           aria-label="Stack Hopper 94. Press Space, W, or the up arrow to boost between the rock formations."
           onPointerDown={() => actions.current.boost()}
         />
+        <div className="stack-hopper-hud" aria-live="polite">
+          <span>
+            Score <b className="tnum">{score.toString().padStart(2, "0")}</b>
+          </span>
+          <span>
+            Best <b className="tnum">{best.toString().padStart(2, "0")}</b>
+          </span>
+        </div>
         {phase !== "running" ? (
           <div className={`stack-hopper-message ${phase}`}>
             <strong>
@@ -184,27 +216,31 @@ function GameCanvas({ open }: { open: boolean }) {
             </p>
           </div>
         ) : null}
-      </div>
-      <div className="stack-hopper-controls">
-        <span className="stack-hopper-shortcut">
-          <kbd>Space</kbd>
-          <span>/</span>
-          <kbd>↑</kbd>
-          <em>boost</em>
-        </span>
-        <Button
-          size="sm"
-          variant={phase === "running" ? "ghost" : "default"}
-          className={phase === "running" ? "stack-hopper-action is-running" : "stack-hopper-action"}
-          onClick={() =>
-            phase === "ready" || phase === "over"
-              ? actions.current.start()
-              : actions.current.pause()
-          }
-        >
-          {phase === "over" ? <RotateCcw /> : phase === "running" ? <Pause /> : <Play />}
-          {actionLabel}
-        </Button>
+        <div className="stack-hopper-controls">
+          <span className="stack-hopper-shortcut">
+            <kbd>Space</kbd>
+            <span>/</span>
+            <kbd>↑</kbd>
+            <em>boost</em>
+          </span>
+          <Button
+            size="sm"
+            variant={phase === "running" ? "ghost" : "default"}
+            className={phase === "running" ? "stack-hopper-action is-running" : "stack-hopper-action"}
+            onClick={() =>
+              phase === "ready" || phase === "over"
+                ? actions.current.start()
+                : actions.current.pause()
+            }
+          >
+            {phase === "over" ? <RotateCcw /> : phase === "running" ? <Pause /> : <Play />}
+            {actionLabel}
+          </Button>
+          <span className="stack-hopper-shortcut stack-hopper-exit-shortcut">
+            <kbd>Esc</kbd>
+            <em>exit</em>
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -225,8 +261,12 @@ export function StackHopperArcade() {
         </Button>
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogPopup className="stack-hopper-dialog" bottomStickOnMobile={false}>
-          <DialogHeader className="stack-hopper-dialog-header">
+        <DialogPopup
+          className="stack-hopper-dialog"
+          bottomStickOnMobile={false}
+          showCloseButton={false}
+        >
+          <DialogHeader className="sr-only">
             <DialogTitle>Stack Hopper ’94</DialogTitle>
             <DialogDescription className="sr-only">
               Press Space, W, or the up arrow to fly between the rock formations.

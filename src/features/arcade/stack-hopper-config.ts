@@ -1,6 +1,6 @@
 export const GAME_WIDTH = 320;
 export const GAME_HEIGHT = 224;
-export const RENDER_SCALE = 2;
+export const RENDER_SCALE = 1;
 export const PLAYER_X = 82;
 export const PLAYER_RADIUS = 10.5;
 export const GATE_WIDTH = 36;

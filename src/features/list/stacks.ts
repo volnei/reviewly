@@ -4,6 +4,8 @@ import type { PullStack } from "@/effect/schema";
 import { GitHub, splitRepo } from "@/effect/services/GitHub";
 import { prId } from "@/effect/services/Inbox";
 import type { Ranked } from "@/effect/services/Triage";
+import { readOpenStackFoundations } from "@/lib/prs-db";
+import { useQuery } from "@tanstack/react-query";
 import { Effect } from "effect";
 import { useMemo } from "react";
 
@@ -17,8 +19,8 @@ const isOpenState = (state: string | undefined, merged = false) =>
 
 /**
  * Attach GitHub's native stack metadata and suppress a stack whose foundation
- * is no longer open or is absent from the loaded queue. A dependent layer
- * must never be presented without layer 1.
+ * is no longer open. The loaded list may be a partial queue, so absence from
+ * this particular screen is not evidence that the foundation was closed.
  */
 export function applyNativeStacks(
   items: ReadonlyArray<Ranked>,
@@ -26,7 +28,6 @@ export function applyNativeStacks(
 ): ReadonlyArray<Ranked> {
   const index = new Map<string, NonNullable<Ranked["stack"]>>();
   const hidden = new Set<string>();
-  const present = new Set(items.map((item) => item.id));
   for (const { repo, stacks } of repositories)
     for (const st of stacks) {
       const foundation = st.pull_requests[0];
@@ -34,8 +35,7 @@ export function applyNativeStacks(
       if (
         !foundation ||
         !isOpenState(foundation.state, !!foundation.merged_at) ||
-        !foundationId ||
-        !present.has(foundationId)
+        !foundationId
       ) {
         for (const pr of st.pull_requests) hidden.add(prId(repo, pr.number));
         continue;
@@ -57,22 +57,29 @@ export function applyNativeStacks(
 }
 
 /**
- * The native list already carries stack membership from SQLite. Hide dependent
- * layers when layer 1 is not in the current queue, matching the GitHub graph
- * behavior without another network request.
+ * The native list already carries stack membership from SQLite. When supplied,
+ * `openFoundations` comes from the complete mirror rather than this partial
+ * screen. Without that snapshot, only an explicitly present closed foundation
+ * is grounds to hide the chain.
  */
-export function applyPersistedStacks(items: ReadonlyArray<Ranked>): ReadonlyArray<Ranked> {
-  const foundations = new Set<string>();
+export function applyPersistedStacks(
+  items: ReadonlyArray<Ranked>,
+  openFoundations?: ReadonlySet<string>,
+): ReadonlyArray<Ranked> {
+  const foundations = new Map<string, boolean>();
   const stacked = new Map<string, string>();
   for (const item of items) {
     if (!item.stack) continue;
     const key = `${item.repo}#${item.stack.number}`;
     stacked.set(item.id, key);
-    if (item.stack.position === 1 && isOpenState(item.state, !!item.merged)) foundations.add(key);
+    if (item.stack.position === 1)
+      foundations.set(key, isOpenState(item.state, !!item.merged));
   }
   return items.filter((item) => {
     const key = stacked.get(item.id);
-    return !key || foundations.has(key);
+    if (!key) return true;
+    if (openFoundations) return openFoundations.has(key);
+    return foundations.get(key) !== false;
   });
 }
 
@@ -119,9 +126,15 @@ export function useWithStacks(items: ReadonlyArray<Ranked>): ReadonlyArray<Ranke
     ),
     { enabled: !native && repos.length > 0, staleTime: 2 * 60_000 },
   );
+  const persistedFoundations = useQuery({
+    queryKey: ["prs", "open-stack-foundations", repos],
+    queryFn: () => readOpenStackFoundations(repos),
+    enabled: native && repos.length > 0,
+    staleTime: 60_000,
+  });
   return useMemo(() => {
-    if (native) return applyPersistedStacks(items);
+    if (native) return applyPersistedStacks(items, persistedFoundations.data);
     if (!q.data) return items;
     return applyNativeStacks(items, q.data);
-  }, [items, native, q.data]);
+  }, [items, native, persistedFoundations.data, q.data]);
 }

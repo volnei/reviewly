@@ -12,6 +12,10 @@ export default defineConfig(async () => ({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        tray: path.resolve(__dirname, "tray.html"),
+      },
       output: {
         // Split big, independently-cacheable vendor groups out of the entry
         // chunk so a code change doesn't bust the whole bundle and rarely-used

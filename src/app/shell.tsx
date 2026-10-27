@@ -1,5 +1,6 @@
 import { useAppearance, zoomBy, zoomReset } from "@/app/appearance";
 import { useClipboardSniff } from "@/app/clipboard-sniff";
+import { useDockInboxBadge } from "@/app/dock-badge";
 import { chord, dispatchScopes, isTyping } from "@/app/keys";
 import { KeysDialog } from "@/app/keys-dialog";
 import { onboarding } from "@/app/onboarding";
@@ -59,6 +60,7 @@ function MainShell() {
   useAuthBootstrap();
   useBackendSettingsSync();
   usePrSync();
+  useDockInboxBadge();
   useBackendEvents();
   useClipboardSniff();
   useNativeChrome();

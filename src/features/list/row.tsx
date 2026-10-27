@@ -1,25 +1,29 @@
-import { IconButton } from "@/components/icon-button";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "@/components/ui/tooltip";
-import { type Verdict, usePrefs } from "@/effect/services/Prefs";
-import type { Ranked } from "@/effect/services/Triage";
-import { useReview } from "@/features/pr/review-state";
-import { safeOpenUrl } from "@/lib/ui";
-import { cn } from "@/lib/utils";
 import {
   Check,
   CircleCheck,
   CircleDashed,
   CircleX,
   ExternalLink,
+  GitMerge,
   GitPullRequest,
+  GitPullRequestDraft,
   Layers,
   MessageSquare,
+  MessageSquareX,
   Moon,
   MoreHorizontal,
 } from "lucide-react";
+
+import { IconButton } from "@/components/icon-button";
+import { Button } from "@/components/ui/button";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "@/components/ui/tooltip";
+import { usePrefs, type Verdict } from "@/effect/services/Prefs";
+import type { Ranked } from "@/effect/services/Triage";
+import { useReview } from "@/features/pr/review-state";
+import { safeOpenUrl } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+
 import { SNOOZE_LABEL, type SnoozeWhen } from "./snooze";
 
 /** "2d", "5h", "just now" — the age the list shows, two characters when it can. */
@@ -60,10 +64,10 @@ function Ci({ ci }: { ci?: string }) {
     <Icon
       aria-label={label}
       className={cn(
-        "size-3.5 shrink-0",
+        "size-3.5 shrink-0 opacity-100",
         ci === "success" ? "text-add" : ci === "failure" ? "text-del" : "text-ink-3",
       )}
-      strokeWidth={2}
+      strokeWidth={1.75}
     />
   );
 }
@@ -138,7 +142,8 @@ export function Row({
   const snoozedUntil = usePrefs((p) => p.snoozed[item.id]);
   const isSnoozed = !!snoozedUntil && Date.parse(snoozedUntil) > Date.now();
   if (item.kind === "pr") {
-    const status = item.conflicting
+    const openThreads = item.unresolved ?? 0;
+    const primaryStatus = item.conflicting
       ? "Conflicts"
       : item.ci === "failure"
         ? "CI failing"
@@ -149,6 +154,25 @@ export function Row({
             : item.draft
               ? "Draft"
               : null;
+    const PrimaryStatusIcon =
+      primaryStatus === "Conflicts"
+        ? GitMerge
+        : primaryStatus === "CI failing"
+          ? CircleX
+          : primaryStatus === "Changes requested"
+            ? MessageSquareX
+            : primaryStatus === "Ready to merge"
+              ? CircleCheck
+              : primaryStatus === "Draft"
+                ? GitPullRequestDraft
+                : null;
+    const primaryTone =
+      primaryStatus === "Ready to merge"
+        ? "text-add"
+        : primaryStatus === "Draft"
+          ? "text-ink-3"
+          : "text-del";
+    const threadLabel = `${openThreads} unresolved review thread${openThreads === 1 ? "" : "s"}`;
     return (
       <div
         role="option"
@@ -192,16 +216,29 @@ export function Row({
           </span>
         </div>
         <span className="pr-list-status-slot">
-          {status ? (
-            <Badge
-              variant={item.conflicting || item.ci === "failure" ? "error" : "secondary"}
-              size="sm"
-              className="pr-list-status"
+          {PrimaryStatusIcon ? (
+            <span
+              className={cn("inline-flex items-center gap-1", primaryTone)}
+              aria-label={primaryStatus ?? undefined}
+              title={primaryStatus ?? undefined}
             >
-              {status}
-            </Badge>
+              <PrimaryStatusIcon className="size-3.5 opacity-100" strokeWidth={1.75} aria-hidden />
+              {primaryStatus === "Changes requested" && openThreads ? (
+                <span className="tnum text-[11px]">{openThreads}</span>
+              ) : null}
+            </span>
           ) : null}
-          {!status ? <Ci ci={item.ci} /> : null}
+          {openThreads && primaryStatus !== "Changes requested" ? (
+            <span
+              className="inline-flex items-center gap-1 text-del"
+              aria-label={threadLabel}
+              title={threadLabel}
+            >
+              <MessageSquare className="size-3.5 opacity-100" strokeWidth={1.75} aria-hidden />
+              <span className="tnum text-[11px]">{openThreads}</span>
+            </span>
+          ) : null}
+          {!PrimaryStatusIcon && !openThreads ? <Ci ci={item.ci} /> : null}
         </span>
         <Menu>
           <MenuTrigger

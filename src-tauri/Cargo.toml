@@ -1,6 +1,6 @@
 [package]
 name = "reviewly"
-version = "0.1.8"
+version = "1.0.0"
 description = "Desktop pull-request review console for GitHub"
 authors = ["volnei"]
 edition = "2021"

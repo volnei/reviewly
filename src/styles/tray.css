@@ -1,0 +1,180 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+button { font: inherit; }
+
+.tray-panel {
+  box-sizing: border-box;
+  display: flex;
+  width: 300px;
+  height: 100%;
+  max-height: 354px;
+  flex-direction: column;
+  padding: 10px;
+  color: #f4f1ef;
+  background: #1d1b1a;
+  border: 1px solid #35312f;
+  border-radius: 16px;
+  box-shadow: 0 14px 38px rgb(0 0 0 / 38%);
+}
+
+.tray-head {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 72px;
+  overflow: hidden;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 10px;
+}
+
+.tray-head::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: rgb(10 9 9 / 52%);
+  content: "";
+}
+
+.tray-head-art {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.tray-head[data-appearance="clouds"]::after {
+  background: rgb(20 18 17 / 36%);
+}
+
+.tray-head { --tray-action: #ef8a5b; --tray-action-ink: #2a1710; }
+.tray-head[data-appearance="stellarium"] { --tray-action: #a9c4ca; --tray-action-ink: #152023; }
+.tray-head[data-appearance="aurora"] { --tray-action: #70d5b0; --tray-action-ink: #10251e; }
+.tray-head[data-appearance="nature"] { --tray-action: #9ab68e; --tray-action-ink: #172019; }
+.tray-head[data-appearance="nebula"] { --tray-action: #cf91df; --tray-action-ink: #25172c; }
+.tray-head[data-appearance="clouds"] { --tray-action: #d9e9f0; --tray-action-ink: #25323a; }
+
+.tray-brand { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.tray-brand img {
+  box-sizing: content-box;
+  width: 27px;
+  height: 27px;
+  padding: 4px;
+  background: rgb(255 255 255 / 88%);
+  border-radius: 9px;
+}
+.tray-brand div { display: grid; min-width: 0; gap: 2px; }
+.tray-brand strong { color: #fff; font-size: 14px; line-height: 17px; font-weight: 650; }
+.tray-brand span {
+  overflow: hidden;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tray-open {
+  flex: none;
+  height: 31px;
+  padding: 0 11px;
+  color: var(--tray-action-ink);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--tray-action);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 7px;
+}
+
+.tray-nav { display: grid; gap: 2px; padding: 8px 0; }
+.tray-nav button,
+.tray-foot button {
+  display: grid;
+  width: 100%;
+  height: 36px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  color: #d8d4d1;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.tray-nav button:hover,
+.tray-nav button:focus-visible,
+.tray-foot button:hover,
+.tray-foot button:focus-visible {
+  color: #fff;
+  background: #2b2826;
+  outline: none;
+}
+
+.tray-nav svg,
+.tray-foot svg { width: 16px; height: 16px; color: #99938f; stroke-width: 1.7; }
+.tray-nav b {
+  min-width: 22px;
+  padding: 3px 6px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: #c9564f;
+  border-radius: 999px;
+}
+
+.tray-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #302d2b;
+}
+.tray-foot button { grid-template-columns: 18px auto; justify-content: start; }
+.tray-open:hover,
+.tray-open:focus-visible { filter: brightness(1.08); outline: 2px solid rgb(255 255 255 / 48%); outline-offset: 1px; }
+.tray-open:active,
+.tray-nav button:active,
+.tray-foot button:active { transform: translateY(1px); }
+
+@media (prefers-color-scheme: light) {
+  .tray-panel {
+    color: #1b1918;
+    background: #f7f5f3;
+    border-color: #d7d2ce;
+    box-shadow: 0 14px 38px rgb(39 31 27 / 20%);
+  }
+  .tray-foot { border-color: #ddd8d4; }
+  .tray-nav svg, .tray-foot svg { color: #716b67; }
+  .tray-nav button, .tray-foot button { color: #3b3734; }
+  .tray-nav button:hover,
+  .tray-nav button:focus-visible,
+  .tray-foot button:hover,
+  .tray-foot button:focus-visible { color: #181615; background: #e9e5e2; }
+}
+

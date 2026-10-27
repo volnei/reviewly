@@ -193,6 +193,19 @@ pub fn run() {
                 .build(),
         )
         .on_window_event(|window, event| {
+            if window.label() == tray::TRAY_WINDOW {
+                match event {
+                    tauri::WindowEvent::Focused(false) => {
+                        let _ = window.hide();
+                    }
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    _ => {}
+                }
+                return;
+            }
             // Close-to-tray: the red traffic light / ⌘W hides the window instead
             // of quitting. The app keeps running in the menu-bar tray; only
             // "Quit Reviewly" (tray menu) or ⌘Q actually exits.
@@ -430,6 +443,10 @@ pub fn run() {
             commands::ai::ai_cancel,
             commands::ai::path_is_dir,
             // tray
+            tray::tray_open,
+            tray::tray_quit,
+            tray::tray_status,
+            tray::tray_set_inbox_count,
             tray::tray_set_title,
         ])
         .run(tauri::generate_context!())

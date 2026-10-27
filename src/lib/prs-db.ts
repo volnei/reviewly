@@ -141,6 +141,24 @@ export async function countOpenPrs(repos: ReadonlyArray<string>): Promise<number
   return Number(rows[0]?.count ?? 0);
 }
 
+/** Stack identities whose foundation (layer 1) is still open in the complete mirror. */
+export async function readOpenStackFoundations(
+  repos: ReadonlyArray<string>,
+): Promise<ReadonlySet<string>> {
+  if (!repos.length) return new Set();
+  const placeholders = repos.map((_, index) => `$${index + 1}`).join(",");
+  const rows = await (await db()).select<Array<{ repo: string; stack_number: number }>>(
+    `SELECT DISTINCT repo, stack_number FROM prs
+      WHERE repo IN (${placeholders})
+        AND stack_number IS NOT NULL
+        AND stack_position = 1
+        AND state = 'open'
+        AND merged_at IS NULL`,
+    [...repos],
+  );
+  return new Set(rows.map((row) => `${row.repo}#${row.stack_number}`));
+}
+
 export async function upsertPrs(repo: string, pulls: ReadonlyArray<S.PullSummary>): Promise<void> {
   if (!pulls.length) return;
   await writeSerial(async () => {

@@ -32,6 +32,8 @@ function Picker<T>({
   render,
   onToggle,
   children,
+  popupClassName,
+  itemClassName,
 }: {
   label: string;
   items: ReadonlyArray<T>;
@@ -41,6 +43,8 @@ function Picker<T>({
   render: (t: T) => ReactNode;
   onToggle: (t: T) => void;
   children?: ReactNode;
+  popupClassName?: string;
+  itemClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -63,7 +67,10 @@ function Picker<T>({
         </TooltipTrigger>
         <TooltipPopup>{label}</TooltipPopup>
       </Tooltip>
-      <PopoverPopup align="start" className="w-64 rounded-lg border-edge bg-popover p-1">
+      <PopoverPopup
+        align="start"
+        className={cn("w-64 rounded-lg border-edge bg-popover p-1", popupClassName)}
+      >
         <input
           autoFocus
           value={q}
@@ -92,6 +99,7 @@ function Picker<T>({
                   className={cn(
                     "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] hover:bg-raise",
                     on ? "text-ink" : "text-ink-2",
+                    itemClassName,
                   )}
                 >
                   <Check
@@ -145,18 +153,22 @@ export function Labels({
         selected={(l) => names.has(l.name)}
         keyOf={(l) => l.name}
         onToggle={toggle}
+        popupClassName="w-[22rem] max-w-[calc(100vw-2rem)]"
+        itemClassName="h-auto min-h-11 items-start py-2"
         render={(l) => (
           <>
             <span
-              className="size-1.5 shrink-0 rounded-full"
+              className="mt-1.5 size-1.5 shrink-0 rounded-full"
               style={{ background: `#${l.color}` }}
             />
-            <span className="truncate">{l.name}</span>
-            {l.description ? (
-              <span className="ml-auto truncate pl-2 text-[11.5px] text-ink-3">
-                {l.description}
-              </span>
-            ) : null}
+            <span className="min-w-0 flex-1">
+              <span className="block break-words leading-4 text-ink">{l.name}</span>
+              {l.description ? (
+                <span className="mt-0.5 block whitespace-normal break-words text-[11.5px] leading-4 text-ink-3">
+                  {l.description}
+                </span>
+              ) : null}
+            </span>
           </>
         )}
       />

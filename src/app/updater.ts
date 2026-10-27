@@ -4,15 +4,39 @@ import { useEffect } from "react";
 
 type Update = NonNullable<Awaited<ReturnType<typeof import("@tauri-apps/plugin-updater").check>>>;
 
+const CHECK_TIMEOUT_MS = 20_000;
+const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+
+let checkInFlight: Promise<Update | null> | null = null;
+let installing = false;
+
+/** One native updater request at a time. Settings and the launch check can overlap. */
+async function findUpdate(): Promise<Update | null> {
+  if (checkInFlight) return checkInFlight;
+  checkInFlight = import("@tauri-apps/plugin-updater")
+    .then(({ check }) => check({ timeout: CHECK_TIMEOUT_MS }))
+    .finally(() => {
+      checkInFlight = null;
+    });
+  return checkInFlight;
+}
+
 async function install(update: Update) {
+  if (installing) {
+    toast.say("The update is already downloading");
+    return;
+  }
+  installing = true;
   toast.say(`Downloading ${update.version}…`);
   try {
-    await update.downloadAndInstall();
+    await update.downloadAndInstall(undefined, { timeout: DOWNLOAD_TIMEOUT_MS });
     toast.done("Installed. Restarting…");
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   } catch (e) {
     toast.fail("The update didn’t install", e);
+  } finally {
+    installing = false;
   }
 }
 
@@ -26,8 +50,7 @@ export async function checkForUpdates(): Promise<void> {
     return;
   }
   try {
-    const { check } = await import("@tauri-apps/plugin-updater");
-    const update = await check();
+    const update = await findUpdate();
     if (update) offer(update);
     else toast.done("You’re on the latest version");
   } catch (e) {
@@ -42,8 +65,7 @@ export function useUpdater() {
     let cancelled = false;
     void (async () => {
       try {
-        const { check } = await import("@tauri-apps/plugin-updater");
-        const update = await check();
+        const update = await findUpdate();
         if (!cancelled && update) offer(update);
       } catch {
         /* offline, or no release yet */

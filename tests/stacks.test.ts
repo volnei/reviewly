@@ -52,13 +52,13 @@ describe("Native stack visibility", () => {
     expect(items).toEqual([unrelated]);
   });
 
-  test("hides every layer when layer 1 is absent from the loaded queue", () => {
+  test("keeps a partial queue when GitHub says layer 1 is open", () => {
     const unrelated = pr("pr:owner/repo#9");
     const items = applyNativeStacks(
       [pr("pr:owner/repo#2"), unrelated],
       [{ repo: "owner/repo", stacks: [nativeStack("open")] }],
     );
-    expect(items).toEqual([unrelated]);
+    expect(items.map((item) => item.stack?.position)).toEqual([2, undefined]);
   });
 });
 
@@ -71,11 +71,22 @@ describe("Persisted stack visibility", () => {
     expect(items.map((item) => item.stack?.position)).toEqual([1, 2]);
   });
 
-  test("hides persisted dependent layers when the foundation left the queue", () => {
+  test("keeps persisted dependent layers when the partial queue omits the foundation", () => {
     const unrelated = pr("pr:owner/repo#9");
     expect(
       applyPersistedStacks([pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2)), unrelated]),
-    ).toEqual([unrelated]);
+    ).toEqual([pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2)), unrelated]);
+  });
+
+  test("uses the complete SQLite foundation snapshot for a partial queue", () => {
+    const dependent = pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2));
+    const unrelated = pr("pr:owner/repo#9");
+
+    expect(applyPersistedStacks([dependent, unrelated], new Set(["owner/repo#42"]))).toEqual([
+      dependent,
+      unrelated,
+    ]);
+    expect(applyPersistedStacks([dependent, unrelated], new Set())).toEqual([unrelated]);
   });
 
   test("hides the entire persisted stack when its foundation is closed", () => {

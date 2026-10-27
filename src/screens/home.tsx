@@ -109,9 +109,6 @@ export function HomeScreen() {
               </h1>
               <p>Your workspace, at a glance. A good place to start.</p>
             </div>
-            <Link to="/inbox" className="home-primary">
-              Open Inbox <ArrowRight size={15} />
-            </Link>
           </header>
         </section>
         {inbox.isError && !d ? (

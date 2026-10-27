@@ -38,6 +38,15 @@ function drawSky(context: CanvasRenderingContext2D) {
   context.fillStyle = sky;
   context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
+  context.fillStyle = "rgba(247, 252, 221, .08)";
+  for (let y = 3; y < 154; y += 5) {
+    for (let x = (y * 7) % 17; x < GAME_WIDTH; x += 17) context.fillRect(x, y, 1, 1);
+  }
+  context.fillStyle = "rgba(40, 104, 133, .045)";
+  for (let y = 5; y < 150; y += 7) {
+    for (let x = (y * 11) % 23; x < GAME_WIDTH; x += 23) context.fillRect(x, y, 1, 1);
+  }
+
   const halo = context.createRadialGradient(252, 47, 8, 252, 47, 32);
   halo.addColorStop(0, "rgba(255, 235, 145, .9)");
   halo.addColorStop(0.5, "rgba(255, 224, 115, .28)");
@@ -83,78 +92,7 @@ function drawClouds(context: CanvasRenderingContext2D, distance: number) {
   }
 }
 
-function drawBird(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  scale: number,
-  wing: number,
-  tilt: number,
-) {
-  context.save();
-  context.translate(x, y);
-  context.rotate(tilt);
-  context.scale(scale, scale);
-
-  const upperReach = 7.5 + wing * 3.2;
-  const lowerReach = 5.8 - wing * 2.4;
-  context.fillStyle = "rgba(72, 112, 112, .78)";
-  context.beginPath();
-  context.moveTo(-0.8, 0.4);
-  context.bezierCurveTo(1.2, 2, 3.8, lowerReach, 7.2, lowerReach + 0.8);
-  context.bezierCurveTo(5.8, 2.8, 4.3, 0.8, 1.4, -0.1);
-  context.closePath();
-  context.fill();
-
-  context.fillStyle = "#285d62";
-  roundedPolygon(context, [
-    [4.2, -0.7],
-    [9.2, -3],
-    [7.8, 0],
-    [9.4, 2.7],
-    [4, 1.2],
-  ]);
-  context.fill();
-
-  context.fillStyle = "#3e7d79";
-  context.beginPath();
-  context.ellipse(0, 0, 5.8, 2.7, 0.08, 0, TAU);
-  context.fill();
-
-  context.fillStyle = "#315f67";
-  context.beginPath();
-  context.moveTo(-1.2, -0.5);
-  context.bezierCurveTo(-0.2, -3.8, 1.8, -upperReach, 6.2, -upperReach - 1.1);
-  context.bezierCurveTo(5.4, -5.2, 4.2, -1.8, 1.4, 0.2);
-  context.closePath();
-  context.fill();
-
-  context.fillStyle = "#315f67";
-  context.beginPath();
-  context.arc(-5, -0.7, 2.35, 0, TAU);
-  context.fill();
-  context.fillStyle = "#315f67";
-  roundedPolygon(context, [
-    [-7.1, -0.9],
-    [-10.4, -0.1],
-    [-7, 0.2],
-  ]);
-  context.fill();
-  context.restore();
-}
-
-function drawSkyLife(context: CanvasRenderingContext2D, game: GameState) {
-  const birdSpan = 430;
-  const ambientTime = performance.now() / 1000;
-  for (let index = 0; index < 2; index++) {
-    const flight = game.distance * 0.018 + ambientTime * (7 + index * 0.7);
-    const x = wrap(108 + index * 205 - flight, birdSpan) - 30;
-    const wing = Math.sin(ambientTime * (7.2 + index * 0.45) + index * 1.3);
-    const y = 76 + index * 14 + Math.sin(ambientTime * 1.6 + index) * 2.4;
-    const tilt = Math.cos(ambientTime * 1.6 + index) * 0.08;
-    drawBird(context, x, y, 0.82 + index * 0.08, wing, tilt);
-  }
-
+function drawWind(context: CanvasRenderingContext2D, game: GameState) {
   const windStrength = Math.max(0, Math.min(1, (game.speed - 96) / 26));
   if (windStrength === 0) return;
   context.strokeStyle = `rgba(244, 250, 224, ${0.12 + windStrength * 0.16})`;
@@ -180,7 +118,7 @@ function drawMountainLayer(
   shadow: string,
   peaks: readonly number[],
 ) {
-  const width = 520;
+  const width = 360;
   const offset = wrap(distance * speed, width);
   for (let copy = -1; copy <= 1; copy++) {
     const start = copy * width - offset;
@@ -198,8 +136,10 @@ function drawMountainLayer(
         (point[1] + next[1]) / 2,
       );
     }
-    context.lineTo(points.at(-1)?.[0] ?? start + width, baseline);
-    context.lineTo(start + width, baseline);
+    const end = points.at(-1)?.[0] ?? start + width;
+    context.lineTo(end, baseline);
+    context.lineTo(end, GAME_HEIGHT);
+    context.lineTo(start, GAME_HEIGHT);
     context.closePath();
     const mountainFill = context.createLinearGradient(
       0,
@@ -215,11 +155,11 @@ function drawMountainLayer(
 }
 
 function drawMountainMist(context: CanvasRenderingContext2D) {
-  const mist = context.createLinearGradient(0, 128, 0, 169);
-  mist.addColorStop(0, "rgba(212, 232, 215, 0)");
-  mist.addColorStop(1, "rgba(212, 232, 215, .28)");
+  const mist = context.createLinearGradient(0, 138, 0, 169);
+  mist.addColorStop(0, "rgba(190, 220, 220, 0)");
+  mist.addColorStop(1, "rgba(190, 220, 220, .12)");
   context.fillStyle = mist;
-  context.fillRect(0, 128, GAME_WIDTH, 41);
+  context.fillRect(0, 138, GAME_WIDTH, 31);
 }
 
 function groundY(worldX: number) {
@@ -528,23 +468,23 @@ export function renderStackHopperScene(view: StackHopperScene, game: GameState) 
   context.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   drawSky(context);
   drawClouds(context, game.distance);
-  drawSkyLife(context, game);
+  drawWind(context, game);
   drawMountainLayer(
     context,
     game.distance,
     0.025,
     158,
-    "#b6c9c0",
-    "#9eb4aa",
+    "#adbabe",
+    "#87999d",
     [0, 18, 50, 24, 58, 20, 42, 0],
   );
   drawMountainLayer(
     context,
     game.distance,
     0.065,
-    167,
-    "#6f9185",
-    "#4d7468",
+    165,
+    "#778381",
+    "#53615f",
     [0, 12, 31, 17, 40, 14, 28, 0],
   );
   drawMountainMist(context);

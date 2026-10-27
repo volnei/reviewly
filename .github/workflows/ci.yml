@@ -43,7 +43,9 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 7942008688acad538e64933b82465dc614fe7536
+          # `bun lint` is currently shipped on Bun's official canary channel.
+          # setup-bun accepts the channel name, but rejects a raw commit SHA.
+          bun-version: canary
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -54,9 +56,12 @@ jobs:
       - name: Lint
         run: bun lint
 
+      - name: Frontend tests
+        run: bun test
+
       - name: Build frontend
         run: bun run build
 
-      - name: Cargo check
+      - name: Rust tests
         working-directory: src-tauri
-        run: cargo check --locked --all-targets
+        run: cargo test --locked --all-targets
