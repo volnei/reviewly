@@ -1,3 +1,22 @@
+import { useNavigate } from "@tanstack/react-router";
+import {
+  AtSign,
+  Bookmark,
+  FolderGit2,
+  GitPullRequest,
+  HeartPulse,
+  History,
+  House,
+  Inbox,
+  Keyboard,
+  type LucideIcon,
+  RefreshCw,
+  Settings2,
+  Sparkles,
+  Zap,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+
 import { useCommands } from "@/app/commands";
 import { overlays } from "@/app/overlays";
 import { checkForUpdates } from "@/app/updater";
@@ -21,24 +40,6 @@ import { applyView, savedViewPath, useSavedViews } from "@/features/list/filters
 import { VerdictWord } from "@/features/list/row";
 import { parsePrRef } from "@/lib/pr-ref";
 import { inboxQuery, useOpenItem } from "@/screens/inbox";
-import { useNavigate } from "@tanstack/react-router";
-import {
-  AtSign,
-  Bookmark,
-  FolderGit2,
-  GitPullRequest,
-  HeartPulse,
-  History,
-  House,
-  Inbox,
-  Keyboard,
-  type LucideIcon,
-  RefreshCw,
-  Settings2,
-  Sparkles,
-  Zap,
-} from "lucide-react";
-import { useMemo, useState } from "react";
 
 interface Entry {
   readonly id: string;
@@ -73,7 +74,10 @@ const text = (e: Entry) => `${e.label} ${e.hint}`;
 export function Palette({
   open,
   onOpenChange,
-}: { open: boolean; onOpenChange: (o: boolean) => void }) {
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const navigate = useNavigate();
   const auth = useAuth();
   const inbox = useEffectQuery(["inbox"], inboxQuery, { enabled: auth.signedIn });
@@ -83,7 +87,7 @@ export function Palette({
   const [query, setQuery] = useState("");
 
   const entries = useMemo<Entry[]>(() => {
-    const ref = parsePrRef(query);
+    const ref = parsePrRef(query, auth.host);
     const typed: Entry[] = ref
       ? [
           {
@@ -161,7 +165,7 @@ export function Palette({
       run: () => openItem(it),
     }));
     return [...typed, ...actions, ...views, ...savedViews, ...items, ...app];
-  }, [inbox.data, navigate, openItem, query, commands, saved]);
+  }, [inbox.data, navigate, openItem, query, commands, saved, auth.host]);
 
   const close = (o: boolean) => {
     if (!o) setQuery("");

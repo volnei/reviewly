@@ -1,3 +1,7 @@
+import { useNavigate } from "@tanstack/react-router";
+import { Effect } from "effect";
+import { useEffect, useMemo, useState } from "react";
+
 import { onboarding } from "@/app/onboarding";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
@@ -10,9 +14,6 @@ import { GitHub } from "@/effect/services/GitHub";
 import { prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "@tanstack/react-router";
-import { Effect } from "effect";
-import { useEffect, useMemo, useState } from "react";
 
 /**
  * The first screen, once: sign in with the device flow, or borrow the token the
@@ -43,9 +44,20 @@ export function FirstRunScreen() {
 }
 
 function Connect() {
+  const [kind, setKind] = useState<"cloud" | "enterprise">("cloud");
+  const [enterpriseHost, setEnterpriseHost] = useState("");
+  const [token, setToken] = useState("");
+  const host =
+    kind === "cloud"
+      ? "github.com"
+      : enterpriseHost
+          .trim()
+          .replace(/^https?:\/\//i, "")
+          .replace(/\/+$/, "")
+          .toLowerCase();
   const cli = useEffectQuery(
-    ["gh-cli"],
-    Effect.flatMap(Auth, (a) => a.ghCliAvailable),
+    ["gh-cli", host],
+    Effect.flatMap(Auth, (a) => a.ghCliAvailable(host || "github.com")),
   );
   const [device, setDevice] = useState<DeviceStart | null>(null);
   const [busy, setBusy] = useState<"device" | "cli" | null>(null);
@@ -70,7 +82,19 @@ function Connect() {
     setBusy("cli");
     setError(null);
     try {
-      await run(Effect.flatMap(Auth, (a) => a.useGhCli));
+      await run(Effect.flatMap(Auth, (a) => a.useGhCli(host || "github.com")));
+    } catch (e) {
+      setError(explain(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const useToken = async () => {
+    setBusy("cli");
+    setError(null);
+    try {
+      await run(Effect.flatMap(Auth, (a) => a.useToken(host, token)));
+      setToken("");
     } catch (e) {
       setError(explain(e));
     } finally {
@@ -86,10 +110,43 @@ function Connect() {
         Your pull requests, in the order they need you.
       </h1>
       <p className="mt-2 text-[13px] text-ink-2">
-        Reviewly reads GitHub with your account and keeps everything on this machine. Sign in once.
+        Reviewly reads your GitHub server directly and keeps everything on this machine. Sign in
+        once.
       </p>
       <div className="mt-6 flex flex-col gap-3">
-        {device ? (
+        <div className="grid grid-cols-2 rounded-md border border-input bg-sink p-0.5">
+          {(["cloud", "enterprise"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setKind(value);
+                setDevice(null);
+                setError(null);
+              }}
+              className={cn(
+                "h-7 rounded-[4px] text-[12.5px] transition-colors",
+                kind === value ? "bg-raise text-ink" : "text-ink-3 hover:text-ink-2",
+              )}
+            >
+              {value === "cloud" ? "GitHub.com" : "Enterprise Server"}
+            </button>
+          ))}
+        </div>
+        {kind === "enterprise" ? (
+          <label className="flex flex-col gap-1.5 text-[12px] text-ink-2">
+            Server hostname
+            <input
+              autoFocus
+              value={enterpriseHost}
+              onChange={(event) => setEnterpriseHost(event.target.value)}
+              placeholder="github.company.com"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="h-8 rounded-md border border-input bg-sink px-2.5 font-mono text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-edge"
+            />
+          </label>
+        ) : device ? (
           <div className="rounded-lg border border-edge bg-card p-4">
             <p className="text-[12.5px] text-ink-2">
               Enter this code on GitHub — it is already on your clipboard.
@@ -106,24 +163,46 @@ function Connect() {
               </button>
             </p>
           </div>
-        ) : (
+        ) : kind === "cloud" ? (
           <Button variant="default" size="default" onClick={startDevice} disabled={busy !== null}>
             Sign in with GitHub
           </Button>
-        )}
+        ) : null}
         <Button
           variant="outline"
           size="default"
           onClick={useCli}
-          disabled={busy !== null || cli.data === false}
+          disabled={busy !== null || cli.data === false || !host}
         >
-          Use the GitHub CLI’s token
+          Use the GitHub CLI
         </Button>
+        {kind === "enterprise" ? (
+          <div className="flex gap-2">
+            <input
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="Personal access token"
+              type="password"
+              autoComplete="off"
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-sink px-2.5 font-mono text-[12.5px] text-ink outline-none placeholder:font-sans placeholder:text-ink-3 focus:border-edge"
+            />
+            <Button
+              variant="outline"
+              size="default"
+              onClick={useToken}
+              disabled={busy !== null || !host || !token.trim()}
+            >
+              Connect
+            </Button>
+          </div>
+        ) : null}
         <p className="text-[12px] text-ink-3">
           {cli.data === false
-            ? "The gh CLI isn’t signed in on this machine. Run `gh auth login` in a terminal, or use the device flow above."
+            ? kind === "enterprise"
+              ? `Run gh auth login --hostname ${host || "your-server"}, or use a personal access token.`
+              : "The gh CLI isn’t signed in on this machine. Run `gh auth login` in a terminal, or use the device flow above."
             : cli.data
-              ? "Reuses the token from `gh auth login`; organisations you already authorised there work right away."
+              ? `Reuses the token already authorised for ${host || "this server"}.`
               : "Checking for the GitHub CLI…"}
         </p>
       </div>
@@ -132,7 +211,7 @@ function Connect() {
       ) : null}
       {error ? <p className="mt-3 text-[12.5px] text-del">{error}</p> : null}
       <p className="mt-8 text-[12px] text-ink-3">
-        The token goes in the OS keychain and nowhere else.
+        The server and token go in the OS keychain and nowhere else.
       </p>
     </>
   );

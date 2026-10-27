@@ -17,6 +17,22 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.0.1",
+    date: "2026-10-27",
+    items: [
+      {
+        title: "GitHub Enterprise Server",
+        detail:
+          "Connect to your company GitHub with its hostname and either an existing gh CLI login or a personal access token.",
+      },
+      {
+        title: "One server at a time",
+        detail:
+          "REST, GraphQL, links, attachments and the local PR mirror follow the active server without mixing company and GitHub.com data.",
+      },
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-10-05",
     items: [

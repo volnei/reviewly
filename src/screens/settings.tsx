@@ -1,3 +1,20 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Effect } from "effect";
+import {
+  Bell,
+  Check,
+  FolderGit2,
+  GitPullRequest,
+  Info,
+  Palette,
+  Settings2,
+  SlidersHorizontal,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
@@ -27,32 +44,16 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { isNative } from "@/effect/Tauri";
 import { run, useEffectQuery } from "@/effect/runtime";
-import { Ai, MODEL_SUGGESTIONS, PROVIDERS, providerName } from "@/effect/services/Ai";
+import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS } from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
 import { type Prefs, prefsStore, usePrefs } from "@/effect/services/Prefs";
+import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
-import { Effect } from "effect";
-import {
-  Bell,
-  Check,
-  FolderGit2,
-  GitPullRequest,
-  Info,
-  Palette,
-  Settings2,
-  SlidersHorizontal,
-  Sparkles,
-  UserRound,
-  X,
-} from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
 
 const CATEGORIES = [
   {
@@ -659,6 +660,7 @@ export function SettingsScreen() {
                       @{auth.viewer.login}
                       <ActivityChips login={auth.viewer.login} />
                     </p>
+                    <p className="mt-0.5 font-mono text-[11.5px] text-ink-3">{auth.host}</p>
                   </div>
                   <Button
                     variant="outline"
@@ -748,7 +750,11 @@ function Section({
   title,
   blurb,
   children,
-}: { title: string; blurb?: string; children: ReactNode }) {
+}: {
+  title: string;
+  blurb?: string;
+  children: ReactNode;
+}) {
   return (
     <Card className="settings-card">
       <div className="settings-card-heading">
@@ -775,7 +781,12 @@ function Toggle({
   hint,
   checked,
   onChange,
-}: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <CossField className="settings-toggle">
       <div className="settings-field-copy">
@@ -824,7 +835,10 @@ function Choice<T extends string>({
 function WatchedRepos({
   repos,
   onChange,
-}: { repos: ReadonlyArray<string>; onChange: (r: string[]) => Promise<void> }) {
+}: {
+  repos: ReadonlyArray<string>;
+  onChange: (r: string[]) => Promise<void>;
+}) {
   const all = useEffectQuery(
     ["repos"],
     Effect.flatMap(GitHub, (g) => g.repos),

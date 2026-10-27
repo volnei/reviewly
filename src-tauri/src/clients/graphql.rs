@@ -9,8 +9,6 @@ use crate::clients::check;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-const ENDPOINT: &str = "https://api.github.com/graphql";
-
 #[derive(Serialize)]
 struct GraphQLRequest<'a> {
     query: &'a str,
@@ -31,7 +29,7 @@ pub async fn graphql<T: for<'de> Deserialize<'de>>(
 ) -> AppResult<T> {
     let res = state
         .http
-        .post(ENDPOINT)
+        .post(state.github().graphql_url)
         .bearer_auth(token)
         .header("Accept", "application/vnd.github+json")
         .json(&GraphQLRequest { query, variables })

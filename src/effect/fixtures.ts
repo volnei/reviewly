@@ -1,6 +1,7 @@
 import { Effect, Layer, Queue, Schema, Stream } from "effect";
-import { Tauri, type TauriShape } from "./Tauri";
+
 import { DecodeError, TauriError } from "./errors";
+import { Tauri, type TauriShape } from "./Tauri";
 
 /**
  * What the Rust side would answer, for `bun run dev` in a plain browser.
@@ -61,40 +62,22 @@ const dash = (
 });
 
 const incoming = [
-  dash(
-    "acme/ledger-api",
-    2184,
-    "Add idempotency keys to payment intents",
-    "marina",
-    {
-      ci: "failure",
-      age: 2,
-      unresolved: 2,
-      comments: 2,
-    },
-  ),
+  dash("acme/ledger-api", 2184, "Add idempotency keys to payment intents", "marina", {
+    ci: "failure",
+    age: 2,
+    unresolved: 2,
+    comments: 2,
+  }),
   dash("acme/web", 7761, "Virtualise the settlements table", "tiago", {
     age: 0.2,
   }),
-  dash(
-    "acme/ledger-api",
-    2186,
-    "Sync vendored protobuf definitions",
-    "acme-bot[bot]",
-    {
-      age: 0.15,
-    },
-  ),
+  dash("acme/ledger-api", 2186, "Sync vendored protobuf definitions", "acme-bot[bot]", {
+    age: 0.15,
+  }),
   dash("acme/web", 7758, "Small copy fix on the invoice screen", "joao", {
     age: 1,
   }),
-  dash(
-    "acme/infra",
-    310,
-    "Bump actions/checkout from 3 to 5",
-    "dependabot[bot]",
-    { age: 1 },
-  ),
+  dash("acme/infra", 310, "Bump actions/checkout from 3 to 5", "dependabot[bot]", { age: 1 }),
   dash("acme/ledger-api", 2103, "Rewrite the webhook retry worker", "pedro", {
     age: 2,
     unresolved: 3,
@@ -102,34 +85,16 @@ const incoming = [
   }),
 ];
 const mine = [
-  dash(
-    "acme/ledger-api",
-    2179,
-    "Refactor fee calculation into a policy table",
-    "volnei",
-    {
-      reviewDecision: "CHANGES_REQUESTED",
-      age: 1,
-      unresolved: 2,
-    },
-  ),
-  dash(
-    "volnei/reviewly",
-    88,
-    "Guided tour regenerates after a force-push",
-    "volnei",
-    {
-      reviewDecision: "APPROVED",
-      age: 3,
-    },
-  ),
-  dash(
-    "acme/ledger-api",
-    2044,
-    "Drop the legacy settlements endpoint",
-    "volnei",
-    { age: 3 },
-  ),
+  dash("acme/ledger-api", 2179, "Refactor fee calculation into a policy table", "volnei", {
+    reviewDecision: "CHANGES_REQUESTED",
+    age: 1,
+    unresolved: 2,
+  }),
+  dash("volnei/reviewly", 88, "Guided tour regenerates after a force-push", "volnei", {
+    reviewDecision: "APPROVED",
+    age: 3,
+  }),
+  dash("acme/ledger-api", 2044, "Drop the legacy settlements endpoint", "volnei", { age: 3 }),
   dash("acme/web", 7702, "Remove the legacy invoice PDF path", "volnei", {
     isDraft: true,
     age: 5,
@@ -607,8 +572,7 @@ const emit = (name: string, payload: unknown) => {
   for (const h of bus.get(name) ?? []) h(payload);
 };
 const LAYERED_ANSWER = JSON.stringify({
-  summary:
-    "Adds a client-supplied idempotency key so a retried create returns the first intent.",
+  summary: "Adds a client-supplied idempotency key so a retried create returns the first intent.",
   strategy:
     "The index and the schema come first because everything else is written against them; the HTTP surface last, since it only forwards the header.",
   layers: [
@@ -621,15 +585,11 @@ const LAYERED_ANSWER = JSON.stringify({
         "Existing rows have no key and stay valid",
       ],
       risk: "high",
-      files: [
-        "migrations/0042_idempotency_keys.sql",
-        "src/payments/Intents.schema.ts",
-      ],
+      files: ["migrations/0042_idempotency_keys.sql", "src/payments/Intents.schema.ts"],
     },
     {
       title: "Create and retry",
-      intent:
-        "The lookup before insert, and the retry path that hands back the first intent.",
+      intent: "The lookup before insert, and the retry path that hands back the first intent.",
       focus: [
         "A retry after a void makes a new intent, not a 409",
         "The lookup and the insert can’t race",
@@ -639,8 +599,7 @@ const LAYERED_ANSWER = JSON.stringify({
     },
     {
       title: "The header at the edge",
-      intent:
-        "Middleware that demands the header, and the route that forwards it.",
+      intent: "Middleware that demands the header, and the route that forwards it.",
       focus: ["Only the payments routes are gated, not settlements"],
       risk: "medium",
       files: ["src/http/middleware.ts", "src/http/routes.ts"],
@@ -691,9 +650,7 @@ const streamCanned = (key: string, text: string, provider = "claude") => {
       }),
     180,
   );
-  parts.forEach((delta, i) =>
-    setTimeout(() => emit("ai:chunk", { key, delta }), 250 + i * 35),
-  );
+  parts.forEach((delta, i) => setTimeout(() => emit("ai:chunk", { key, delta }), 250 + i * 35));
   setTimeout(
     () => {
       emit("ai:progress", {
@@ -837,9 +794,7 @@ const commands: Record<string, Handler> = {
           : "Add idempotency keys to payment intents (#2184)",
     })),
   gh_repo_stacks: ({ owner, repo }) =>
-    `${owner}/${repo}` === "acme/ledger-api"
-      ? [commands.gh_pr_stack({ number: 2184 })]
-      : [],
+    `${owner}/${repo}` === "acme/ledger-api" ? [commands.gh_pr_stack({ number: 2184 })] : [],
   gh_pr_stack: ({ number }) =>
     num(number) === 2184
       ? {
@@ -927,12 +882,7 @@ const commands: Record<string, Handler> = {
       mk(2195, "Settlements screen reads the idempotency key", marina, 1, {
         draft: true,
       }),
-      mk(
-        2186,
-        "Sync vendored protobuf definitions",
-        user("dependabot[bot]", 2000),
-        0.3,
-      ),
+      mk(2186, "Sync vendored protobuf definitions", user("dependabot[bot]", 2000), 0.3),
       mk(2179, "Refactor fee calculation into a policy table", me, 1),
       mk(2103, "Rewrite the webhook retry worker", pedro, 3, {
         labels: ["payments", "needs-qa"],
@@ -992,8 +942,7 @@ const commands: Record<string, Handler> = {
         { name: "routes.ts", is_dir: false },
         { name: "server.ts", is_dir: false },
       ];
-    if (p.endsWith("/src/metrics"))
-      return [{ name: "retry.ts", is_dir: false }];
+    if (p.endsWith("/src/metrics")) return [{ name: "retry.ts", is_dir: false }];
     if (p.endsWith("/migrations"))
       return [
         { name: "0041_accounts.sql", is_dir: false },
@@ -1176,10 +1125,8 @@ const commands: Record<string, Handler> = {
               summary:
                 "Let people recognize and revoke trusted devices without weakening current session rules.",
               stage: "apply",
-              proposal_file:
-                "openspec/changes/add-session-device-trust/proposal.md",
-              design_file:
-                "openspec/changes/add-session-device-trust/design.md",
+              proposal_file: "openspec/changes/add-session-device-trust/proposal.md",
+              design_file: "openspec/changes/add-session-device-trust/design.md",
               tasks_file: "openspec/changes/add-session-device-trust/tasks.md",
               tasks_total: 5,
               tasks_done: 0,
@@ -1313,9 +1260,7 @@ const commands: Record<string, Handler> = {
   }),
   git_stage: ({ file }) => {
     const pick =
-      file == null
-        ? localTree.unstaged
-        : localTree.unstaged.filter((f) => f.path === file);
+      file == null ? localTree.unstaged : localTree.unstaged.filter((f) => f.path === file);
     localTree.staged.push(
       ...pick.map((f) => ({ ...f, status: f.status === "?" ? "A" : f.status })),
     );
@@ -1323,10 +1268,7 @@ const commands: Record<string, Handler> = {
     return {};
   },
   git_unstage: ({ file }) => {
-    const pick =
-      file == null
-        ? localTree.staged
-        : localTree.staged.filter((f) => f.path === file);
+    const pick = file == null ? localTree.staged : localTree.staged.filter((f) => f.path === file);
     localTree.unstaged.push(
       ...pick.map((f) => ({ ...f, status: f.status === "A" ? "?" : f.status })),
     );
@@ -1334,8 +1276,7 @@ const commands: Record<string, Handler> = {
     return {};
   },
   git_diff_file: ({ file }) => localPatch(String(file)),
-  git_staged_diff: () =>
-    localTree.staged.map((f) => localPatch(f.path)).join("\n"),
+  git_staged_diff: () => localTree.staged.map((f) => localPatch(f.path)).join("\n"),
   git_commit: ({ message }) => {
     localLog.unshift({
       hash: Math.random().toString(16).slice(2, 12),
@@ -1363,8 +1304,7 @@ const commands: Record<string, Handler> = {
   },
   git_fetch: () => ({}),
   git_log: () => localLog,
-  git_show: () =>
-    `${localPatch("src/metrics/retry.ts")}\n${localPatch("src/payments/Retry.ts")}`,
+  git_show: () => `${localPatch("src/metrics/retry.ts")}\n${localPatch("src/payments/Retry.ts")}`,
   git_branches: () => ({ current: localTree.branch, all: localBranches }),
   git_checkout: ({ branch }) => {
     localTree.branch = String(branch);
@@ -1378,9 +1318,7 @@ const commands: Record<string, Handler> = {
   },
   git_worktrees: ({ path }) => [
     { path: String(path), branch: "main" },
-    ...(fixtureWorktreePath
-      ? [{ path: fixtureWorktreePath, branch: localTree.branch }]
-      : []),
+    ...(fixtureWorktreePath ? [{ path: fixtureWorktreePath, branch: localTree.branch }] : []),
   ],
   git_create_worktree: ({ branch }) => {
     localTree.branch = String(branch);
@@ -1394,10 +1332,7 @@ const commands: Record<string, Handler> = {
     base: "7e3fa2197dc9a0b5a4c135889d06c8fe83df1210",
     applied: (prs as number[]).slice(0, 1),
     conflicts: ["src/payments/Intents.ts", "src/payments/Retry.ts"],
-    changedFiles: [
-      "src/payments/Intents.ts",
-      "migrations/0042_idempotency_keys.sql",
-    ],
+    changedFiles: ["src/payments/Intents.ts", "migrations/0042_idempotency_keys.sql"],
     durationMs: 1840,
   }),
   git_branch_changes: () => ({
@@ -1407,8 +1342,7 @@ const commands: Record<string, Handler> = {
       { path: "src/payments/Retry.ts", additions: 6, deletions: 1 },
     ],
   }),
-  gh_pr_create: () =>
-    `https://github.com/acme/ledger-api/pull/${++fixturePrNumber}`,
+  gh_pr_create: () => `https://github.com/acme/ledger-api/pull/${++fixturePrNumber}`,
   gh_list_branches: () => ({
     default: "main",
     branches: ["main", "marina/idempotency-keys"],
@@ -1428,10 +1362,9 @@ const commands: Record<string, Handler> = {
     return null;
   },
   gh_get_file_content: ({ path }) =>
-    Array.from(
-      { length: 160 },
-      (_, i) => `// ${String(path).split("/").pop()} line ${i + 1}`,
-    ).join("\n"),
+    Array.from({ length: 160 }, (_, i) => `// ${String(path).split("/").pop()} line ${i + 1}`).join(
+      "\n",
+    ),
   gh_repo_labels: () => [
     { id: 1, name: "payments", color: "5319e7", description: null },
     {
@@ -1534,7 +1467,7 @@ const commands: Record<string, Handler> = {
       size: svg.length,
     };
   },
-  auth_status: () => ({ signed_in: true, viewer }),
+  auth_status: () => ({ signed_in: true, viewer, host: "github.com" }),
   auth_gh_available: () => true,
   auth_device_start: () => ({
     user_code: "ABCD-1234",
@@ -1561,12 +1494,7 @@ const commands: Record<string, Handler> = {
     incoming,
     mine,
   }),
-  gh_list_repos: () => [
-    "acme/ledger-api",
-    "acme/web",
-    "acme/infra",
-    "volnei/reviewly",
-  ],
+  gh_list_repos: () => ["acme/ledger-api", "acme/web", "acme/infra", "volnei/reviewly"],
   gh_get_pull: () => ({ ...pull, ...pullPatch }),
   gh_list_pull_files: () => files,
   gh_list_review_comments: () => reviewComments,
@@ -1693,39 +1621,25 @@ const commands: Record<string, Handler> = {
 
 export const TauriFixtures = Layer.succeed(Tauri, {
   native: false,
-  invoke: <A>(
-    cmd: string,
-    args: Record<string, unknown>,
-    schema: Schema.Codec<A, unknown>,
-  ) => {
+  invoke: <A>(cmd: string, args: Record<string, unknown>, schema: Schema.Codec<A, unknown>) => {
     const h = commands[cmd];
-    if (!h)
-      return Effect.fail(
-        new TauriError({ cmd, message: `no fixture for ${cmd}` }),
-      );
+    if (!h) return Effect.fail(new TauriError({ cmd, message: `no fixture for ${cmd}` }));
     return Effect.sleep("120 millis").pipe(
       Effect.flatMap(() =>
         Schema.decodeUnknownEffect(schema)(h(args)).pipe(
-          Effect.mapError(
-            (issue) => new DecodeError({ cmd, message: String(issue) }),
-          ),
+          Effect.mapError((issue) => new DecodeError({ cmd, message: String(issue) })),
         ),
       ),
       Effect.tap((result) =>
         Effect.promise(() =>
-          import("@/features/history/commands").then(
-            ({ recordCompletedCommand }) =>
-              recordCompletedCommand(cmd, args, result),
+          import("@/features/history/commands").then(({ recordCompletedCommand }) =>
+            recordCompletedCommand(cmd, args, result),
           ),
         ),
       ),
     );
   },
-  listen: <A>(
-    name: string,
-    schema: Schema.Codec<A, unknown>,
-    handler: (a: A) => void,
-  ) =>
+  listen: <A>(name: string, schema: Schema.Codec<A, unknown>, handler: (a: A) => void) =>
     Effect.sync(() => {
       const decode = Schema.decodeUnknownSync(schema);
       const h = (payload: unknown) => {

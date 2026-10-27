@@ -1,5 +1,6 @@
-import type * as S from "@/effect/schema";
 import Database from "@tauri-apps/plugin-sql";
+
+import type * as S from "@/effect/schema";
 
 /** Persistent, local-first mirror of the pull requests in watched repositories. */
 
@@ -9,6 +10,24 @@ let writeTail: Promise<void> = Promise.resolve();
 function db(): Promise<Database> {
   database ??= Database.load("sqlite:reviewly.db");
   return database;
+}
+
+const HOST_KEY = "reviewly.github-host";
+
+/** A connection owns its local mirror. Switching servers must never surface
+ * rows, drafts or sync watermarks from the previous server. */
+export async function preparePrCacheForHost(host: string): Promise<void> {
+  const normalized = host.trim().toLowerCase() || "github.com";
+  const previous = localStorage.getItem(HOST_KEY) ?? "github.com";
+  if (previous !== normalized) {
+    await writeSerial(async () => {
+      const database = await db();
+      for (const table of ["prs", "repo_sync", "pr_cache", "pull_requests", "review_drafts"]) {
+        await database.execute(`DELETE FROM ${table}`);
+      }
+    });
+  }
+  localStorage.setItem(HOST_KEY, normalized);
 }
 
 /** SQLite has one writer; serialize commits while network reads stay parallel. */
@@ -66,6 +85,19 @@ const json = <T>(value: string | null | undefined, fallback: T): T => {
   }
 };
 
+function rootsFromPullUrl(url: string): { web: string; api: string } {
+  try {
+    const parsed = new URL(url);
+    const web = parsed.origin;
+    return {
+      web,
+      api: parsed.hostname === "github.com" ? "https://api.github.com" : `${web}/api/v3`,
+    };
+  } catch {
+    return { web: "https://github.com", api: "https://api.github.com" };
+  }
+}
+
 function fromRow(row: PrRow): S.PullSummary {
   return {
     id: row.id,
@@ -120,7 +152,9 @@ export async function readRepoPrs(
   state: "open" | "all" = "open",
 ): Promise<ReadonlyArray<S.PullSummary>> {
   const stateClause = state === "open" ? " AND state = 'open' AND merged_at IS NULL" : "";
-  const rows = await (await db()).select<PrRow[]>(
+  const rows = await (
+    await db()
+  ).select<PrRow[]>(
     `SELECT * FROM prs
       WHERE repo = $1${stateClause}
       ORDER BY updated_at DESC`,
@@ -133,7 +167,9 @@ export async function readRepoPrs(
 export async function countOpenPrs(repos: ReadonlyArray<string>): Promise<number> {
   if (!repos.length) return 0;
   const placeholders = repos.map((_, index) => `$${index + 1}`).join(",");
-  const rows = await (await db()).select<Array<{ count: number }>>(
+  const rows = await (
+    await db()
+  ).select<Array<{ count: number }>>(
     `SELECT COUNT(*) AS count FROM prs
       WHERE repo IN (${placeholders}) AND state = 'open' AND merged_at IS NULL`,
     [...repos],
@@ -147,7 +183,9 @@ export async function readOpenStackFoundations(
 ): Promise<ReadonlySet<string>> {
   if (!repos.length) return new Set();
   const placeholders = repos.map((_, index) => `$${index + 1}`).join(",");
-  const rows = await (await db()).select<Array<{ repo: string; stack_number: number }>>(
+  const rows = await (
+    await db()
+  ).select<Array<{ repo: string; stack_number: number }>>(
     `SELECT DISTINCT repo, stack_number FROM prs
       WHERE repo IN (${placeholders})
         AND stack_number IS NOT NULL
@@ -278,6 +316,7 @@ export async function applyDashboardPrs(
     for (let offset = 0; offset < enriched.length; offset += 50) {
       const params: unknown[] = [];
       const values = enriched.slice(offset, offset + 50).map(({ pull, incoming, mine }) => {
+        const roots = rootsFromPullUrl(pull.url);
         const row = [
           pull.id,
           pull.repo,
@@ -286,11 +325,11 @@ export async function applyDashboardPrs(
           pull.isDraft ? 1 : 0,
           pull.author,
           pull.avatar,
-          pull.author ? `https://github.com/${pull.author}` : "",
+          pull.author ? `${roots.web}/${pull.author}` : "",
           pull.createdAt ?? "",
           pull.updatedAt ?? "",
           pull.url,
-          `https://api.github.com/repos/${pull.repo}`,
+          `${roots.api}/repos/${pull.repo}`,
           syncedAt,
           incoming ? 1 : 0,
           mine ? 1 : 0,
@@ -382,9 +421,9 @@ export interface RepoSync {
 }
 
 export async function getRepoSync(repo: string): Promise<RepoSync | null> {
-  const rows = await (await db()).select<RepoSync[]>("SELECT * FROM repo_sync WHERE repo = $1", [
-    repo,
-  ]);
+  const rows = await (
+    await db()
+  ).select<RepoSync[]>("SELECT * FROM repo_sync WHERE repo = $1", [repo]);
   return rows[0] ?? null;
 }
 

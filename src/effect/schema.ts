@@ -18,7 +18,11 @@ export const Viewer = S.Struct({
 });
 export type Viewer = typeof Viewer.Type;
 
-export const AuthStatus = S.Struct({ signed_in: S.Boolean, viewer: S.NullOr(Viewer) });
+export const AuthStatus = S.Struct({
+  signed_in: S.Boolean,
+  viewer: S.NullOr(Viewer),
+  host: S.String,
+});
 export type AuthStatus = typeof AuthStatus.Type;
 
 export const DeviceStart = S.Struct({

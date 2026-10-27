@@ -1,3 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Effect, Fiber, Schema, Stream } from "effect";
+import { useEffect } from "react";
+
 import { useAppearance, zoomBy, zoomReset } from "@/app/appearance";
 import { useClipboardSniff } from "@/app/clipboard-sniff";
 import { useDockInboxBadge } from "@/app/dock-badge";
@@ -8,29 +13,26 @@ import { overlays, useOverlays } from "@/app/overlays";
 import { Palette } from "@/app/palette";
 import { usePrSync } from "@/app/pr-sync";
 import { Rail } from "@/app/rail";
-import { VIEW_PATHS, isChatWindow } from "@/app/router";
+import { isChatWindow, VIEW_PATHS } from "@/app/router";
 import { TitleBar } from "@/app/title-bar";
 import { toast } from "@/app/toast";
 import { useUpdater } from "@/app/updater";
-import { WhatsNewDialog, useWhatsNew } from "@/app/whats-new";
+import { useWhatsNew, WhatsNewDialog } from "@/app/whats-new";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Tauri } from "@/effect/Tauri";
 import { run, runtime } from "@/effect/runtime";
 import { DependabotDone, Viewer } from "@/effect/schema";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, authStore, useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
+import { Tauri } from "@/effect/Tauri";
 import { clearHomeCache } from "@/features/home/cache";
 import { clearInboxCache } from "@/features/inbox/cache";
 import { recordFix } from "@/features/list/fixes";
 import { toLocalId } from "@/lib/local-id";
 import { syncPrs } from "@/lib/pr-sync";
 import { safeOpenUrl } from "@/lib/ui";
-import { useQueryClient } from "@tanstack/react-query";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Effect, Fiber, Schema, Stream } from "effect";
-import { useEffect } from "react";
+
 import { refreshInboxFromWatcher } from "./workspace";
 
 /**
@@ -224,13 +226,13 @@ function useBackendEvents() {
           ),
           Stream.runForEach(t.events("auth:ready", Viewer), (viewer) =>
             Effect.sync(() => {
-              authStore.set({ loading: false, signedIn: true, viewer });
+              authStore.set({ ...authStore.get(), loading: false, signedIn: true, viewer });
               void qc.invalidateQueries();
             }),
           ),
           Stream.runForEach(t.events("auth:signed_out", Schema.Unknown), () =>
             Effect.sync(() => {
-              authStore.set({ loading: false, signedIn: false, viewer: null });
+              authStore.set({ ...authStore.get(), loading: false, signedIn: false, viewer: null });
               qc.clear();
               clearHomeCache();
               clearInboxCache();

@@ -1,16 +1,3 @@
-import { toast } from "@/app/toast";
-import { IconButton } from "@/components/icon-button";
-import { TabsPanel } from "@/components/ui/tabs";
-import { useEffectQuery } from "@/effect/runtime";
-import type * as S from "@/effect/schema";
-import { GitHub, type PrRef } from "@/effect/services/GitHub";
-import { age } from "@/features/list/row";
-import { linesText } from "@/lib/diff";
-import { type HIDE_LABEL, classify } from "@/lib/focus";
-import type { GuidedStep } from "@/lib/guided";
-import type { PullFile } from "@/lib/tauri";
-import { safeOpenUrl } from "@/lib/ui";
-import { cn } from "@/lib/utils";
 import { Effect } from "effect";
 import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
 import {
@@ -22,6 +9,22 @@ import {
   useRef,
   useState,
 } from "react";
+
+import { toast } from "@/app/toast";
+import { IconButton } from "@/components/icon-button";
+import { TabsPanel } from "@/components/ui/tabs";
+import { useEffectQuery } from "@/effect/runtime";
+import type * as S from "@/effect/schema";
+import { githubWebUrl } from "@/effect/services/Auth";
+import { GitHub, type PrRef } from "@/effect/services/GitHub";
+import { age } from "@/features/list/row";
+import { linesText } from "@/lib/diff";
+import { classify, type HIDE_LABEL } from "@/lib/focus";
+import type { GuidedStep } from "@/lib/guided";
+import type { PullFile } from "@/lib/tauri";
+import { safeOpenUrl } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+
 import { type BriefingReach, ReviewBriefing } from "./briefing";
 import { ChecksSection } from "./checks";
 import { Diff, lineId } from "./diff";
@@ -692,9 +695,15 @@ function FileSection({
   f,
   reason,
   ctx,
-}: { f: S.PullFile; reason: ReturnType<typeof classify>; ctx: FileCtx }) {
+}: {
+  f: S.PullFile;
+  reason: ReturnType<typeof classify>;
+  ctx: FileCtx;
+}) {
   const [open, setOpen] = useState(!reason);
-  const permalink = `https://github.com/${ctx.prRef.owner}/${ctx.prRef.repo}/blob/${ctx.headSha}/${f.filename}`;
+  const permalink = githubWebUrl(
+    `${ctx.prRef.owner}/${ctx.prRef.repo}/blob/${ctx.headSha}/${f.filename}`,
+  );
   const copy = (text: string, said: string) =>
     navigator.clipboard
       .writeText(text)

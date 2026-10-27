@@ -8,9 +8,10 @@ use tokio::sync::Semaphore;
 
 use crate::clients::check;
 use crate::error::{AppError, AppResult};
+use crate::github_instance::ApiBase;
 use crate::state::AppState;
 
-pub const API: &str = "https://api.github.com";
+pub const API: ApiBase = ApiBase;
 pub const ACCEPT: &str = "application/vnd.github+json";
 pub const API_VERSION: &str = "2022-11-28";
 const REVIEWLY_SIGNATURE: &str =

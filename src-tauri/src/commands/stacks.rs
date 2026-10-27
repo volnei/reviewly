@@ -7,11 +7,11 @@
 use serde_json::{json, Value};
 use tauri::State;
 
+use crate::clients::github::API;
 use crate::creds;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-const API: &str = "https://api.github.com";
 const API_VERSION: &str = "2026-03-10";
 
 fn req(

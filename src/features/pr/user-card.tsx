@@ -1,9 +1,11 @@
-import { Popover, PopoverPopup, PopoverTrigger } from "@/components/ui/popover";
-import { useEffectQuery } from "@/effect/runtime";
-import { GitHub } from "@/effect/services/GitHub";
-import { safeOpenUrl } from "@/lib/ui";
 import { Effect } from "effect";
 import { type ReactElement, useRef, useState } from "react";
+
+import { Popover, PopoverPopup, PopoverTrigger } from "@/components/ui/popover";
+import { useEffectQuery } from "@/effect/runtime";
+import { githubWebUrl } from "@/effect/services/Auth";
+import { GitHub } from "@/effect/services/GitHub";
+import { safeOpenUrl } from "@/lib/ui";
 
 const compact = (n: number) =>
   n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -42,7 +44,7 @@ export function UserCard({ login, children }: { login: string; children: ReactEl
       >
         <div className="flex items-center gap-3">
           <img
-            src={p?.avatar_url ?? `https://github.com/${login}.png?size=96`}
+            src={p?.avatar_url ?? `${githubWebUrl(`${login}.png`)}?size=96`}
             alt=""
             className="size-10 rounded-full bg-raise"
             draggable={false}
@@ -67,7 +69,7 @@ export function UserCard({ login, children }: { login: string; children: ReactEl
         )}
         <button
           type="button"
-          onClick={() => safeOpenUrl(p?.html_url ?? `https://github.com/${login}`)}
+          onClick={() => safeOpenUrl(p?.html_url ?? githubWebUrl(login))}
           className="mt-2 h-6 rounded-md px-1.5 text-ink-2 hover:bg-raise hover:text-ink"
         >
           Open on GitHub

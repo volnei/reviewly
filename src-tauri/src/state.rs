@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
 
+use crate::github_instance::{self, GitHubInstance};
+
 pub struct CacheEntry<T> {
     pub at: Instant,
     pub value: T,
@@ -44,6 +46,15 @@ pub struct AppState {
 impl AppState {
     const MAX_GITHUB_CACHE_ENTRIES: usize = 512;
     const MAX_GITHUB_CACHE_AGE: Duration = Duration::from_secs(60 * 60);
+
+    pub fn github(&self) -> GitHubInstance {
+        github_instance::current()
+    }
+
+    pub fn set_github(&self, instance: GitHubInstance) {
+        github_instance::set_current(instance);
+        self.gh_cache.clear();
+    }
 
     /// Cached JSON value for `key` if present and younger than `ttl`.
     pub fn cache_get(&self, key: &str, ttl: Duration) -> Option<serde_json::Value> {

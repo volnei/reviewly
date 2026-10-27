@@ -1,8 +1,15 @@
 use crate::error::{AppError, AppResult};
 use keyring::Entry;
+use serde::{Deserialize, Serialize};
 
 const SERVICE: &str = "dev.volnei.reviewly";
 const ACCOUNT: &str = "github";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredCredentials {
+    pub host: String,
+    pub token: String,
+}
 
 /// Dev-only escape hatch for the macOS keychain prompt.
 ///
@@ -32,22 +39,37 @@ fn entry() -> AppResult<Entry> {
     Entry::new(SERVICE, ACCOUNT).map_err(AppError::from)
 }
 
-pub fn save_token(token: &str) -> AppResult<()> {
+pub fn save_token(host: &str, token: &str) -> AppResult<()> {
     // When a dev token is supplied via env, it's the source of truth — don't
     // touch the keychain (which would re-trigger the prompt).
     if dev_token().is_some() {
         return Ok(());
     }
-    entry()?.set_password(token)?;
+    let value = serde_json::to_string(&StoredCredentials {
+        host: host.into(),
+        token: token.into(),
+    })
+    .map_err(|e| AppError::Other(format!("encode credentials: {e}")))?;
+    entry()?.set_password(&value)?;
     Ok(())
 }
 
 pub fn load_token() -> AppResult<Option<String>> {
+    Ok(load_credentials()?.map(|credentials| credentials.token))
+}
+
+pub fn load_credentials() -> AppResult<Option<StoredCredentials>> {
     if let Some(t) = dev_token() {
-        return Ok(Some(t));
+        let host = std::env::var("REVIEWLY_GH_HOST").unwrap_or_else(|_| "github.com".into());
+        return Ok(Some(StoredCredentials { host, token: t }));
     }
     match entry()?.get_password() {
-        Ok(s) => Ok(Some(s)),
+        Ok(s) => Ok(Some(serde_json::from_str(&s).unwrap_or(
+            StoredCredentials {
+                host: "github.com".into(),
+                token: s,
+            },
+        ))),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(e.into()),
     }

@@ -19,7 +19,7 @@ pub struct FetchedAttachment {
 /// avatars, etc.) authenticated with the stored token, and return a
 /// base64-encoded payload the UI can turn into a data URL.
 ///
-/// Only github.com and *.githubusercontent.com hosts are allowed.
+/// Only the active GitHub host and GitHub.com's asset hosts are allowed.
 #[tauri::command]
 pub async fn gh_fetch_attachment(
     state: State<'_, AppState>,
@@ -27,7 +27,10 @@ pub async fn gh_fetch_attachment(
 ) -> AppResult<FetchedAttachment> {
     let parsed = Url::parse(&url).map_err(|e| AppError::Other(format!("bad url: {e}")))?;
     let host = parsed.host_str().unwrap_or("");
-    let allowed = host == "github.com"
+    let active_host = state.github().host;
+    let allowed = host == active_host
+        || host.ends_with(&format!(".{active_host}"))
+        || host == "github.com"
         || host.ends_with(".github.com")
         || host == "githubusercontent.com"
         || host.ends_with(".githubusercontent.com");

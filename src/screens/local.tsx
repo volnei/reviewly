@@ -1,27 +1,3 @@
-import { useTitleSlot } from "@/app/title-slot";
-import { toast } from "@/app/toast";
-import { IconButton } from "@/components/icon-button";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Popover, PopoverPopup, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
-import { isNative } from "@/effect/Tauri";
-import { type AppServices, run, useEffectQuery } from "@/effect/runtime";
-import { Git } from "@/effect/services/Git";
-import { GitHub } from "@/effect/services/GitHub";
-import { prefsStore, usePrefs } from "@/effect/services/Prefs";
-import { ListHead, Nothing } from "@/features/list/list";
-import { toLocalId } from "@/lib/local-id";
-import { safeOpenUrl } from "@/lib/ui";
-import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { Effect } from "effect";
 import {
@@ -38,6 +14,32 @@ import {
   Search,
 } from "lucide-react";
 import { useState } from "react";
+
+import { useTitleSlot } from "@/app/title-slot";
+import { toast } from "@/app/toast";
+import { IconButton } from "@/components/icon-button";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Popover, PopoverPopup, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { type AppServices, run, useEffectQuery } from "@/effect/runtime";
+import { githubWebUrl } from "@/effect/services/Auth";
+import { Git } from "@/effect/services/Git";
+import { GitHub } from "@/effect/services/GitHub";
+import { prefsStore, usePrefs } from "@/effect/services/Prefs";
+import { isNative } from "@/effect/Tauri";
+import { ListHead, Nothing } from "@/features/list/list";
+import { toLocalId } from "@/lib/local-id";
+import { safeOpenUrl } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 /** "owner/repo" out of a clone's remote, or null. */
 const slugOf = (remote: string | null | undefined) =>
@@ -253,7 +255,7 @@ export function LocalScreen() {
                   <IconButton
                     size={6}
                     label="Open on GitHub"
-                    onClick={() => safeOpenUrl(`https://github.com/${slug}`)}
+                    onClick={() => safeOpenUrl(githubWebUrl(slug))}
                   >
                     <ExternalLink className="size-3.5" strokeWidth={1.75} />
                   </IconButton>
@@ -417,11 +419,15 @@ function CloneDialog({
   open,
   onOpenChange,
   onCloned,
-}: { open: boolean; onOpenChange: (o: boolean) => void; onCloned: (path: string) => void }) {
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onCloned: (path: string) => void;
+}) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const canonical = /^[\w.-]+\/[\w.-]+$/.test(url.trim())
-    ? `https://github.com/${url.trim()}.git`
+    ? `${githubWebUrl(url.trim())}.git`
     : url.trim();
   const go = async () => {
     if (!canonical) return;

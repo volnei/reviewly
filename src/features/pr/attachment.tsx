@@ -1,9 +1,11 @@
-import { Tauri } from "@/effect/Tauri";
-import { useEffectQuery } from "@/effect/runtime";
-import { safeOpenUrl } from "@/lib/ui";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { Effect, Schema } from "effect";
 import { useState } from "react";
+
+import { useEffectQuery } from "@/effect/runtime";
+import { authStore } from "@/effect/services/Auth";
+import { Tauri } from "@/effect/Tauri";
+import { safeOpenUrl } from "@/lib/ui";
 
 /**
  * GitHub serves what people drop into a pull request — screenshots, recordings —
@@ -19,7 +21,7 @@ export function isAttachmentUrl(url: string | null | undefined): boolean {
     return false;
   }
   if (u.protocol !== "https:") return false;
-  if (u.hostname === "github.com") {
+  if (u.hostname === authStore.get().host || u.hostname === "github.com") {
     return (
       u.pathname.startsWith("/user-attachments/") ||
       /^\/[^/]+\/[^/]+\/assets\//.test(u.pathname) ||

@@ -222,7 +222,10 @@ pub async fn gh_get_file_content(
     use base64::Engine;
 
     let token = creds::require_token()?;
-    let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}");
+    let url = format!(
+        "{}/repos/{owner}/{repo}/contents/{path}",
+        state.github().api_url
+    );
     let res = github::auth_request(&state, &token, reqwest::Method::GET, &url)
         .header("Accept", "application/vnd.github+json")
         .query(&[("ref", r#ref.as_str())])

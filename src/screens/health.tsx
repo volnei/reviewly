@@ -1,16 +1,19 @@
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useMemo, useRef } from "react";
+
 import { useTitleSlot } from "@/app/title-slot";
 import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import { Button } from "@/components/ui/button";
+import { githubWebUrl } from "@/effect/services/Auth";
 import type { DependabotRepositoryStatus } from "@/effect/services/Inbox";
 import { compareRanked } from "@/effect/services/Triage";
-import { FilterBar, applyFilter, isFiltering, useListFilter } from "@/features/list/filters";
+import { applyFilter, FilterBar, isFiltering, useListFilter } from "@/features/list/filters";
 import { FindingPeek } from "@/features/list/finding-peek";
 import { List, ListHead, Nothing } from "@/features/list/list";
 import { useKeepScroll } from "@/features/list/scroll";
 import { useWorkspaceHealth, workspaceFindings } from "@/features/list/workspace";
 import { safeOpenUrl } from "@/lib/ui";
-import { ExternalLink, RefreshCw } from "lucide-react";
-import { useMemo, useRef } from "react";
+
 import { RefreshButton, TitleSearch, useItemActions, useOpenItem } from "./inbox";
 
 /** What the repositories say about themselves: advisories, and what the Turborepo workspaces on this machine report. */
@@ -142,7 +145,10 @@ const STATUS: Record<
 function DependabotCoverage({
   statuses,
   retry,
-}: { statuses: ReadonlyArray<DependabotRepositoryStatus>; retry: () => void }) {
+}: {
+  statuses: ReadonlyArray<DependabotRepositoryStatus>;
+  retry: () => void;
+}) {
   const unavailable = statuses.filter((status) => status.state !== "available").length;
   return (
     <section className="health-coverage" aria-labelledby="dependabot-coverage-title">
@@ -176,7 +182,7 @@ function DependabotCoverage({
                   type="button"
                   className="health-coverage-action"
                   onClick={() =>
-                    safeOpenUrl(`https://github.com/${status.repo}/settings/security_analysis`)
+                    safeOpenUrl(githubWebUrl(`${status.repo}/settings/security_analysis`))
                   }
                 >
                   Enable on GitHub

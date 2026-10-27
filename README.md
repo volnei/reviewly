@@ -17,11 +17,11 @@
   <a href="https://buymeacoffee.com/volnei"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-ffdd00?logoColor=black" alt="Buy Me a Coffee" /></a>
 </p>
 
-Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR review from a dozen browser tabs into one focused workspace. It pulls the PRs that need *you*, lays out the diff the way a reviewer actually reads it, lets a local AI walk you through the change, and posts your review back to GitHub — without sending your code to any server but the one you choose.
+Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR review from a dozen browser tabs into one focused workspace. It pulls the PRs that need _you_, lays out the diff the way a reviewer actually reads it, lets a local AI walk you through the change, and posts your review back to GitHub — without sending your code to any server but the one you choose.
 
 Built with **Tauri 2** (Rust + React). Free and open source under the [GPL-3.0](LICENSE).
 
-> **Local-first by design.** Your GitHub token lives in the OS keychain. AI review runs through *your* local CLI (Claude, Codex, Gemini) or *your* own OpenAI-compatible endpoint — only the PR diff is ever sent, and there is no Reviewly server in the middle.
+> **Local-first by design.** Your GitHub token lives in the OS keychain. AI review runs through _your_ local CLI (Claude, Codex, Gemini) or _your_ own OpenAI-compatible endpoint — only the PR diff is ever sent, and there is no Reviewly server in the middle.
 
 ---
 
@@ -95,7 +95,7 @@ The **PR detail** view organizes a pull request into four tabs — **Files**, **
 
 The diff viewer is the centerpiece:
 
-- **Unified or split** view, toggled with `⌘B` — including inside layered review, which is a mode *on top of* your layout, not a replacement for it.
+- **Unified or split** view, toggled with `⌘B` — including inside layered review, which is a mode _on top of_ your layout, not a replacement for it.
 - **Syntax highlighting** per language (Prism).
 - **Expand context** — unfold the unchanged lines between hunks to see the full surrounding file.
 - **Hide whitespace-only** changes and **wrap long lines** on demand.
@@ -119,18 +119,18 @@ Reviewly drives an AI you control — a local CLI or your own endpoint — to he
 
 **Layered review.** For the PR that touches 60 files. Instead of one alphabetical wall of diff, the change is cut into a handful of coherent layers — schema, then the types written against it, then the logic, the API surface, the UI, and the tests — and you read them **one at a time, in dependency order**. The whole review loop narrows to the layer you're on: the file tree, `[` / `]`, and `n` all stay inside it, and `n` hands you off to the next layer when the current one is done. Each layer carries a short briefing (what it changes, why it's read here, 1–3 things to check) and a risk chip, and progress comes straight from your viewed-files marks, so the stepper always matches what you've actually read. Two ways to split: **Plan with AI** for semantic layers, or **Split by structure** — instant, offline, no CLI needed. Plans are saved per-PR and reconciled against the diff on every open, so files pushed later resurface instead of quietly falling out of the review.
 
-**Guided tour.** One click and the AI reads the whole PR and walks you through it in a sensible order: the core change first, then what depends on it. Each step is one of *orientation*, *worth a comment*, *question*, or *praise*, and can jump you to the relevant file/line or pre-fill a suggested inline comment. The tour is generated in the background (so it survives navigation), saved per-PR, and knows to offer a regenerate when the PR's head commit changes.
+**Guided tour.** One click and the AI reads the whole PR and walks you through it in a sensible order: the core change first, then what depends on it. Each step is one of _orientation_, _worth a comment_, _question_, or _praise_, and can jump you to the relevant file/line or pre-fill a suggested inline comment. The tour is generated in the background (so it survives navigation), saved per-PR, and knows to offer a regenerate when the PR's head commit changes.
 
-**Ask AI.** A floating chat panel for a back-and-forth about the PR. Responses **stream token-by-token**. Conversations are kept per-PR, and if you have the repo cloned locally the AI runs *inside the clone* so it can read the real files, not just the diff. The AI's replies can propose actions — add a review comment, apply a label, request a reviewer — that you apply with one click.
+**Ask AI.** A floating chat panel for a back-and-forth about the PR. Responses **stream token-by-token**. Conversations are kept per-PR, and if you have the repo cloned locally the AI runs _inside the clone_ so it can read the real files, not just the diff. The AI's replies can propose actions — add a review comment, apply a label, request a reviewer — that you apply with one click.
 
 **Providers** (configure in Settings):
 
-| Provider | How it runs | Needs |
-| --- | --- | --- |
-| **Claude** | the `claude` CLI on your `PATH` | [Claude Code](https://claude.com/claude-code) installed & signed in |
-| **Codex** | the `codex` CLI on your `PATH` | OpenAI Codex CLI installed |
-| **Gemini** | the `gemini` CLI on your `PATH` | Gemini CLI installed |
-| **OpenAI-compatible** | an HTTP endpoint you provide | base URL + model (+ optional API key) |
+| Provider              | How it runs                     | Needs                                                               |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| **Claude**            | the `claude` CLI on your `PATH` | [Claude Code](https://claude.com/claude-code) installed & signed in |
+| **Codex**             | the `codex` CLI on your `PATH`  | OpenAI Codex CLI installed                                          |
+| **Gemini**            | the `gemini` CLI on your `PATH` | Gemini CLI installed                                                |
+| **OpenAI-compatible** | an HTTP endpoint you provide    | base URL + model (+ optional API key)                               |
 
 The OpenAI-compatible option works with OpenAI, Ollama, LM Studio, OpenRouter, and anything else that speaks the same API. A **custom instructions** field in Settings is prepended to every prompt, so you can encode your team's review standards once.
 
@@ -210,6 +210,17 @@ Download the latest installer for your platform from the [**Releases**](https://
 
 On first launch, Reviewly walks you through a short setup: connect your GitHub account (a device code you approve in the browser), pick the repositories to watch, and you're in. The app updates itself from then on.
 
+### GitHub Enterprise Server
+
+Choose **Enterprise Server** on the connection screen and enter your company hostname, such as `github.company.com`. Reviewly derives the server's REST (`/api/v3`) and GraphQL (`/api/graphql`) endpoints automatically and trusts certificates installed in the operating system.
+
+You can connect with either:
+
+- an existing GitHub CLI login (`gh auth login --hostname github.company.com`); or
+- a personal access token with repository, user, notification and workflow access appropriate to the features you use.
+
+The hostname and token stay together in the OS keychain. Switching between GitHub.com and an Enterprise server clears the previous server's local PR mirror so data from two installations is never mixed.
+
 > No account, no subscription, no telemetry. Reviewly is free and open source.
 
 ## Setting up AI review
@@ -225,21 +236,21 @@ Add **custom review instructions** in the same panel to bake your team's standar
 
 Press `?` anywhere for the in-app cheatsheet. (`⌘` is `Ctrl` on Windows/Linux.)
 
-| Key | Action |
-| --- | --- |
-| `⌘K` | Command palette |
-| `⌘B` | Toggle unified ↔ split diff |
-| `⌘1` … `⌘5` | Dashboard · PRs · Repos · Notifications · Dependabot |
-| `⌘,` | Settings |
-| `⌘=` / `⌘-` / `⌘0` | Zoom in / out / reset |
-| `?` | Keyboard shortcuts cheatsheet |
+| Key                              | Action                                                                |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `⌘K`                             | Command palette                                                       |
+| `⌘B`                             | Toggle unified ↔ split diff                                           |
+| `⌘1` … `⌘5`                      | Dashboard · PRs · Repos · Notifications · Dependabot                  |
+| `⌘,`                             | Settings                                                              |
+| `⌘=` / `⌘-` / `⌘0`               | Zoom in / out / reset                                                 |
+| `?`                              | Keyboard shortcuts cheatsheet                                         |
 | `g` then `d`/`r`/`l`/`n`/`a`/`s` | Go to Dashboard / PRs / Repos / Notifications / Dependabot / Settings |
-| `/` | Focus the filter (lists) |
-| `j` / `k` | Move cursor down / up (lists) |
-| `Enter` | Open the highlighted item |
-| `e` | Mark notification read |
-| `⌘↵` | Submit review / comment |
-| `⌘P` | Quick-open a file (repo view) |
+| `/`                              | Focus the filter (lists)                                              |
+| `j` / `k`                        | Move cursor down / up (lists)                                         |
+| `Enter`                          | Open the highlighted item                                             |
+| `e`                              | Mark notification read                                                |
+| `⌘↵`                             | Submit review / comment                                               |
+| `⌘P`                             | Quick-open a file (repo view)                                         |
 
 ## Privacy & security
 

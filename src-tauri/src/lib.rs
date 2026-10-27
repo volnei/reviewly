@@ -3,6 +3,7 @@ mod clients;
 mod commands;
 mod creds;
 mod error;
+mod github_instance;
 mod state;
 mod tray;
 mod workers;
@@ -310,6 +311,7 @@ pub fn run() {
             commands::auth::auth_sign_out,
             commands::auth::auth_gh_available,
             commands::auth::auth_use_gh_cli,
+            commands::auth::auth_use_token,
             // search
             commands::search::gh_review_requested,
             commands::search::gh_created,

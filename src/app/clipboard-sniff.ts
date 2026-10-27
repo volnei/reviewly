@@ -1,8 +1,10 @@
-import { toast } from "@/app/toast";
-import { isNative } from "@/effect/Tauri";
-import { parsePrRef } from "@/lib/pr-ref";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+
+import { toast } from "@/app/toast";
+import { useAuth } from "@/effect/services/Auth";
+import { isNative } from "@/effect/Tauri";
+import { parsePrRef } from "@/lib/pr-ref";
 
 /**
  * Copy a pull request link anywhere and the app offers to open it. The
@@ -11,6 +13,7 @@ import { useEffect } from "react";
  */
 export function useClipboardSniff() {
   const navigate = useNavigate();
+  const auth = useAuth();
   useEffect(() => {
     if (!isNative()) return;
     let last: string | null = null;
@@ -23,7 +26,7 @@ export function useClipboardSniff() {
         const text = (await read()).trim();
         if (stopped || !text || text === last) return;
         last = text;
-        const ref = parsePrRef(text);
+        const ref = parsePrRef(text, auth.host);
         if (!ref) return;
         const key = `${ref.owner}/${ref.repo}#${ref.number}`;
         if (offered.has(key)) return;
@@ -43,5 +46,5 @@ export function useClipboardSniff() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [navigate]);
+  }, [navigate, auth.host]);
 }

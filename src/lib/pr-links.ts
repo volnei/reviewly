@@ -34,7 +34,7 @@ export function previewLinks(body: string | null | undefined): PreviewLink[] {
 /** A pasted GitHub URL as a markdown link with a name a reviewer reads: `owner/repo#123`, `owner/repo@abc1234`. */
 export function githubLinkMarkdown(url: string): string | null {
   const m = url.match(
-    /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\/(pull|issues|commit)\/([^/\s#?]+))?(?:[/#?].*)?$/,
+    /^https?:\/\/[^/\s]+\/([^/\s]+)\/([^/\s]+?)(?:\/(pull|issues|commit)\/([^/\s#?]+))?(?:[/#?].*)?$/,
   );
   if (!m) return null;
   const [, owner, repo, kind, id] = m;

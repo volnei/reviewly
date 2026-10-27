@@ -1,3 +1,6 @@
+import { Pencil, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogClose,
@@ -12,8 +15,7 @@ import type { PrRef } from "@/effect/services/GitHub";
 import { age } from "@/features/list/row";
 import { githubLinkMarkdown } from "@/lib/pr-links";
 import { cn } from "@/lib/utils";
-import { Pencil, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+
 import { Markdown } from "./markdown";
 import type { Thread } from "./model";
 import { Reactions } from "./reactions";
@@ -74,7 +76,7 @@ export function Composer({
         onPaste={(e) => {
           // A GitHub link pasted bare becomes a link with a name: owner/repo#123.
           const text = e.clipboardData.getData("text/plain").trim();
-          const md = /^https?:\/\/github\.com\//.test(text) ? githubLinkMarkdown(text) : null;
+          const md = /^https?:\/\/[^/]+\//.test(text) ? githubLinkMarkdown(text) : null;
           const el = ref.current;
           if (!md || !el) return;
           e.preventDefault();
@@ -115,7 +117,11 @@ function Byline({
   user,
   when,
   children,
-}: { user: S.UserRef; when: string; children?: React.ReactNode }) {
+}: {
+  user: S.UserRef;
+  when: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2 text-[12.5px]">
       <UserCard login={user.login}>
@@ -226,7 +232,12 @@ export function DraftView({
   me,
   onChange,
   onDiscard,
-}: { draft: Draft; me: S.Viewer | null; onChange: (body: string) => void; onDiscard: () => void }) {
+}: {
+  draft: Draft;
+  me: S.Viewer | null;
+  onChange: (body: string) => void;
+  onDiscard: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   return (
     <div
