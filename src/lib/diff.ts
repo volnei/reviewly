@@ -4,7 +4,7 @@
  * diff viewer can iterate over.
  */
 
-export type LineKind = "context" | "add" | "del" | "hunk";
+type LineKind = "context" | "add" | "del" | "hunk";
 
 export interface DiffLine {
   kind: LineKind;
@@ -114,4 +114,94 @@ export function toSplit(hunk: Hunk): SplitRow[] {
     }
   }
   return rows;
+}
+
+const squash = (s: string) => s.replace(/\s+/g, "");
+
+/**
+ * Whitespace-only changes read as context: a block of deleted lines followed
+ * by added ones that agree once spaces are gone folds into one unchanged run.
+ * Hunks with nothing left in them are dropped.
+ */
+export function hideWhitespaceOnly(hunks: Hunk[]): Hunk[] {
+  const out: Hunk[] = [];
+  for (const h of hunks) {
+    const lines: DiffLine[] = [];
+    let changed = 0;
+    let i = 0;
+    while (i < h.lines.length) {
+      const l = h.lines[i];
+      if (l.kind !== "del" && l.kind !== "add") {
+        lines.push(l);
+        i++;
+        continue;
+      }
+      const dels: DiffLine[] = [];
+      const adds: DiffLine[] = [];
+      while (i < h.lines.length && h.lines[i].kind === "del") dels.push(h.lines[i++]);
+      while (i < h.lines.length && h.lines[i].kind === "add") adds.push(h.lines[i++]);
+      const onlySpaces =
+        dels.length === adds.length &&
+        dels.every((d, j) => squash(d.text) === squash(adds[j].text));
+      if (onlySpaces) {
+        for (let j = 0; j < dels.length; j++)
+          lines.push({
+            kind: "context",
+            oldLine: dels[j].oldLine,
+            newLine: adds[j].newLine,
+            text: adds[j].text,
+          });
+      } else {
+        lines.push(...dels, ...adds);
+        changed += dels.length + adds.length;
+      }
+    }
+    if (changed > 0) out.push({ ...h, lines });
+  }
+  return out;
+}
+
+export interface Gap {
+  readonly fromOld: number;
+  readonly fromNew: number;
+  /** Inclusive; null means "to the end of the file". */
+  readonly toNew: number | null;
+}
+
+/** The unchanged stretches a patch leaves out: one before each hunk, one after the last. */
+export function gapsOf(hunks: ReadonlyArray<Hunk>): Gap[] {
+  const gaps: Gap[] = [];
+  let old = 1;
+  let nw = 1;
+  for (const h of hunks) {
+    gaps.push({ fromOld: old, fromNew: nw, toNew: h.newStart - 1 });
+    let lastOld = h.oldStart - 1;
+    let lastNew = h.newStart - 1;
+    for (const l of h.lines) {
+      if (l.oldLine != null) lastOld = l.oldLine;
+      if (l.newLine != null) lastNew = l.newLine;
+    }
+    old = lastOld + 1;
+    nw = lastNew + 1;
+  }
+  gaps.push({ fromOld: old, fromNew: nw, toNew: null });
+  return gaps;
+}
+
+/** The text of the lines `start..end` on one side of a patch, for a suggestion block. */
+export function linesText(
+  patch: string | null | undefined,
+  side: "L" | "R",
+  start: number,
+  end: number,
+): string | null {
+  const out: string[] = [];
+  for (const h of parsePatch(patch))
+    for (const l of h.lines) {
+      if (l.kind === "hunk") continue;
+      const n = side === "R" ? l.newLine : l.oldLine;
+      const skip = side === "R" ? l.kind === "del" : l.kind === "add";
+      if (!skip && n != null && n >= start && n <= end) out.push(l.text);
+    }
+  return out.length ? out.join("\n") : null;
 }

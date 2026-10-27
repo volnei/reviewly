@@ -23,6 +23,9 @@ export default defineConfig(async () => ({
             return "markdown";
           if (/refractor|prismjs|highlight\.js/.test(id)) return "prism";
           if (/@tanstack/.test(id)) return "tanstack";
+          if (/node_modules\/effect\//.test(id)) return "effect";
+          if (/node_modules\/@base-ui\//.test(id)) return "react";
+          if (/node_modules\/lucide-react\//.test(id)) return "icons";
           if (/react-dom|react\/|scheduler/.test(id)) return "react";
         },
       },

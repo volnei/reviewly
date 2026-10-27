@@ -42,6 +42,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    const MAX_GITHUB_CACHE_ENTRIES: usize = 512;
+    const MAX_GITHUB_CACHE_AGE: Duration = Duration::from_secs(60 * 60);
+
     /// Cached JSON value for `key` if present and younger than `ttl`.
     pub fn cache_get(&self, key: &str, ttl: Duration) -> Option<serde_json::Value> {
         let entry = self.gh_cache.get(key)?;
@@ -54,7 +57,26 @@ impl AppState {
 
     /// Store a value together with its ETag (for later conditional requests).
     pub fn cache_put_etag(&self, key: String, value: serde_json::Value, etag: Option<String>) {
-        self.gh_cache.insert(key, CacheEntry { at: Instant::now(), value, etag });
+        self.gh_cache
+            .retain(|_, entry| entry.at.elapsed() < Self::MAX_GITHUB_CACHE_AGE);
+        if self.gh_cache.len() >= Self::MAX_GITHUB_CACHE_ENTRIES {
+            let oldest = self
+                .gh_cache
+                .iter()
+                .max_by_key(|entry| entry.at.elapsed())
+                .map(|entry| entry.key().clone());
+            if let Some(oldest) = oldest {
+                self.gh_cache.remove(&oldest);
+            }
+        }
+        self.gh_cache.insert(
+            key,
+            CacheEntry {
+                at: Instant::now(),
+                value,
+                etag,
+            },
+        );
     }
 
     /// The stored ETag for `key`, regardless of TTL.
@@ -77,7 +99,10 @@ impl AppState {
     pub fn new() -> Self {
         let http = Client::builder()
             .user_agent(concat!("reviewly/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(8))
             .timeout(Duration::from_secs(20))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .tcp_keepalive(Duration::from_secs(30))
             .build()
             .expect("build http client");
 

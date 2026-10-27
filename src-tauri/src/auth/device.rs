@@ -66,7 +66,9 @@ pub async fn start(state: &AppState) -> AppResult<DeviceStart> {
         .await?;
     if !res.status().is_success() {
         let body = res.text().await.unwrap_or_default();
-        return Err(AppError::Auth(format!("device code request failed: {body}")));
+        return Err(AppError::Auth(format!(
+            "device code request failed: {body}"
+        )));
     }
     let code: DeviceCode = res.json().await?;
     Ok(DeviceStart {

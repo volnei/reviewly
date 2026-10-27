@@ -1,36 +1,39 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="512" y1="112" x2="512" y2="912" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#26232c"/><stop offset="1" stop-color="#121116"/>
+    <linearGradient id="background" x1="210" y1="142" x2="824" y2="898" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2D2924"/>
+      <stop offset="0.52" stop-color="#1D1B18"/>
+      <stop offset="1" stop-color="#141311"/>
     </linearGradient>
-    <linearGradient id="sheen" x1="512" y1="112" x2="512" y2="520" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    <linearGradient id="top-layer" x1="352" y1="314" x2="686" y2="554" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2A06D"/>
+      <stop offset="0.58" stop-color="#E27C49"/>
+      <stop offset="1" stop-color="#BC5534"/>
     </linearGradient>
-    <filter id="gemshadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#1a103f" flood-opacity="0.55"/>
+    <linearGradient id="silver-layer" x1="512" y1="482" x2="512" y2="677" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8D4CD"/>
+      <stop offset="1" stop-color="#928C83"/>
+    </linearGradient>
+    <filter id="frame-shadow" x="30" y="32" width="964" height="984" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" stdDeviation="30" flood-color="#000000" flood-opacity="0.42"/>
     </filter>
-    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="26" flood-color="#000000" flood-opacity="0.42"/>
+    <filter id="mark-shadow" x="210" y="230" width="604" height="584" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.36"/>
     </filter>
   </defs>
-  <g filter="url(#drop)"><rect x="112" y="112" width="800" height="800" rx="180" fill="url(#bg)"/></g>
-  <rect x="112" y="112" width="800" height="800" rx="180" fill="url(#sheen)"/>
 
-  <!-- brilliant-cut gem: table(top) + crown facets + pavilion point, lit from top-left -->
-  <g filter="url(#gemshadow)">
-    <path d="M422.9 344.6 L601.1 344.6 L512 476.9 Z" fill="#d4daff"/>
-    <path d="M422.9 344.6 L312.2 476.9 L512 476.9 Z" fill="#b0b8ff"/>
-    <path d="M601.1 344.6 L711.8 476.9 L512 476.9 Z" fill="#8b92fb"/>
-    <path d="M312.2 476.9 L512 733.4 L512 476.9 Z" fill="#6d6cf4"/>
-    <path d="M711.8 476.9 L512 476.9 L512 733.4 Z" fill="#5049df"/>
-    <g stroke="#100c20" stroke-opacity="0.26" stroke-width="7" stroke-linejoin="round" fill="none">
-      <path d="M422.9 344.6 L512 476.9 L601.1 344.6"/>
-      <path d="M312.2 476.9 L512 476.9 L711.8 476.9"/>
-      <path d="M512 476.9 L512 733.4"/>
-    </g>
-    <path d="M422.9 344.6 L601.1 344.6" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
-    <path d="M422.9 344.6 L312.2 476.9" stroke="#ffffff" stroke-opacity="0.28" stroke-width="6" stroke-linecap="round"/>
-    <path d="M455.3 363.5 L495.8 363.5 L476.9 404 Z" fill="#ffffff" fill-opacity="0.5"/>
+  <g filter="url(#frame-shadow)">
+    <rect x="86" y="76" width="852" height="852" rx="204" fill="url(#background)"/>
   </g>
-  <rect x="113" y="113" width="798" height="798" rx="179" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <rect x="87.5" y="77.5" width="849" height="849" rx="202.5" fill="none" stroke="#FFF7EC" stroke-opacity="0.09" stroke-width="3"/>
+  <path d="M168 214C236 130 337 102 468 102H722C827 102 900 177 912 281" fill="none" stroke="#FFFFFF" stroke-opacity="0.055" stroke-width="18" stroke-linecap="round"/>
+
+  <g filter="url(#mark-shadow)">
+    <path d="M287 573L489 682C503 690 521 690 535 682L737 573" fill="none" stroke="#777169" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M287 498L489 607C503 615 521 615 535 607L737 498" fill="none" stroke="url(#silver-layer)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M290 397C279 391 279 375 290 369L486 263C502 254 522 254 538 263L734 369C745 375 745 391 734 397L538 503C522 512 502 512 486 503L290 397Z" fill="url(#top-layer)"/>
+    <path d="M306 381L495 279C506 273 518 273 529 279L718 381L529 483C518 489 506 489 495 483L306 381Z" fill="none" stroke="#FFD1B5" stroke-opacity="0.34" stroke-width="4"/>
+
+  </g>
 </svg>

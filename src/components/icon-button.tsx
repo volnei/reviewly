@@ -1,35 +1,53 @@
-import { TooltipFor } from "@/components/tooltip-for";
-import { Button, type ButtonProps } from "@/components/ui/button";
-import type { LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
-/**
- * Icon-only button with a custom tooltip + accessible name. The standard way to
- * render a secondary/utility action compactly (no visible text, no native
- * `title`). For primary actions with a label, use `<Button>` directly.
- */
+/** 28px ghost, lucide 16px, the name in the tooltip; a pressed state when it toggles. */
 export function IconButton({
   label,
-  icon: Icon,
-  shortcut,
-  side,
-  variant = "ghost",
-  size = "icon-sm",
+  onClick,
+  pressed,
+  disabled,
   className,
-  ...props
+  size = 7,
+  children,
 }: {
   label: string;
-  icon: LucideIcon;
-  shortcut?: string;
-  side?: "top" | "bottom" | "left" | "right";
-  variant?: ButtonProps["variant"];
-  size?: ButtonProps["size"];
+  onClick: () => void;
+  pressed?: boolean;
+  disabled?: boolean;
   className?: string;
-} & Pick<ButtonProps, "onClick" | "loading" | "disabled">) {
+  /** Tailwind size step: 7 = 28px, 6 = 24px. */
+  size?: 6 | 7;
+  children: React.ReactNode;
+}) {
   return (
-    <TooltipFor label={label} shortcut={shortcut} side={side}>
-      <Button variant={variant} size={size} aria-label={label} className={className} {...props}>
-        <Icon className="size-3.5" />
-      </Button>
-    </TooltipFor>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size={size === 7 ? "icon-sm" : "icon-xs"}
+            type="button"
+            aria-label={label}
+            aria-pressed={pressed}
+            disabled={disabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className={cn(
+              "grid place-items-center rounded-md text-ink-2 hover:bg-raise hover:text-ink disabled:opacity-40",
+              size === 7 ? "size-7" : "size-6",
+              pressed && "bg-raise text-ink",
+              className,
+            )}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
   );
 }

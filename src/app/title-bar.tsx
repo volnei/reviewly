@@ -1,162 +1,104 @@
-import { ReviewlyGlyph } from "@/components/reviewly-glyph";
-import { relativeTime } from "@/lib/format";
-import { parsePullUrl } from "@/lib/tauri";
-import { useUi } from "@/stores/ui";
-import { useIsFetching } from "@tanstack/react-query";
+import { useOnline } from "@/app/online";
+import { useTitleSlotValue } from "@/app/title-slot";
+import { WorkspacePicker } from "@/app/workspace-picker";
+import { isNative } from "@/effect/Tauri";
+import { useAiActivity } from "@/features/pr/ai";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CloudOff, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CloudOff, LoaderCircle } from "lucide-react";
+import type { MouseEvent } from "react";
 
-/** Quiet offline / last-synced status, parked at the right of the title bar. */
-function SyncStatus() {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-  const fetching = useIsFetching();
-  const [lastSynced, setLastSynced] = useState<number | null>(null);
-  const [, tick] = useState(0);
-
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-  useEffect(() => {
-    if (fetching === 0) setLastSynced(Date.now());
-  }, [fetching]);
-  useEffect(() => {
-    const id = window.setInterval(() => tick((n) => n + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  if (!online) {
-    return (
-      <output
-        className="flex items-center gap-1.5 text-xs text-destructive"
-        aria-label="Offline — changes will sync when the connection returns"
-      >
-        <CloudOff className="size-3.5" />
-        Offline
-      </output>
-    );
-  }
-  if (lastSynced == null) return null;
-  return (
-    <output className="flex items-center gap-1.5 text-xs text-muted-foreground/50">
-      <span className="size-1.5 rounded-full bg-success/70" aria-hidden />
-      Synced · {relativeTime(lastSynced)}
-    </output>
-  );
-}
+/**
+ * One bar across the whole window, in the screen's own colour, centred on the
+ * traffic lights (tauri.conf puts them at 16/18, so the row is 42px and the
+ * content starts after them). Press and drag anywhere that isn't a control to
+ * move the window; double-click to zoom, like any macOS title bar.
+ */
+const INTERACTIVE =
+  "button, a, input, textarea, select, [role='button'], [role='radio'], [role='group'], kbd";
 
 export function TitleBar() {
-  const togglePalette = useUi((s) => s.togglePalette);
+  const { node } = useTitleSlotValue();
+  const online = useOnline();
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
+  const activities = useAiActivity();
+  const currentActivity =
+    [...activities].reverse().find((activity) => activity.returnTo) ??
+    activities.at(-1);
+  const mac =
+    typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
-  const isMac =
-    typeof document !== "undefined" && document.documentElement.classList.contains("has-vibrancy");
-
-  const handleMouseDown = async (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest("button, a, input, [data-no-drag]")) return;
-    try {
-      await getCurrentWindow().startDragging();
-    } catch {
-      /* not in Tauri */
-    }
-  };
-
-  const handleDoubleClick = async (e: React.MouseEvent) => {
-    // Don't zoom the window when double-clicking the search / buttons — let the
-    // native control handle it (e.g. double-click selects a word in the input).
-    if ((e.target as HTMLElement).closest("button, a, input, [data-no-drag]")) return;
-    try {
-      const w = getCurrentWindow();
-      if (await w.isMaximized()) await w.unmaximize();
-      else await w.maximize();
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const submit = () => {
-    const t = query.trim();
-    if (!t) return;
-    const url = parsePullUrl(t);
-    if (url) {
-      navigate({
-        to: "/prs/$owner/$repo/$number",
-        params: { owner: url.owner, repo: url.repo, number: String(url.number) },
-      });
-      return;
-    }
-    // owner/repo#number shorthand
-    const m = t.match(/^([^/]+)\/([^/]+)#(\d+)$/);
-    if (m) {
-      navigate({
-        to: "/prs/$owner/$repo/$number",
-        params: { owner: m[1], repo: m[2], number: m[3] },
-      });
-      return;
-    }
+  const onMouseDown = (e: MouseEvent<HTMLElement>) => {
+    if (e.button !== 0 || !isNative()) return;
+    if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      e.detail === 2
+        ? getCurrentWindow().toggleMaximize()
+        : getCurrentWindow().startDragging(),
+    );
   };
 
   return (
-    <div
-      data-tauri-drag-region
-      onMouseDown={handleMouseDown}
-      onDoubleClick={handleDoubleClick}
-      className="relative flex h-10 shrink-0 items-center gap-3 border-b border-hairline bg-transparent pr-5 select-none"
-      style={{ paddingLeft: isMac ? 84 : 16 }}
-    >
-      {!isMac && (
-        <div className="flex items-center gap-1.5 text-xs tracking-tight text-foreground/90 pointer-events-none">
-          <ReviewlyGlyph />
-          <span className="font-display text-sm">Reviewly</span>
-        </div>
+    <header
+      onMouseDown={onMouseDown}
+      className={cn(
+        "app-titlebar relative z-20 flex h-[46px] shrink-0 select-none items-center",
+        mac ? "pl-[84px]" : "pl-3",
       )}
-
-      <div data-no-drag className="ml-auto flex items-center gap-2.5">
-        <SyncStatus />
-        <div className="flex h-7 items-center gap-1.5 rounded-md bg-foreground/[0.05] px-2 transition-colors focus-within:bg-foreground/[0.08] focus-within:ring-1 focus-within:ring-primary/30">
-          <Search className="size-3.5 text-muted-foreground/70" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submit();
-              }
-              if (e.key === "Escape") {
-                setQuery("");
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            placeholder="owner/repo#123 or url…"
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            className="h-6 w-56 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
-          />
-        </div>
-
-        <button
-          onClick={togglePalette}
-          type="button"
-          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/70 transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-        >
-          <kbd className="rounded bg-foreground/[0.08] px-1 py-px font-mono text-xs">⌘K</kbd>
-        </button>
+    >
+      <span className="titlebar-brand mr-1 text-[12px] font-medium text-ink-2">
+        Reviewly
+      </span>
+      <WorkspacePicker />
+      <div className="ml-3 flex min-w-0 flex-1 items-center gap-2 pr-3">
+        {node}
       </div>
-    </div>
+      {currentActivity ? (
+        currentActivity.returnTo ? (
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/spec-lens" })}
+            className="mr-3 flex h-7 max-w-56 shrink-0 items-center gap-2 rounded-md bg-raise px-2.5 text-[11.5px] text-ink-2 hover:text-ink"
+            title={`${currentActivity.label}. Open progress.`}
+            aria-label={`${currentActivity.label}. Open progress.`}
+          >
+            <LoaderCircle
+              className="size-3.5 shrink-0 animate-spin text-workspace"
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="truncate">{currentActivity.label}</span>
+            {activities.length > 1 ? (
+              <span className="font-mono text-[10px] text-ink-3">
+                +{activities.length - 1}
+              </span>
+            ) : null}
+          </button>
+        ) : (
+          <span
+            role="status"
+            className="mr-3 flex h-7 max-w-56 shrink-0 items-center gap-2 rounded-md bg-raise px-2.5 text-[11.5px] text-ink-2"
+            title={currentActivity.label}
+          >
+            <LoaderCircle
+              className="size-3.5 shrink-0 animate-spin text-workspace"
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="truncate">{currentActivity.label}</span>
+          </span>
+        )
+      ) : null}
+      {!online ? (
+        <span
+          role="status"
+          className="mr-3 flex h-6 shrink-0 items-center gap-1.5 rounded-md bg-raise px-2 text-[11.5px] text-ink-2"
+          title="No network. What you do waits here until it is back."
+        >
+          <CloudOff className="size-3.5" strokeWidth={1.75} aria-hidden />
+          Offline
+        </span>
+      ) : null}
+    </header>
   );
 }

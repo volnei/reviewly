@@ -1,0 +1,38 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="210" y1="142" x2="824" y2="898" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.56" stop-color="#F7F5F2"/>
+      <stop offset="1" stop-color="#E9E5DF"/>
+    </linearGradient>
+    <linearGradient id="top-layer" x1="352" y1="314" x2="686" y2="554" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2A06D"/>
+      <stop offset="0.58" stop-color="#E27C49"/>
+      <stop offset="1" stop-color="#BC5534"/>
+    </linearGradient>
+    <linearGradient id="silver-layer" x1="512" y1="482" x2="512" y2="677" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#777169"/>
+      <stop offset="1" stop-color="#4F4A45"/>
+    </linearGradient>
+    <filter id="frame-shadow" x="30" y="32" width="964" height="984" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" stdDeviation="30" flood-color="#211D18" flood-opacity="0.24"/>
+    </filter>
+    <filter id="mark-shadow" x="210" y="230" width="604" height="584" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#8A6E5C" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#frame-shadow)">
+    <rect x="86" y="76" width="852" height="852" rx="204" fill="url(#background)"/>
+  </g>
+  <rect x="87.5" y="77.5" width="849" height="849" rx="202.5" fill="none" stroke="#241F1A" stroke-opacity="0.09" stroke-width="3"/>
+  <path d="M168 214C236 130 337 102 468 102H722C827 102 900 177 912 281" fill="none" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="18" stroke-linecap="round"/>
+
+  <g filter="url(#mark-shadow)">
+    <path d="M287 573L489 682C503 690 521 690 535 682L737 573" fill="none" stroke="#A29B92" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M287 498L489 607C503 615 521 615 535 607L737 498" fill="none" stroke="url(#silver-layer)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M290 397C279 391 279 375 290 369L486 263C502 254 522 254 538 263L734 369C745 375 745 391 734 397L538 503C522 512 502 512 486 503L290 397Z" fill="url(#top-layer)"/>
+    <path d="M306 381L495 279C506 273 518 273 529 279L718 381L529 483C518 489 506 489 495 483L306 381Z" fill="none" stroke="#FFD1B5" stroke-opacity="0.52" stroke-width="4"/>
+  </g>
+</svg>

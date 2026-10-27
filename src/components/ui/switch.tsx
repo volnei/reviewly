@@ -1,48 +1,30 @@
+"use client";
+
+import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
+import type React from "react";
 import { cn } from "@/lib/utils";
-import { type ComponentPropsWithoutRef, forwardRef } from "react";
 
-interface SwitchProps extends Omit<ComponentPropsWithoutRef<"button">, "onChange"> {
-  checked: boolean;
-  onCheckedChange: (v: boolean) => void;
-  /** Accessible name; also wire a <TooltipFor> around it for a visible hint. */
-  label?: string;
-}
-
-/**
- * A small on/off switch — the same control used by Settings toggles.
- *
- * Forwards `ref` and spreads remaining props onto the button so it can act as a
- * tooltip/menu trigger (e.g. Base-UI's `render={child}` injects handlers here).
- */
-export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
-  { checked, onCheckedChange, label, disabled, className, onClick, ...rest },
-  ref,
-) {
+export function Switch({
+  className,
+  ...props
+}: SwitchPrimitive.Root.Props): React.ReactElement {
   return (
-    <button
-      ref={ref}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={(e) => {
-        onClick?.(e);
-        onCheckedChange(!checked);
-      }}
+    <SwitchPrimitive.Root
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/24 disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-primary" : "bg-input",
+        "inline-flex h-[calc(var(--thumb-size)+2px)] w-[calc(var(--thumb-size)*2-2px)] shrink-0 items-center rounded-full p-px outline-none transition-[background-color,box-shadow] duration-200 [--thumb-size:--spacing(5)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background data-disabled:cursor-not-allowed data-checked:bg-primary data-unchecked:bg-input data-disabled:opacity-64 sm:[--thumb-size:--spacing(4)]",
         className,
       )}
-      {...rest}
+      data-slot="switch"
+      {...props}
     >
-      <span
+      <SwitchPrimitive.Thumb
         className={cn(
-          "inline-block size-4 rounded-full bg-background shadow-sm transition-transform",
-          checked ? "translate-x-4" : "translate-x-0.5",
+          "pointer-events-none block aspect-square h-full origin-left in-[[role=switch]:active,[data-slot=label]:active,[data-slot=field-label]:active]:not-data-disabled:scale-x-110 in-[[role=switch]:active,[data-slot=label]:active,[data-slot=field-label]:active]:rounded-[var(--thumb-size)/calc(var(--thumb-size)*1.1)] rounded-(--thumb-size) bg-background shadow-sm/5 will-change-transform [transition:translate_.15s,border-radius_.15s,scale_.1s_.1s,transform-origin_.15s] data-checked:origin-[var(--thumb-size)_50%] data-checked:translate-x-[calc(var(--thumb-size)-4px)]",
         )}
+        data-slot="switch-thumb"
       />
-    </button>
+    </SwitchPrimitive.Root>
   );
-});
+}
+
+;

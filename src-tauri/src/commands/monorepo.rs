@@ -116,9 +116,10 @@ fn workspace_globs(root: &Path) -> Vec<String> {
     if let Ok(raw) = std::fs::read_to_string(root.join("package.json")) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) {
             let ws = json.get("workspaces");
-            let arr = ws
-                .and_then(|w| w.as_array())
-                .or_else(|| ws.and_then(|w| w.get("packages")).and_then(|p| p.as_array()));
+            let arr = ws.and_then(|w| w.as_array()).or_else(|| {
+                ws.and_then(|w| w.get("packages"))
+                    .and_then(|p| p.as_array())
+            });
             if let Some(arr) = arr {
                 let globs: Vec<String> = arr
                     .iter()
@@ -138,7 +139,11 @@ fn workspace_globs(root: &Path) -> Vec<String> {
             .lines()
             .map(str::trim)
             .filter_map(|l| l.strip_prefix("- "))
-            .map(|l| l.trim_matches(|c| c == '"' || c == '\'').trim_end_matches('/').to_string())
+            .map(|l| {
+                l.trim_matches(|c| c == '"' || c == '\'')
+                    .trim_end_matches('/')
+                    .to_string()
+            })
             .filter(|l| !l.is_empty() && !l.starts_with('!'))
             .collect();
     }
@@ -248,8 +253,10 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
         packages.iter().map(|(n, _, _)| n.clone()).collect();
     // (name, dir) pairs — the owned shape every helper below works over, so no
     // borrow of `packages` outlives its move into the result.
-    let members: Vec<(String, String)> =
-        packages.iter().map(|(n, d, _)| (n.clone(), d.clone())).collect();
+    let members: Vec<(String, String)> = packages
+        .iter()
+        .map(|(n, d, _)| (n.clone(), d.clone()))
+        .collect();
 
     let mut edges = Vec::new();
     let mut dep_edges = Vec::new();
@@ -288,7 +295,9 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
     for (pkg_name, pkg_dir) in &members {
         let mut stack = vec![root.join(pkg_dir)];
         while let Some(dir) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            let Ok(rd) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in rd.filter_map(|e| e.ok()) {
                 let p = entry.path();
                 let fname = entry.file_name().to_string_lossy().into_owned();
@@ -308,22 +317,31 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
                 if meta.len() > 1_000_000 {
                     continue; // bundled/generated, not hand-written source
                 }
-                let Ok(src) = std::fs::read_to_string(&p) else { continue };
+                let Ok(src) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
                 let rel = p
                     .strip_prefix(root)
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");
-                let file_dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("").to_string();
+                let file_dir = rel
+                    .rsplit_once('/')
+                    .map(|(d, _)| d)
+                    .unwrap_or("")
+                    .to_string();
                 for (i, line) in src.lines().enumerate() {
                     for spec in import_specs(line) {
-                        let Some((target, deep)) = import_target(spec, pkg_name, &file_dir, &members)
+                        let Some((target, deep)) =
+                            import_target(spec, pkg_name, &file_dir, &members)
                         else {
                             continue;
                         };
-                        let entry = uses
-                            .entry((pkg_name.clone(), target.clone()))
-                            .or_insert((0, rel.clone(), (i + 1) as u32));
+                        let entry = uses.entry((pkg_name.clone(), target.clone())).or_insert((
+                            0,
+                            rel.clone(),
+                            (i + 1) as u32,
+                        ));
                         entry.0 += 1;
                         if deep && crossings.len() < MAX_CROSSINGS {
                             crossings.push(RepoCrossing {
@@ -342,13 +360,15 @@ fn scan_sync(path: &str) -> Option<WorkspaceScan> {
     crossings.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
     let mut member_uses: Vec<MemberUse> = uses
         .into_iter()
-        .map(|((from_pkg, target), (count, example_file, example_line))| MemberUse {
-            from_pkg,
-            target,
-            count,
-            example_file,
-            example_line,
-        })
+        .map(
+            |((from_pkg, target), (count, example_file, example_line))| MemberUse {
+                from_pkg,
+                target,
+                count,
+                example_file,
+                example_line,
+            },
+        )
         .collect();
     member_uses.sort_by(|a, b| a.from_pkg.cmp(&b.from_pkg).then(a.target.cmp(&b.target)));
 
@@ -525,7 +545,12 @@ mod tests {
             .unwrap()
             .expect("scanned");
         // Deep bare import AND relative escape, each once; the public import not.
-        assert_eq!(scan.crossings.len(), 2, "{:?}", scan.crossings.iter().map(|c| &c.spec).collect::<Vec<_>>());
+        assert_eq!(
+            scan.crossings.len(),
+            2,
+            "{:?}",
+            scan.crossings.iter().map(|c| &c.spec).collect::<Vec<_>>()
+        );
         assert!(scan.crossings.iter().all(|c| c.target == "@acme/ui"));
         assert!(scan.crossings.iter().any(|c| c.line == 1));
         assert!(scan.crossings.iter().any(|c| c.line == 3));
@@ -553,7 +578,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rvw-mono-none-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         write(&dir.join("package.json"), r#"{"name":"plain"}"#);
-        let ws = monorepo_workspace(dir.to_string_lossy().into_owned()).await.unwrap();
+        let ws = monorepo_workspace(dir.to_string_lossy().into_owned())
+            .await
+            .unwrap();
         assert!(ws.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }

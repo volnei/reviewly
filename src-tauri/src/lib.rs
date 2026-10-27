@@ -134,6 +134,46 @@ pub fn run() {
         "#,
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 7,
+            description: "preserve requested reviewers and teams in the local PR mirror",
+            sql: r#"
+            ALTER TABLE prs ADD COLUMN requested_reviewers TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE prs ADD COLUMN requested_teams TEXT NOT NULL DEFAULT '[]';
+        "#,
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 8,
+            description: "persist inbox signals in the canonical PR mirror",
+            sql: r#"
+            ALTER TABLE prs ADD COLUMN inbox_incoming INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN inbox_mine INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN ci TEXT NOT NULL DEFAULT 'none';
+            ALTER TABLE prs ADD COLUMN conflicting INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN review_decision TEXT;
+            ALTER TABLE prs ADD COLUMN issue_comment_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN review_thread_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN unresolved_thread_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE prs ADD COLUMN code_owners TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE prs ADD COLUMN dashboard_synced_at INTEGER;
+            CREATE INDEX IF NOT EXISTS prs_inbox_incoming ON prs (inbox_incoming, state);
+            CREATE INDEX IF NOT EXISTS prs_inbox_mine ON prs (inbox_mine, state);
+        "#,
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 9,
+            description: "persist native stack membership in the PR mirror",
+            sql: r#"
+            ALTER TABLE prs ADD COLUMN stack_number INTEGER;
+            ALTER TABLE prs ADD COLUMN stack_position INTEGER;
+            ALTER TABLE prs ADD COLUMN stack_size INTEGER;
+            ALTER TABLE prs ADD COLUMN stack_base TEXT;
+            CREATE INDEX IF NOT EXISTS prs_stack ON prs (repo, stack_number, stack_position);
+        "#,
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -281,9 +321,17 @@ pub fn run() {
             commands::pulls::gh_required_contexts,
             commands::pulls::gh_rerun_check,
             commands::pulls::gh_get_file_content,
+            commands::pulls::gh_compare,
+            commands::git::git_blame_lines,
+            commands::stacks::gh_pr_stack,
+            commands::stacks::gh_merge_async,
+            commands::stacks::gh_merge_async_status,
+            commands::stacks::gh_repo_stacks,
             // local git workspace
             commands::monorepo::monorepo_workspace,
             commands::monorepo::monorepo_scan,
+            commands::openspec::openspec_scan,
+            commands::openspec::openspec_create_change,
             commands::git::git_repo_info,
             commands::git::git_clone,
             commands::git::list_dir,
@@ -292,6 +340,8 @@ pub fn run() {
             commands::git::git_branches,
             commands::git::git_checkout,
             commands::git::git_worktrees,
+            commands::git::git_create_worktree,
+            commands::git::git_merge_lab,
             commands::git::gh_pr_create,
             commands::git::gh_dependabot_ai_fix_bg,
             commands::git::dependabot_inflight,
@@ -375,6 +425,7 @@ pub fn run() {
             commands::ai::ai_review,
             commands::ai::ai_review_bg,
             commands::ai::ai_stream,
+            commands::ai::ai_apply,
             commands::ai::ai_inflight,
             commands::ai::ai_cancel,
             commands::ai::path_is_dir,

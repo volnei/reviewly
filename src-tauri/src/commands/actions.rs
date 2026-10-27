@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::clients::check;
-use crate::clients::github::{auth_request, Label, UserRef, API};
+use crate::clients::github::{auth_request, with_reviewly_signature, Label, UserRef, API};
 use crate::clients::graphql::graphql;
 use crate::creds;
 use crate::error::{AppError, AppResult};
@@ -459,7 +459,11 @@ pub async fn gh_list_repos(state: State<'_, AppState>) -> AppResult<Vec<String>>
     let repos: Vec<Value> = res.json().await?;
     Ok(repos
         .into_iter()
-        .filter_map(|r| r.get("full_name").and_then(|v| v.as_str()).map(String::from))
+        .filter_map(|r| {
+            r.get("full_name")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
         .collect())
 }
 
@@ -535,6 +539,7 @@ pub async fn gh_edit_issue_comment(
 ) -> AppResult<Value> {
     let token = creds::require_token()?;
     let url = format!("{API}/repos/{owner}/{repo}/issues/comments/{comment_id}");
+    let body = with_reviewly_signature(&body);
     let res = auth_request(&state, &token, reqwest::Method::PATCH, &url)
         .json(&json!({ "body": body }))
         .send()
@@ -569,6 +574,7 @@ pub async fn gh_edit_review_comment(
 ) -> AppResult<Value> {
     let token = creds::require_token()?;
     let url = format!("{API}/repos/{owner}/{repo}/pulls/comments/{comment_id}");
+    let body = with_reviewly_signature(&body);
     let res = auth_request(&state, &token, reqwest::Method::PATCH, &url)
         .json(&json!({ "body": body }))
         .send()
@@ -621,11 +627,18 @@ pub async fn gh_pr_node_id(
         repository(owner: $o, name: $r) { pullRequest(number: $n) { id } }
     }"#;
     #[derive(Deserialize)]
-    struct R { repository: Repo }
+    struct R {
+        repository: Repo,
+    }
     #[derive(Deserialize)]
-    struct Repo { #[serde(rename = "pullRequest")] pr: Pr }
+    struct Repo {
+        #[serde(rename = "pullRequest")]
+        pr: Pr,
+    }
     #[derive(Deserialize)]
-    struct Pr { id: String }
+    struct Pr {
+        id: String,
+    }
     let r: R = graphql(
         &state,
         &token,
@@ -676,16 +689,23 @@ pub async fn gh_list_review_threads(
         }
     }"#;
     #[derive(Deserialize)]
-    struct R { repository: Repo }
+    struct R {
+        repository: Repo,
+    }
     #[derive(Deserialize)]
-    struct Repo { #[serde(rename = "pullRequest")] pr: Pr }
+    struct Repo {
+        #[serde(rename = "pullRequest")]
+        pr: Pr,
+    }
     #[derive(Deserialize)]
     struct Pr {
         #[serde(rename = "reviewThreads")]
         review_threads: Threads,
     }
     #[derive(Deserialize)]
-    struct Threads { nodes: Vec<Thread> }
+    struct Threads {
+        nodes: Vec<Thread>,
+    }
     #[derive(Deserialize)]
     struct Thread {
         id: String,
@@ -698,7 +718,9 @@ pub async fn gh_list_review_threads(
         comments: Comments,
     }
     #[derive(Deserialize)]
-    struct Comments { nodes: Vec<Comment> }
+    struct Comments {
+        nodes: Vec<Comment>,
+    }
     #[derive(Deserialize)]
     struct Comment {
         #[serde(rename = "databaseId")]
@@ -723,7 +745,12 @@ pub async fn gh_list_review_threads(
             path: t.path,
             line: t.line,
             original_line: t.original_line,
-            comment_ids: t.comments.nodes.into_iter().filter_map(|c| c.database_id).collect(),
+            comment_ids: t
+                .comments
+                .nodes
+                .into_iter()
+                .filter_map(|c| c.database_id)
+                .collect(),
         })
         .collect())
 }

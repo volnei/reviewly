@@ -19,7 +19,7 @@ export interface GuidedStep {
 }
 
 /** The tour's overall recommendation, surfaced as a suggested review verdict. */
-export type GuidedVerdict = "approve" | "request_changes" | "comment";
+type GuidedVerdict = "approve" | "request_changes" | "comment";
 
 export interface GuidedPlan {
   /** One sentence: what this PR does. */
@@ -203,4 +203,52 @@ export function parseGuided(content: string): GuidedPlan | null {
     return null;
   }
   return { summary, tour, verdict, verdictReason, steps };
+}
+
+/** One stop's identity across runs of the same plan: where it is. */
+export const stepKey = (s: Pick<GuidedStep, "path" | "line">): string => `${s.path}:${s.line}`;
+
+/** What the model found when asked to verify one stop against the clone. */
+export interface CheckResult {
+  verdict: "resolved" | "valid";
+  finding: string;
+}
+
+/** Ask the model to verify ONE concern against the repository it runs in. */
+export function checkPrompt(step: GuidedStep): string {
+  const loc = `${step.path}:${step.line}${step.endLine ? `-${step.endLine}` : ""}`;
+  return [
+    "You are verifying ONE code-review concern against the actual repository in this working directory. Read the relevant files to check it — don't guess.",
+    "",
+    `Concern (${step.kind}) at ${loc}`,
+    `Title: ${step.title}`,
+    step.detail ? `Details: ${step.detail}` : "",
+    step.suggestion ? `Proposed review comment: ${step.suggestion}` : "",
+    "",
+    "Decide:",
+    '- "resolved": NOT worth raising — false alarm, already handled, or not actually an issue.',
+    '- "valid": a real concern worth a comment.',
+    "",
+    "Reply with ONLY a single-line JSON object — no prose, no code fences:",
+    '{"verdict":"resolved"|"valid","finding":"<1-2 sentences; if valid, a sharp ready-to-post comment>"}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** The verdict out of a possibly chatty reply. Unreadable output counts as valid: nothing is dismissed on a guess. */
+export function parseCheckResult(out: string): CheckResult {
+  const m = out.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const o = JSON.parse(m[0]) as { verdict?: unknown; finding?: unknown };
+      return {
+        verdict: o.verdict === "resolved" ? "resolved" : "valid",
+        finding: typeof o.finding === "string" && o.finding.trim() ? o.finding.trim() : out.trim(),
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+  return { verdict: "valid", finding: out.trim() };
 }

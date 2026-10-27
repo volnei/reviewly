@@ -9,34 +9,19 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-export const DialogCreateHandle: typeof DialogPrimitive.createHandle =
-  DialogPrimitive.createHandle;
-
 export const Dialog: typeof DialogPrimitive.Root = DialogPrimitive.Root;
 
-export const DialogPortal: typeof DialogPrimitive.Portal =
+const DialogPortal: typeof DialogPrimitive.Portal =
   DialogPrimitive.Portal;
 
-export function DialogTrigger(
-  props: DialogPrimitive.Trigger.Props,
-): React.ReactElement {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
-}
-
-export function DialogClose(
-  props: DialogPrimitive.Close.Props,
-): React.ReactElement {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
-}
-
-export function DialogBackdrop({
+function DialogBackdrop({
   className,
   ...props
 }: DialogPrimitive.Backdrop.Props): React.ReactElement {
   return (
     <DialogPrimitive.Backdrop
       className={cn(
-        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
+        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
         className,
       )}
       data-slot="dialog-backdrop"
@@ -45,7 +30,7 @@ export function DialogBackdrop({
   );
 }
 
-export function DialogViewport({
+function DialogViewport({
   className,
   ...props
 }: DialogPrimitive.Viewport.Props): React.ReactElement {
@@ -164,7 +149,7 @@ export function DialogTitle({
   return (
     <DialogPrimitive.Title
       className={cn(
-        "font-semibold text-lg leading-none",
+        "font-heading font-semibold text-xl leading-none",
         className,
       )}
       data-slot="dialog-title"
@@ -203,7 +188,7 @@ export function DialogPanel({
   };
 
   return (
-    <ScrollArea scrollFade={scrollFade}>
+    <ScrollArea overscrollContain scrollFade={scrollFade}>
       {useRender({
         defaultTagName: "div",
         props: mergeProps<"div">(defaultProps, props),
@@ -213,8 +198,4 @@ export function DialogPanel({
   );
 }
 
-export {
-  DialogPrimitive,
-  DialogBackdrop as DialogOverlay,
-  DialogPopup as DialogContent,
-};
+;

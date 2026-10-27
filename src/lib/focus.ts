@@ -92,7 +92,7 @@ function normalize(line: string): string {
  * True when every `+` line has a matching `-` line modulo whitespace and
  * other purely cosmetic changes. Works across all languages.
  */
-export function isFormatOnly(patch: string | null | undefined): boolean {
+function isFormatOnly(patch: string | null | undefined): boolean {
   if (!patch) return false;
   const hunks = parsePatch(patch);
   if (hunks.length === 0) return false;
@@ -182,14 +182,4 @@ export const HIDE_LABEL: Record<HideReason, string> = {
   "format-only": "format",
   "comment-only": "comments",
   empty: "empty",
-};
-
-export const HIDE_COLOR: Record<HideReason, string> = {
-  lockfile: "text-muted-foreground",
-  generated: "text-muted-foreground",
-  snapshot: "text-muted-foreground",
-  rename: "text-info",
-  "format-only": "text-muted-foreground",
-  "comment-only": "text-muted-foreground",
-  empty: "text-muted-foreground",
 };

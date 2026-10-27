@@ -6,8 +6,8 @@ import {
   packageStats,
   realCyclePath,
 } from "@/lib/monorepo";
-import { invoke } from "@/lib/tauri";
-import { toast } from "sonner";
+import type { FileActivity } from "@/effect/schema";
+import { type CodeownersRule, ownersFor } from "@/lib/codeowners";
 
 /** Mirror of the Rust `WorkspaceScan`. */
 export interface WorkspaceScan extends Workspace {
@@ -23,7 +23,7 @@ export interface WorkspaceScan extends Workspace {
   deps: { package: string; name: string; version: string }[];
 }
 
-export interface Mismatch {
+interface Mismatch {
   name: string;
   versions: { version: string; packages: string[] }[];
   /** The range most of the workspace already agrees on. */
@@ -44,6 +44,287 @@ export interface RepoHealth {
   unused: { from: string; to: string; kind: string }[];
   stats: PackageStats[];
   depth: number;
+}
+
+/** One package as the architecture explorer sees it. Everything here is
+ * derived from the workspace graph and source imports, so selecting a package
+ * answers an operational question (what changes with it?) rather than merely
+ * drawing a node. */
+export interface ArchitectureNode {
+  name: string;
+  dir: string;
+  kind: "app" | "package";
+  dependencies: string[];
+  dependents: string[];
+  transitiveDependencies: string[];
+  transitiveDependents: string[];
+  importsIn: number;
+  importsOut: number;
+  boundaryFindings: number;
+  phantomFindings: number;
+  inCycle: boolean;
+}
+
+export interface ArchitectureSignal {
+  name: string;
+  files: number;
+  testFiles: number;
+  churn: number;
+  owners: string[];
+  contributors: { name: string; churn: number }[];
+  hotspots: FileActivity[];
+  lastChanged: FileActivity | null;
+}
+
+export interface ArchitectureAction {
+  id: string;
+  priority: "critical" | "high" | "medium" | "low";
+  category: "cycle" | "dependency" | "boundary" | "version" | "tests" | "ownership";
+  title: string;
+  fix: string;
+  why: string;
+  scope: string;
+  file: string;
+  line?: number;
+}
+
+const TEST_PATH = /(^|\/)(__tests__|tests?|spec|e2e|cypress)(\/|$)|\.(test|spec)\.[^.]+$/i;
+
+/** Add the time and people dimensions to the dependency graph. `fileActivity`
+ * is sourced from git, while owners come from the repository's CODEOWNERS. */
+export function architectureSignals(
+  r: RepoHealth,
+  files: ReadonlyArray<string>,
+  activity: ReadonlyArray<FileActivity>,
+  owners: ReadonlyArray<CodeownersRule>,
+): ArchitectureSignal[] {
+  return r.scan.packages.map((pkg) => {
+    const prefix = `${pkg.dir}/`;
+    const packageFiles = files.filter((file) => file.startsWith(prefix));
+    const packageActivity = activity
+      .filter((item) => item.path.startsWith(prefix))
+      .sort((a, b) => b.churn - a.churn || b.last_time - a.last_time);
+    const contributors = new Map<string, number>();
+    for (const item of packageActivity) {
+      contributors.set(item.last_author, (contributors.get(item.last_author) ?? 0) + item.churn);
+    }
+    const codeowners = new Set<string>();
+    for (const file of packageFiles) {
+      for (const owner of ownersFor([...owners], file)) codeowners.add(owner);
+    }
+    return {
+      name: pkg.name,
+      files: packageFiles.length,
+      testFiles: packageFiles.filter((file) => TEST_PATH.test(file)).length,
+      churn: packageActivity.reduce((total, item) => total + item.churn, 0),
+      owners: [...codeowners].sort(),
+      contributors: [...contributors.entries()]
+        .map(([name, churn]) => ({ name, churn }))
+        .sort((a, b) => b.churn - a.churn || a.name.localeCompare(b.name))
+        .slice(0, 4),
+      hotspots: packageActivity.slice(0, 4),
+      lastChanged: [...packageActivity].sort((a, b) => b.last_time - a.last_time)[0] ?? null,
+    } satisfies ArchitectureSignal;
+  });
+}
+
+function reachable(start: string, adjacency: ReadonlyMap<string, ReadonlyArray<string>>): string[] {
+  const seen = new Set<string>();
+  const pending = [...(adjacency.get(start) ?? [])];
+  while (pending.length) {
+    const next = pending.pop();
+    if (!next || next === start || seen.has(next)) continue;
+    seen.add(next);
+    pending.push(...(adjacency.get(next) ?? []));
+  }
+  return [...seen].sort();
+}
+
+/** Build the interactive, evidence-backed view of a workspace architecture. */
+export function architectureNodes(r: RepoHealth): ArchitectureNode[] {
+  const forward = new Map<string, string[]>();
+  const reverse = new Map<string, string[]>();
+  for (const p of r.scan.packages) {
+    forward.set(p.name, []);
+    reverse.set(p.name, []);
+  }
+  for (const [from, to] of r.scan.edges) {
+    forward.get(from)?.push(to);
+    reverse.get(to)?.push(from);
+  }
+  const cycles = new Set(r.cycles.flat());
+  return r.scan.packages
+    .map((p) => {
+      const usesOut = r.scan.member_uses.filter((u) => u.from_pkg === p.name);
+      const usesIn = r.scan.member_uses.filter((u) => u.target === p.name);
+      return {
+        name: p.name,
+        dir: p.dir,
+        kind: p.dir.startsWith("apps/") ? "app" : "package",
+        dependencies: [...(forward.get(p.name) ?? [])].sort(),
+        dependents: [...(reverse.get(p.name) ?? [])].sort(),
+        transitiveDependencies: reachable(p.name, forward),
+        transitiveDependents: reachable(p.name, reverse),
+        importsIn: usesIn.reduce((total, use) => total + use.count, 0),
+        importsOut: usesOut.reduce((total, use) => total + use.count, 0),
+        boundaryFindings: r.scan.crossings.filter(
+          (crossing) => crossing.from_pkg === p.name || crossing.target === p.name,
+        ).length,
+        phantomFindings: r.phantoms.filter(
+          (use) => use.from_pkg === p.name || use.target === p.name,
+        ).length,
+        inCycle: cycles.has(p.name),
+      } satisfies ArchitectureNode;
+    })
+    .sort(
+      (a, b) =>
+        b.transitiveDependents.length - a.transitiveDependents.length ||
+        b.importsIn - a.importsIn ||
+        a.name.localeCompare(b.name),
+    );
+}
+
+/** Turn architectural evidence into a repair queue. Every item names the
+ * concrete edit, why it matters and the file that proves it. */
+export function architectureActions(
+  r: RepoHealth,
+  signals: ReadonlyArray<ArchitectureSignal> = [],
+): ArchitectureAction[] {
+  const actions: Array<ArchitectureAction & { score: number }> = [];
+  const dirOf = (name: string): string => r.scan.packages.find((p) => p.name === name)?.dir ?? "";
+  const blastOf = (name: string): number =>
+    r.stats.find((stat) => stat.name === name)?.blast ?? dependentsFrom(name, r.scan.edges).size;
+
+  for (const members of r.cycles) {
+    const inside = new Set(members);
+    const candidates = r.scan.dep_edges.filter(
+      (edge) => inside.has(edge.from) && inside.has(edge.to),
+    );
+    const edge =
+      candidates.find((candidate) => candidate.kind === "devDependencies") ?? candidates[0];
+    const path = edge ? realCyclePath(members, r.scan).join(" → ") : members.join(" ↔ ");
+    actions.push({
+      id: `cycle:${members.join(":")}`,
+      priority: "critical",
+      category: "cycle",
+      title: `Break the ${members.length}-package dependency cycle`,
+      fix: edge
+        ? edge.kind === "devDependencies"
+          ? `Remove or invert ${edge.from} → ${edge.to} in ${edge.kind}; start with the development-only back-edge.`
+          : `Remove or invert ${edge.from} → ${edge.to} in ${edge.kind}; if both packages need the contract, extract it below them.`
+        : "Extract the shared contract into a lower-level package and remove one back-edge.",
+      why: "Packages in a cycle cannot be built, tested or released independently.",
+      scope: path,
+      file: edge ? `${dirOf(edge.from)}/package.json` : `${dirOf(members[0])}/package.json`,
+      score: 1_000 + members.reduce((total, name) => total + blastOf(name), 0),
+    });
+  }
+
+  for (const use of r.phantoms) {
+    actions.push({
+      id: `phantom:${use.from_pkg}:${use.target}`,
+      priority: "high",
+      category: "dependency",
+      title: `Declare ${use.target} in ${use.from_pkg}`,
+      fix: `Add ${use.target} to dependencies in ${dirOf(use.from_pkg)}/package.json using the workspace range used by this repository.`,
+      why: `${use.count} import${use.count === 1 ? "" : "s"} work through hoisting only and can fail in isolated builds.`,
+      scope: `${blastOf(use.from_pkg)} downstream packages`,
+      file: use.example_file,
+      line: use.example_line,
+      score: 700 + use.count + blastOf(use.from_pkg) * 5,
+    });
+  }
+
+  const crossings = new Map<string, WorkspaceScan["crossings"]>();
+  for (const crossing of r.scan.crossings) {
+    const key = `${crossing.from_pkg}→${crossing.target}`;
+    crossings.set(key, [...(crossings.get(key) ?? []), crossing]);
+  }
+  for (const [flow, items] of crossings) {
+    const first = items[0];
+    actions.push({
+      id: `boundary:${flow}`,
+      priority: "high",
+      category: "boundary",
+      title: `Restore the public boundary between ${first.from_pkg} and ${first.target}`,
+      fix: `Export the required contract from ${first.target}'s public surface, then replace ${items.length} deep import${items.length === 1 ? "" : "s"} in ${first.from_pkg}.`,
+      why: "Deep imports couple consumers to private files and turn internal refactors into breaking changes.",
+      scope: `${items.length} imports · ${blastOf(first.target)} downstream packages`,
+      file: first.file,
+      line: first.line,
+      score: 650 + items.length * 2 + blastOf(first.target) * 5,
+    });
+  }
+
+  for (const mismatch of r.mismatches) {
+    const outliers = mismatch.versions.slice(1).flatMap((version) => version.packages);
+    const first = outliers[0];
+    actions.push({
+      id: `version:${mismatch.name}`,
+      priority: "medium",
+      category: "version",
+      title: `Align ${mismatch.name} to ${mismatch.majority}`,
+      fix: `Update ${outliers.length} outlier package${outliers.length === 1 ? "" : "s"} to ${mismatch.majority} and regenerate the lockfile.`,
+      why: "Competing ranges can install duplicate runtimes and make behavior depend on the package manager layout.",
+      scope: `${mismatch.versions.reduce((sum, version) => sum + version.packages.length, 0)} packages declare it`,
+      file: first ? `${dirOf(first)}/package.json` : "package.json",
+      score: 400 + outliers.length,
+    });
+  }
+
+  const important = Math.max(3, Math.ceil(r.scan.packages.length * 0.15));
+  for (const signal of signals) {
+    const blast = blastOf(signal.name);
+    if (signal.files > 0 && signal.testFiles === 0 && blast >= important) {
+      actions.push({
+        id: `tests:${signal.name}`,
+        priority: signal.churn >= 10 ? "high" : "medium",
+        category: "tests",
+        title: `Add a contract test around ${signal.name}`,
+        fix: `Cover its public surface first; use the hottest file as the first test target and run the test from the package in isolation.`,
+        why: `${blast} packages can receive a regression from here, but no test file was found in this package.`,
+        scope: `${signal.files} files · ${signal.churn} touches in 90 days`,
+        file: signal.hotspots[0]?.path ?? `${dirOf(signal.name)}/package.json`,
+        score: 550 + blast * 5 + signal.churn,
+      });
+    }
+    if (signal.files > 0 && signal.owners.length === 0 && blast >= important) {
+      actions.push({
+        id: `owner:${signal.name}`,
+        priority: "medium",
+        category: "ownership",
+        title: `Assign an owner to ${signal.name}`,
+        fix: `Add ${dirOf(signal.name)}/ to CODEOWNERS and choose a team that can approve changes to its public contract.`,
+        why: `${blast} packages depend on it, but no CODEOWNERS rule covers its files.`,
+        scope: signal.contributors.length
+          ? `Recent knowledge: ${signal.contributors.map((person) => person.name).join(", ")}`
+          : "No recent maintainer signal",
+        file: `${dirOf(signal.name)}/package.json`,
+        score: 350 + blast * 5,
+      });
+    }
+  }
+
+  return actions
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .map(({ score: _score, ...action }) => action);
+}
+
+function dependentsFrom(
+  name: string,
+  edges: ReadonlyArray<readonly [string, string]>,
+): Set<string> {
+  const reverse = new Map<string, string[]>();
+  for (const [from, to] of edges) reverse.set(to, [...(reverse.get(to) ?? []), from]);
+  const seen = new Set<string>();
+  const pending = [...(reverse.get(name) ?? [])];
+  while (pending.length) {
+    const next = pending.pop();
+    if (!next || next === name || seen.has(next)) continue;
+    seen.add(next);
+    pending.push(...(reverse.get(next) ?? []));
+  }
+  return seen;
 }
 
 export function analyze(scan: WorkspaceScan): Omit<RepoHealth, "owner" | "repo" | "path" | "scan"> {
@@ -83,22 +364,6 @@ export function analyze(scan: WorkspaceScan): Omit<RepoHealth, "owner" | "repo" 
     stats: packageStats(scan),
     depth: graphDepth(scan),
   };
-}
-
-/** Scan every clone; repos without a `turbo.json` simply drop out. */
-export async function scanAll(
-  repos: { owner: string; repo: string; path: string }[],
-): Promise<RepoHealth[]> {
-  const results = await Promise.all(
-    repos.map(async (r) => {
-      const scan = await invoke<WorkspaceScan | null>("monorepo_scan", { path: r.path }).catch(
-        () => null,
-      );
-      if (!scan) return null;
-      return { ...r, scan, ...analyze(scan) };
-    }),
-  );
-  return results.filter((r): r is RepoHealth => r !== null);
 }
 
 export const problemCount = (r: RepoHealth): number =>
@@ -181,9 +446,3 @@ export function buildReport(r: RepoHealth): string {
 }
 
 /** Copy `text`, with the toast the rest of the app uses. */
-export function copyReport(text: string, what: string): void {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => toast.success(`${what} copied — paste it to your agent`))
-    .catch(() => toast.error("Couldn't copy to clipboard"));
-}

@@ -1,4 +1,4 @@
-export interface WhatsNewItem {
+interface WhatsNewItem {
   title: string;
   detail?: string;
 }
@@ -16,6 +16,41 @@ export interface WhatsNewEntry {
  * entry at the top for each release. English only (matches the release notes).
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    version: "0.2.0",
+    date: "2026-10-05",
+    items: [
+      {
+        title: "A new face",
+        detail:
+          "One title bar, an icon rail, a list and a page. Graphite surfaces, Cal Sans Text, and colour only where it means something.",
+      },
+      {
+        title: "Inbox by whose turn it is",
+        detail:
+          "Six verdicts — risky, yours, routine, mergeable, waiting, unsorted — from a rules engine that needs no network, or a hosted model when you give it a key.",
+      },
+      {
+        title: "One page per pull request",
+        detail:
+          "Description, conversation, commits, checks and every diff in one scroll; threads under the lines they are about; your decision always top-right.",
+      },
+      {
+        title: "Your review survives everything",
+        detail:
+          "Drafts, read marks and the summary are kept per PR on this machine. A push resets the marks and says so.",
+      },
+      {
+        title: "The model behind two doors",
+        detail:
+          "A guided tour and a layered plan that keep running when you leave the page, and an Ask panel that works inside your clone.",
+      },
+      {
+        title: "Local repositories as pages",
+        detail: "Stage, commit, push, switch branches and open a pull request without leaving.",
+      },
+    ],
+  },
   {
     version: "0.1.8",
     date: "2026-08-14",

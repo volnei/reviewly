@@ -1,0 +1,332 @@
+/* Cross-app micro polish. The numbered rules make this focused pass auditable. */
+
+/* 09 — Keyboard users can bypass the permanent chrome. */
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--popover);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  translate: 0 -12px;
+  transition: opacity 140ms ease, translate 140ms ease;
+}
+
+.skip-link:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  translate: 0;
+}
+
+/* 10 — Text selection follows the active theme instead of browser blue. */
+::selection {
+  background: color-mix(in srgb, var(--workspace) 34%, transparent);
+  color: var(--ink);
+}
+
+/* 11 — The caret remains visible in every custom theme. */
+:where(input, textarea, [contenteditable="true"]) {
+  caret-color: var(--ink);
+}
+
+/* 12 — In-page focus targets do not land flush against the viewport. */
+:where([id], [tabindex="-1"]):focus {
+  scroll-margin-block: 16px;
+}
+
+/* 13 — Native tap flash does not fight the component pressed state. */
+:where(button, a, [role="button"], [role="menuitem"], [role="option"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 14 — Every shared button gives tactile press feedback. */
+[data-slot="button"]:not(:disabled):active {
+  translate: 0 1px;
+}
+
+/* 15 — Busy actions advertise that the same action should not be repeated. */
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* 16 — Disabled controls use the correct cursor without becoming unreadable. */
+:where(button, input, textarea, select, [role="button"]):disabled,
+:where([data-disabled]) {
+  cursor: not-allowed;
+}
+
+/* 17 — Fields gain a quiet hover affordance before focus. */
+:where([data-slot="input-control"], [data-slot="textarea-control"]):not(:has(:disabled)):hover {
+  border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+}
+
+/* 18 — Read-only fields look intentionally locked, not broken. */
+[data-slot="input-control"]:has([readonly]),
+[data-slot="textarea-control"]:has([readonly]) {
+  background: color-mix(in srgb, var(--sink) 72%, transparent);
+}
+
+/* 19 — Placeholders stay legible but clearly secondary. */
+:where(input, textarea)::placeholder {
+  color: var(--ink-3);
+  opacity: 0.86;
+}
+
+/* 20 — Long notes can grow, but never swallow the whole screen. */
+[data-slot="textarea"] {
+  max-height: min(42dvh, 360px);
+  resize: vertical;
+}
+
+/* 21 — Selects communicate hover before the menu opens. */
+[data-slot="select-trigger"]:not([data-disabled]):hover {
+  border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+  background: color-mix(in srgb, var(--background) 88%, var(--raise));
+}
+
+/* 22 — The select icon follows the open state. */
+[data-slot="select-icon"] {
+  transition: rotate 160ms ease, opacity 160ms ease;
+}
+
+[data-slot="select-trigger"][data-popup-open] [data-slot="select-icon"] {
+  rotate: 180deg;
+  opacity: 1;
+}
+
+/* 23 — Open selects retain a visible anchor while their list floats. */
+[data-slot="select-trigger"][data-popup-open] {
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+/* 24 — Autocomplete affordances brighten and fill on hover. */
+:where([data-slot="autocomplete-trigger"], [data-slot="autocomplete-clear"]):hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+
+/* 25 — Autocomplete utility buttons have a keyboard focus state. */
+:where([data-slot="autocomplete-trigger"], [data-slot="autocomplete-clear"]):focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* 26 — Checkboxes preview interactivity without adding colour. */
+[data-slot="checkbox"]:not([data-disabled]):hover {
+  border-color: color-mix(in srgb, var(--ink) 34%, transparent);
+}
+
+/* 27 — Checkbox presses feel direct. */
+[data-slot="checkbox"]:not([data-disabled]):active {
+  scale: 0.92;
+}
+
+/* 28 — Switches get a mild hover lift in contrast. */
+[data-slot="switch"]:not([data-disabled]):hover {
+  filter: brightness(1.1);
+}
+
+/* 29 — The switch thumb keeps a crisp interactive edge. */
+[data-slot="switch"]:focus-visible [data-slot="switch-thumb"] {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+/* 30 — Wide tab sets scroll inside their own lane on small windows. */
+[data-slot="tabs-list"][data-orientation="horizontal"] {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+[data-slot="tabs-list"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* 31 — Tabs expose the same keyboard focus quality as buttons. */
+[data-slot="tabs-tab"]:focus-visible {
+  z-index: 1;
+}
+
+/* 32 — Tabs also acknowledge a pointer press. */
+[data-slot="tabs-tab"]:not([data-disabled]):active {
+  translate: 0 1px;
+}
+
+/* 33 — Menu choices transition without moving surrounding content. */
+:where([data-slot="menu-item"], [data-slot="menu-checkbox-item"]) {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* 34 — Destructive choices remain unmistakable when highlighted. */
+[data-slot="menu-item"][data-variant="destructive"][data-highlighted] {
+  background: color-mix(in srgb, var(--destructive) 14%, transparent);
+  color: var(--destructive-foreground);
+}
+
+/* 35 — Menu groups separate with breathing room, not a heavy rule. */
+[data-slot="menu-separator"] {
+  margin-block: 4px;
+  opacity: 0.68;
+}
+
+/* 36 — Select options share the menu's quick feedback. */
+[data-slot="select-item"] {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* 37 — Autocomplete results share the same feedback rhythm. */
+[data-slot="autocomplete-item"] {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* 38 — Floating lists never rubber-band the page behind them. */
+:where(
+    [data-slot="menu-popup"],
+    [data-slot="select-list"],
+    [data-slot="autocomplete-list"],
+    [data-slot="command-list"]
+  ) {
+  overscroll-behavior: contain;
+}
+
+/* 39 — Popovers remain inside short laptop viewports. */
+[data-slot="popover-popup"] {
+  max-width: min(var(--available-width, 92vw), 720px);
+  max-height: min(var(--available-height, 76dvh), 76dvh);
+}
+
+/* 40 — Tooltip copy wraps before it becomes a reading-width problem. */
+[data-slot="tooltip-popup"] {
+  max-width: min(320px, calc(100vw - 24px));
+}
+
+/* 41 — Shortcut hints inside tooltips stay compact and aligned. */
+[data-slot="tooltip-popup"] kbd {
+  margin-inline-start: 6px;
+  white-space: nowrap;
+}
+
+/* 42 — Dialog viewports respect notches and system bars. */
+:where(
+    [data-slot="dialog-viewport"],
+    [data-slot="alert-dialog-viewport"],
+    [data-slot="command-dialog-viewport"]
+  ) {
+  padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+  padding-block-end: max(16px, env(safe-area-inset-bottom));
+}
+
+/* 43 — Dialogs never exceed the dynamic viewport. */
+:where([data-slot="dialog-popup"], [data-slot="alert-dialog-popup"]) {
+  max-height: min(88dvh, 760px);
+}
+
+/* 44 — Mobile dialog actions clear the home indicator. */
+:where([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) {
+  padding-block-end: max(16px, env(safe-area-inset-bottom));
+}
+
+/* 45 — Command search keeps results visible on compact windows. */
+[data-slot="command-dialog-popup"] {
+  max-height: min(78dvh, 620px);
+}
+
+/* 46 — Command results read as actions when highlighted. */
+[data-slot="command-item"][data-highlighted] {
+  color: var(--ink);
+}
+
+/* 47 — Shortcut columns do not wrap or jitter. */
+[data-slot="command-shortcut"] {
+  min-width: max-content;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 48 — Toasts clear the safe area and keep their controls reachable. */
+[data-slot="toast-viewport"] {
+  margin-bottom: env(safe-area-inset-bottom);
+}
+
+[data-slot="toast-action"] {
+  flex: none;
+}
+
+/* 49 — Long toast and markdown content wraps instead of overflowing. */
+:where([data-slot="toast-title"], [data-slot="toast-description"], .markdown-body) {
+  overflow-wrap: anywhere;
+}
+
+/* 50 — Scrollbars stay quiet until needed, then become easier to grab. */
+[data-slot="scroll-area-scrollbar"][data-hovering] {
+  padding: 1px;
+}
+
+[data-slot="scroll-area-thumb"] {
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* 51 — Keyboard scrolling lands with useful breathing room. */
+[data-slot="scroll-area-viewport"] {
+  scroll-padding-block: 12px;
+}
+
+/* 52 — Markdown links are recognizable without spending the accent colour. */
+.markdown-body a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* 53 — Images and icons do not become accidental text selections. */
+:where(img, svg) {
+  user-select: none;
+}
+
+/* 54 — Native disclosure controls use the same pointer language. */
+summary {
+  cursor: pointer;
+}
+
+/* 55 — File buttons inherit the product typography and ink. */
+::file-selector-button {
+  color: inherit;
+  font: inherit;
+}
+
+/* 56 — Skeletons stop animating when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="skeleton"] {
+    animation: none !important;
+  }
+}
+
+/* 57 — All interaction feedback becomes immediate in reduced-motion mode. */
+@media (prefers-reduced-motion: reduce) {
+  :where(*, *::before, *::after) {
+    scroll-behavior: auto !important;
+    transition-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* 58 — Forced-colour users retain visible control boundaries and focus. */
+@media (forced-colors: active) {
+  :where(button, input, textarea, select, [role="button"], [role="option"]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  :where([data-slot="menu-popup"], [data-slot="popover-popup"], [data-slot$="dialog-popup"]) {
+    border: 1px solid CanvasText !important;
+  }
+}

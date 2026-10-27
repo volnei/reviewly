@@ -74,11 +74,16 @@ fn apply_app_icon(bytes: &[u8]) {
 }
 
 /// Swap the macOS Dock icon between the white- and black-background variants.
+/// The menu-bar icon is an independent monochrome template and stays unchanged.
 #[tauri::command]
 pub fn set_app_icon(app: AppHandle, variant: String) -> AppResult<()> {
     #[cfg(target_os = "macos")]
     {
-        let bytes: &'static [u8] = if variant == "black" { ICON_BLACK } else { ICON_WHITE };
+        let bytes: &'static [u8] = if variant == "black" {
+            ICON_BLACK
+        } else {
+            ICON_WHITE
+        };
         let _ = app.run_on_main_thread(move || apply_app_icon(bytes));
     }
     #[cfg(not(target_os = "macos"))]

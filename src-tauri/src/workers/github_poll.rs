@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use chrono::{DateTime, SecondsFormat, Utc};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -7,6 +8,90 @@ use tauri_plugin_notification::NotificationExt;
 use crate::clients::github;
 use crate::creds;
 use crate::state::AppState;
+
+const MAX_SEEN_PRS: usize = 10_000;
+const MAX_SEEN_NOTIFICATIONS: usize = 5_000;
+
+#[derive(Default)]
+struct DeltaCursor {
+    at: Option<DateTime<Utc>>,
+    ids_at_watermark: HashSet<u64>,
+}
+
+impl DeltaCursor {
+    fn qualifier(&self) -> Option<String> {
+        self.at
+            .map(|at| at.to_rfc3339_opts(SecondsFormat::Secs, true))
+    }
+
+    fn is_fresh(&self, pull: &github::PullSummary) -> bool {
+        match self.at {
+            None => true,
+            Some(at) if pull.updated_at > at => true,
+            Some(at) if pull.updated_at == at => !self.ids_at_watermark.contains(&pull.id),
+            Some(_) => false,
+        }
+    }
+
+    fn advance(&mut self, pulls: &[github::PullSummary]) {
+        let Some(max) = pulls.iter().map(|pull| pull.updated_at).max() else {
+            return;
+        };
+        if self.at.map_or(true, |at| max > at) {
+            self.at = Some(max);
+            self.ids_at_watermark = pulls
+                .iter()
+                .filter(|pull| pull.updated_at == max)
+                .map(|pull| pull.id)
+                .collect();
+        } else if self.at == Some(max) {
+            self.ids_at_watermark.extend(
+                pulls
+                    .iter()
+                    .filter(|pull| pull.updated_at == max)
+                    .map(|pull| pull.id),
+            );
+        }
+    }
+
+    fn reset(&mut self) {
+        self.at = None;
+        self.ids_at_watermark.clear();
+    }
+}
+
+fn remember_pr(seen: &mut HashSet<u64>, order: &mut VecDeque<u64>, id: u64) -> bool {
+    if !seen.insert(id) {
+        return false;
+    }
+    order.push_back(id);
+    while order.len() > MAX_SEEN_PRS {
+        if let Some(oldest) = order.pop_front() {
+            seen.remove(&oldest);
+        }
+    }
+    true
+}
+
+fn remember_notification(
+    seen: &mut HashMap<String, DateTime<Utc>>,
+    order: &mut VecDeque<String>,
+    id: &str,
+    updated_at: DateTime<Utc>,
+) -> bool {
+    if seen.get(id).is_some_and(|previous| *previous >= updated_at) {
+        return false;
+    }
+    seen.insert(id.to_owned(), updated_at);
+    order.retain(|known| known != id);
+    order.push_back(id.to_owned());
+    while order.len() > MAX_SEEN_NOTIFICATIONS {
+        if let Some(oldest) = order.pop_front() {
+            seen.remove(&oldest);
+        }
+    }
+    true
+}
 
 /// Human title for a notification reason.
 fn notif_title(reason: &str) -> &'static str {
@@ -59,13 +144,17 @@ fn pr_key(p: &github::PullSummary) -> Option<String> {
 pub async fn run(app: AppHandle) {
     const BASE: &str = "is:pr is:open review-requested:@me archived:false -is:draft";
     let mut seen: HashSet<u64> = HashSet::new();
+    let mut seen_order: VecDeque<u64> = VecDeque::new();
     let mut first_pass = true;
-    let mut watermark: Option<String> = None;
+    let mut cursor = DeltaCursor::default();
     // Separate watermark for the watched-repo delta watch (any PR, any author).
-    let mut watched_wm: Option<String> = None;
+    let mut watched_cursor = DeltaCursor::default();
+    let mut previous_watched: Vec<String> = Vec::new();
     let mut watched_first = true;
-    // Dedup for the notifications-API desktop alerts (thread ids).
-    let mut notif_seen: HashSet<String> = HashSet::new();
+    // Dedup notifications by thread + update time, so a later comment in an
+    // existing thread can still alert while memory remains bounded.
+    let mut notif_seen: HashMap<String, DateTime<Utc>> = HashMap::new();
+    let mut notif_order: VecDeque<String> = VecDeque::new();
     let mut notif_first = true;
     let mut prev_notify_on = false;
 
@@ -75,8 +164,8 @@ pub async fn run(app: AppHandle) {
             .notify_poll_secs
             .load(Ordering::Relaxed)
             .clamp(15, 3600);
-        tokio::time::sleep(Duration::from_secs(interval)).await;
         let Ok(Some(token)) = creds::load_token() else {
+            tokio::time::sleep(Duration::from_secs(interval)).await;
             continue;
         };
         let state = app.state::<AppState>();
@@ -87,42 +176,36 @@ pub async fn run(app: AppHandle) {
         }
 
         // Delta: only PRs updated since the last cycle (full list on first pass).
-        let query = match &watermark {
+        let query = match cursor.qualifier() {
             Some(w) => format!("{BASE} updated:>={w}"),
             None => BASE.to_string(),
         };
-        let changed = match github::search_prs(&state, &token, &query).await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("github poll failed: {e}");
-                continue;
+        match github::search_prs(&state, &token, &query).await {
+            Ok(changed) => {
+                let fresh: Vec<&github::PullSummary> = changed
+                    .iter()
+                    .filter(|pull| cursor.is_fresh(pull))
+                    .collect();
+                let mut new_ids: Vec<String> = Vec::new();
+                for pull in &fresh {
+                    if remember_pr(&mut seen, &mut seen_order, pull.id) && !first_pass {
+                        if let Some(key) = pr_key(pull) {
+                            new_ids.push(key);
+                        }
+                    }
+                }
+                cursor.advance(&changed);
+
+                if !new_ids.is_empty() {
+                    let _ = app.emit("pr:new", &new_ids);
+                }
+                if !first_pass && !fresh.is_empty() {
+                    let _ = app.emit("pr:changed", fresh.len() as u64);
+                }
+                first_pass = false;
             }
-        };
-
-        // Advance the watermark to the newest update we saw.
-        if let Some(max) = changed.iter().map(|p| p.updated_at).max() {
-            watermark = Some(max.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+            Err(error) => tracing::warn!(%error, "github review-request poll failed"),
         }
-
-        let mut new_ids: Vec<u64> = Vec::new();
-        for p in &changed {
-            if seen.insert(p.id) && !first_pass {
-                new_ids.push(p.id);
-            }
-        }
-
-        if !new_ids.is_empty() {
-            // The UI refresh fires here; the OS alert for review requests now
-            // flows through the unified Notifications-API pass below (gated by
-            // the `review_requested` reason), so we never double-notify.
-            let _ = app.emit("pr:new", &new_ids);
-        }
-
-        // Nudge the UI to refresh (and re-mirror) only when something changed.
-        if !first_pass && !changed.is_empty() {
-            let _ = app.emit("pr:changed", changed.len() as u64);
-        }
-        first_pass = false;
 
         // Granular desktop notifications. The search above drives the UI; OS
         // alerts come from the Notifications API so every reason
@@ -147,10 +230,9 @@ pub async fn run(app: AppHandle) {
                     // review-requested set (the same truth that drives the tray)
                     // so we can drop those stale alerts — but only when such a
                     // thread is actually in play, to avoid an extra search.
-                    let pending: Option<HashSet<String>> = if notes
-                        .iter()
-                        .any(|n| n.unread && n.reason == "review_requested" && reasons.contains(&n.reason))
-                    {
+                    let pending: Option<HashSet<String>> = if notes.iter().any(|n| {
+                        n.unread && n.reason == "review_requested" && reasons.contains(&n.reason)
+                    }) {
                         github::search_prs(&state, &token, BASE)
                             .await
                             .ok()
@@ -175,9 +257,15 @@ pub async fn run(app: AppHandle) {
                                 }
                             }
                         }
-                        // First time we see a thread id is "new"; the priming
-                        // pass only seeds the set (no alert for the backlog).
-                        if notif_seen.insert(n.id.clone()) && !notif_first {
+                        // A new thread or a newer update is alert-worthy; the
+                        // priming pass only seeds state (no backlog blast).
+                        if remember_notification(
+                            &mut notif_seen,
+                            &mut notif_order,
+                            &n.id,
+                            n.updated_at,
+                        ) && !notif_first
+                        {
                             let repo = n
                                 .repository
                                 .get("full_name")
@@ -205,34 +293,42 @@ pub async fn run(app: AppHandle) {
         // Watched-repo delta watch: find any PR movement (any author/state) in
         // the repos the UI is focused on, so the frontend can reconcile just
         // those into the local DB — event-driven, not waiting for focus/interval.
-        let watched: Vec<String> = state
+        let mut watched: Vec<String> = state
             .watched_repos
             .read()
             .map(|w| w.clone())
             .unwrap_or_default();
+        watched.sort();
+        watched.dedup();
+        if watched != previous_watched {
+            previous_watched.clone_from(&watched);
+            watched_cursor.reset();
+            watched_first = true;
+        }
         if !watched.is_empty() {
             let repo_q = watched
                 .iter()
                 .map(|r| format!("repo:{r}"))
                 .collect::<Vec<_>>()
                 .join(" ");
-            let wq = match &watched_wm {
+            let wq = match watched_cursor.qualifier() {
                 Some(w) => format!("is:pr updated:>={w} {repo_q}"),
                 None => format!("is:pr {repo_q}"),
             };
             match github::search_prs(&state, &token, &wq).await {
                 Ok(moved) => {
-                    if let Some(max) = moved.iter().map(|p| p.updated_at).max() {
-                        watched_wm =
-                            Some(max.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
-                    }
+                    let fresh: Vec<&github::PullSummary> = moved
+                        .iter()
+                        .filter(|pull| watched_cursor.is_fresh(pull))
+                        .collect();
+                    watched_cursor.advance(&moved);
                     // First observation (or after watched set was empty) just
                     // seeds the watermark — the frontend already full-reconciles
                     // on start / watched change, so don't re-emit the whole list.
-                    if !watched_first && !moved.is_empty() {
-                        let repos: Vec<String> = moved
+                    if !watched_first && !fresh.is_empty() {
+                        let repos: Vec<String> = fresh
                             .iter()
-                            .filter_map(repo_full_name)
+                            .filter_map(|pull| repo_full_name(pull))
                             .collect::<HashSet<_>>()
                             .into_iter()
                             .collect();
@@ -247,7 +343,96 @@ pub async fn run(app: AppHandle) {
         } else {
             // No watched repos → reset so re-watching seeds a fresh watermark.
             watched_first = true;
-            watched_wm = None;
+            watched_cursor.reset();
         }
+
+        tokio::time::sleep(Duration::from_secs(interval)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clients::github::{PullSummary, UserRef};
+    use serde_json::Value;
+
+    fn at(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .expect("valid test date")
+            .with_timezone(&Utc)
+    }
+
+    fn pull(id: u64, updated_at: &str) -> PullSummary {
+        PullSummary {
+            id,
+            number: id,
+            title: "test".into(),
+            state: "open".into(),
+            draft: false,
+            user: UserRef {
+                login: "octocat".into(),
+                avatar_url: String::new(),
+                html_url: String::new(),
+                id: 1,
+            },
+            created_at: at("2026-01-01T00:00:00Z"),
+            updated_at: at(updated_at),
+            html_url: String::new(),
+            repository_url: None,
+            pull_request: None,
+            repository: None,
+            body: None,
+            head: None,
+            base: None,
+            labels: Vec::<Value>::new(),
+            requested_reviewers: Vec::new(),
+            requested_teams: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn cursor_dedupes_seen_items_without_losing_same_second_updates() {
+        let first = pull(1, "2026-01-01T12:00:00Z");
+        let same_second_new_id = pull(2, "2026-01-01T12:00:00Z");
+        let newer = pull(3, "2026-01-01T12:00:01Z");
+        let mut cursor = DeltaCursor::default();
+        cursor.advance(std::slice::from_ref(&first));
+
+        assert!(!cursor.is_fresh(&first));
+        assert!(cursor.is_fresh(&same_second_new_id));
+        assert!(cursor.is_fresh(&newer));
+
+        cursor.advance(std::slice::from_ref(&same_second_new_id));
+        assert!(!cursor.is_fresh(&same_second_new_id));
+    }
+
+    #[test]
+    fn remembered_pull_ids_are_bounded() {
+        let mut seen = HashSet::new();
+        let mut order = VecDeque::new();
+        for id in 0..=MAX_SEEN_PRS as u64 {
+            assert!(remember_pr(&mut seen, &mut order, id));
+        }
+        assert_eq!(seen.len(), MAX_SEEN_PRS);
+        assert!(!seen.contains(&0));
+        assert!(seen.contains(&(MAX_SEEN_PRS as u64)));
+    }
+
+    #[test]
+    fn notification_updates_alert_once_per_revision() {
+        let mut seen = HashMap::new();
+        let mut order = VecDeque::new();
+        let first = at("2026-01-01T12:00:00Z");
+        let newer = at("2026-01-01T12:01:00Z");
+
+        assert!(remember_notification(
+            &mut seen, &mut order, "thread", first
+        ));
+        assert!(!remember_notification(
+            &mut seen, &mut order, "thread", first
+        ));
+        assert!(remember_notification(
+            &mut seen, &mut order, "thread", newer
+        ));
     }
 }

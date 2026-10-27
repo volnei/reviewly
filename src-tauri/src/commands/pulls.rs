@@ -240,3 +240,17 @@ pub async fn gh_get_file_content(
         .map_err(|e| AppError::Other(format!("base64: {e}")))?;
     String::from_utf8(bytes).map_err(|e| AppError::Other(format!("utf8: {e}")))
 }
+
+/// The files that changed between two commits, in the same shape as a pull
+/// request's files: what moved since the commit you reviewed.
+#[tauri::command]
+pub async fn gh_compare(
+    state: State<'_, AppState>,
+    owner: String,
+    repo: String,
+    base: String,
+    head: String,
+) -> AppResult<Vec<PullFile>> {
+    let token = creds::require_token()?;
+    github::compare_files(&state, &token, &owner, &repo, &base, &head).await
+}

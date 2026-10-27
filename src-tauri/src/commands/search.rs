@@ -109,7 +109,10 @@ pub async fn gh_pr_ci(state: State<'_, AppState>, query: String) -> AppResult<Ve
                 Some("PENDING") | Some("EXPECTED") => "pending",
                 _ => "none",
             };
-            CiStatus { number: n.number, state: state.to_string() }
+            CiStatus {
+                number: n.number,
+                state: state.to_string(),
+            }
         })
         .collect();
     Ok(out)
@@ -164,6 +167,7 @@ pub struct DashboardPr {
     pub issue_comment_count: u64,
     pub review_thread_count: u64,
     pub unresolved_thread_count: u64,
+    pub code_owners: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -176,7 +180,17 @@ struct DashData {
 struct PrSearch {
     #[serde(rename = "issueCount")]
     issue_count: u64,
+    #[serde(rename = "pageInfo")]
+    page_info: SearchPageInfo,
     nodes: Vec<StatsNode>,
+}
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct SearchPageInfo {
+    #[serde(rename = "hasNextPage")]
+    has_next_page: bool,
+    #[serde(rename = "endCursor")]
+    end_cursor: Option<String>,
 }
 #[derive(Deserialize)]
 struct CountSearch {
@@ -206,6 +220,8 @@ struct StatsNode {
     comments: Option<StatsCount>,
     #[serde(rename = "reviewThreads")]
     review_threads: Option<StatsReviewThreads>,
+    #[serde(rename = "reviewRequests")]
+    review_requests: Option<StatsReviewRequests>,
 }
 #[derive(Deserialize, Default)]
 #[serde(default)]
@@ -257,6 +273,33 @@ struct StatsReviewThread {
     is_resolved: bool,
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsReviewRequests {
+    nodes: Vec<StatsReviewRequest>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsReviewRequest {
+    #[serde(rename = "requestedReviewer")]
+    requested_reviewer: Option<StatsRequestedReviewer>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsRequestedReviewer {
+    login: Option<String>,
+    slug: Option<String>,
+    organization: Option<StatsOrganization>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct StatsOrganization {
+    login: Option<String>,
+}
+
 fn ci_from_node(n: &StatsNode) -> &'static str {
     match n
         .commits
@@ -291,6 +334,33 @@ fn dashboard_pr_from_node(n: StatsNode, ci: &str) -> Option<DashboardPr> {
         .as_ref()
         .map(|t| t.nodes.iter().filter(|thread| !thread.is_resolved).count() as u64)
         .unwrap_or(0);
+    let code_owners = n
+        .review_requests
+        .as_ref()
+        .map(|requests| {
+            requests
+                .nodes
+                .iter()
+                .filter_map(|request| {
+                    let reviewer = request.requested_reviewer.as_ref()?;
+                    if let Some(login) = reviewer.login.as_deref() {
+                        return Some(format!("@{login}"));
+                    }
+                    let slug = reviewer.slug.as_deref()?;
+                    Some(
+                        match reviewer
+                            .organization
+                            .as_ref()
+                            .and_then(|org| org.login.as_deref())
+                        {
+                            Some(org) => format!("@{org}/{slug}"),
+                            None => format!("@{slug}"),
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     n.database_id.map(|id| DashboardPr {
         id,
@@ -312,7 +382,46 @@ fn dashboard_pr_from_node(n: StatsNode, ci: &str) -> Option<DashboardPr> {
         issue_comment_count,
         review_thread_count,
         unresolved_thread_count,
+        code_owners,
     })
+}
+
+/// GitHub's GraphQL search connection returns at most 100 nodes per request.
+/// Complete the connection so the Inbox membership written to SQLite is not
+/// silently truncated at exactly 100 PRs.
+async fn complete_dashboard_search(
+    state: &AppState,
+    token: &str,
+    search_query: &str,
+    pr_fields: &str,
+    mut search: PrSearch,
+) -> AppResult<PrSearch> {
+    #[derive(Deserialize)]
+    struct PageData {
+        search: PrSearch,
+    }
+
+    let gql = format!(
+        "query($q:String!,$after:String){{ search(query:$q,type:ISSUE,first:100,after:$after){{ issueCount pageInfo{{ hasNextPage endCursor }} nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} }}"
+    );
+    // GitHub Search exposes at most 1,000 results for a query. Ten pages is
+    // therefore the complete connection, not an arbitrary application limit.
+    for _ in 1..10 {
+        if !search.page_info.has_next_page {
+            break;
+        }
+        let after = search.page_info.end_cursor.clone();
+        let page: PageData = graphql(
+            state,
+            token,
+            &gql,
+            serde_json::json!({ "q": search_query, "after": after }),
+        )
+        .await?;
+        search.nodes.extend(page.search.nodes);
+        search.page_info = page.search.page_info;
+    }
+    Ok(search)
 }
 
 #[tauri::command]
@@ -331,9 +440,9 @@ pub async fn gh_dashboard(
     let rr = format!("{prefix}is:pr is:open review-requested:@me archived:false -is:draft");
     let men = format!("{prefix}is:pr is:open involves:@me -author:@me archived:false");
 
-    let pr_fields = "databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{ login avatarUrl } repository{ nameWithOwner } comments(first:1){ totalCount } reviewThreads(first:100){ totalCount nodes{ isResolved } } commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } }";
+    let pr_fields = "databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{ login avatarUrl } repository{ nameWithOwner } comments(first:1){ totalCount } reviewThreads(first:100){ totalCount nodes{ isResolved } } reviewRequests(first:100){ nodes{ requestedReviewer{ ... on User { login } ... on Team { slug organization { login } } } } } commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } }";
     let gql = format!(
-        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} incoming: search(query:$rr,type:ISSUE,first:100){{ issueCount nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
+        "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount pageInfo{{ hasNextPage endCursor }} nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} incoming: search(query:$rr,type:ISSUE,first:100){{ issueCount pageInfo{{ hasNextPage endCursor }} nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
     );
     let data: DashData = graphql(
         &state,
@@ -343,12 +452,17 @@ pub async fn gh_dashboard(
     )
     .await?;
 
+    let (mine_search, incoming_search) = tokio::try_join!(
+        complete_dashboard_search(&state, &token, &mine, pr_fields, data.mine),
+        complete_dashboard_search(&state, &token, &rr, pr_fields, data.incoming),
+    )?;
+
     let now = Utc::now();
     let week = chrono::Duration::days(7);
     let mut d = Dashboard {
-        review_requested: data.incoming.issue_count,
+        review_requested: incoming_search.issue_count,
         mentions: data.men.issue_count,
-        opened: data.mine.issue_count,
+        opened: mine_search.issue_count,
         approved: 0,
         changes_requested: 0,
         awaiting_review: 0,
@@ -360,13 +474,13 @@ pub async fn gh_dashboard(
         incoming: Vec::new(),
         mine: Vec::new(),
     };
-    for n in data.incoming.nodes {
+    for n in incoming_search.nodes {
         let ci = ci_from_node(&n);
         if let Some(pr) = dashboard_pr_from_node(n, ci) {
             d.incoming.push(pr);
         }
     }
-    for n in data.mine.nodes {
+    for n in mine_search.nodes {
         let ci = ci_from_node(&n);
         if n.is_draft {
             d.draft += 1;
@@ -451,7 +565,8 @@ pub async fn gh_list_repos_open_prs(
     for full in &repos {
         if let Some((owner, repo)) = full.split_once('/') {
             // A single broken/inaccessible repo shouldn't sink the whole list.
-            if let Ok(mut v) = github::list_repo_pulls(&state, &token, owner, repo, st, None).await {
+            if let Ok(mut v) = github::list_repo_pulls(&state, &token, owner, repo, st, None).await
+            {
                 out.append(&mut v);
             }
         }

@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
@@ -12,6 +13,22 @@ use crate::state::AppState;
 pub const API: &str = "https://api.github.com";
 pub const ACCEPT: &str = "application/vnd.github+json";
 pub const API_VERSION: &str = "2022-11-28";
+const REVIEWLY_SIGNATURE: &str =
+    r#"<sub>Posted by <a href="https://github.com/volnei/reviewly">Reviewly</a></sub>"#;
+
+/// Brand content created through the app without ever stacking the signature
+/// when a comment is edited or retried.
+pub(crate) fn with_reviewly_signature(body: &str) -> String {
+    let body = body.trim_end();
+    if body.contains(REVIEWLY_SIGNATURE) {
+        return body.to_owned();
+    }
+    if body.is_empty() {
+        REVIEWLY_SIGNATURE.to_owned()
+    } else {
+        format!("{body}\n\n{REVIEWLY_SIGNATURE}")
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Viewer {
@@ -73,6 +90,23 @@ pub struct PullSummary {
     pub base: Option<BranchRef>,
     #[serde(default)]
     pub labels: Vec<Value>,
+    #[serde(default)]
+    pub requested_reviewers: Vec<UserRef>,
+    #[serde(default)]
+    pub requested_teams: Vec<TeamRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamRef {
+    pub slug: String,
+    pub name: String,
+    #[serde(default)]
+    pub organization: Option<TeamOrganization>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamOrganization {
+    pub login: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,7 +240,7 @@ pub async fn viewer(state: &AppState, token: &str) -> AppResult<Viewer> {
 /// GitHub's Search API is capped at ~30 req/min and punishes bursts with a
 /// secondary (abuse) limit. We funnel every search through a small concurrency
 /// gate (kills the burst) and retry on 403/429, waiting for the reset window.
-static SEARCH_GATE: Semaphore = Semaphore::const_new(5);
+static SEARCH_GATE: Semaphore = Semaphore::const_new(2);
 
 /// Seconds to wait before retrying a rate-limited response: prefer `Retry-After`,
 /// fall back to `X-RateLimit-Reset` when the remaining quota is 0.
@@ -235,6 +269,45 @@ fn rate_limit_wait(res: &Response) -> Option<u64> {
     None
 }
 
+/// Idempotent GitHub GET used by detail surfaces that should recover from a
+/// short outage without turning the whole PR screen into an error. Mutations
+/// deliberately do not use this: a timed-out POST may already have succeeded.
+async fn resilient_get(
+    state: &AppState,
+    token: &str,
+    url: &str,
+    query: &[(&str, &str)],
+) -> AppResult<Response> {
+    let mut attempt = 0u32;
+    loop {
+        let sent = auth_request(state, token, reqwest::Method::GET, url)
+            .query(query)
+            .send()
+            .await;
+        match sent {
+            Ok(res) if res.status().is_success() => return Ok(res),
+            Ok(res)
+                if attempt < 3
+                    && (res.status().as_u16() == 429
+                        || res.status().is_server_error()
+                        || (res.status().as_u16() == 403 && rate_limit_wait(&res).is_some())) =>
+            {
+                let wait = rate_limit_wait(&res)
+                    .unwrap_or(1u64 << attempt)
+                    .clamp(1, 30);
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+                attempt += 1;
+            }
+            Ok(res) => return check(res).await,
+            Err(error) if attempt < 3 && (error.is_timeout() || error.is_connect()) => {
+                tokio::time::sleep(Duration::from_millis(400 * (1u64 << attempt))).await;
+                attempt += 1;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
 /// Short TTL: just long enough to dedupe bursts + the poller/UI overlap,
 /// without overriding the frontend's own (longer) staleness cadence.
 const SEARCH_TTL: Duration = Duration::from_secs(60);
@@ -246,9 +319,18 @@ async fn search_get(
     token: &str,
     params: &[(&str, &str)],
 ) -> AppResult<serde_json::Value> {
+    // Search results are account-specific. A token fingerprint prevents a
+    // signed-out user's cached data from being served to the next account.
+    let mut scope = DefaultHasher::new();
+    token.hash(&mut scope);
     let key = format!(
-        "search?{}",
-        params.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&")
+        "{:x}:search?{}",
+        scope.finish(),
+        params
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&")
     );
     if let Some(v) = state.cache_get(&key, SEARCH_TTL) {
         return Ok(v);
@@ -263,7 +345,7 @@ async fn search_get(
     let url = format!("{API}/search/issues");
     // Conditional request: a 304 returns our cached body and does NOT count
     // against the rate limit, so revalidating an expired entry is ~free.
-    let etag = state.cache_etag(&key);
+    let mut etag = state.cache_etag(&key);
     let mut attempt: u32 = 0;
     loop {
         let mut req = auth_request(state, token, reqwest::Method::GET, &url).query(params);
@@ -276,7 +358,9 @@ async fn search_get(
             if let Some(v) = state.cache_value(&key) {
                 return Ok(v);
             }
-            // 304 but we somehow lost the body — drop the validator and retry fresh.
+            // 304 but we somehow lost the body — retry once without the stale validator.
+            etag = None;
+            continue;
         }
         if res.status().is_success() {
             let new_etag = res
@@ -289,8 +373,14 @@ async fn search_get(
             return Ok(v);
         }
         let code = res.status().as_u16();
-        if (code == 403 || code == 429) && attempt < 3 {
-            let wait = rate_limit_wait(&res).unwrap_or(1u64 << attempt).clamp(1, 60);
+        if ((code == 403 || code == 429) || res.status().is_server_error()) && attempt < 3 {
+            let wait = if code == 403 || code == 429 {
+                rate_limit_wait(&res)
+                    .unwrap_or(1u64 << attempt)
+                    .clamp(1, 60)
+            } else {
+                (1u64 << attempt).clamp(1, 8)
+            };
             tokio::time::sleep(Duration::from_secs(wait)).await;
             attempt += 1;
             continue;
@@ -303,7 +393,7 @@ async fn search_get(
 pub async fn search_prs(state: &AppState, token: &str, query: &str) -> AppResult<Vec<PullSummary>> {
     // Paginate at 100/page so lists aren't capped at one page. GitHub Search
     // hard-caps at 1000 results; stop early when a short page comes back.
-    const MAX_PAGES: u32 = 5;
+    const MAX_PAGES: u32 = 10;
     let mut out: Vec<PullSummary> = Vec::new();
     let mut page = 1u32;
     loop {
@@ -347,8 +437,8 @@ pub async fn list_repo_pulls(
     token: &str,
     owner: &str,
     repo: &str,
-    pr_state: &str,       // "open" | "closed" | "all"
-    since: Option<&str>,  // stop paging once items are older than this ISO `updated_at`
+    pr_state: &str,      // "open" | "closed" | "all"
+    since: Option<&str>, // stop paging once items are older than this ISO `updated_at`
 ) -> AppResult<Vec<PullSummary>> {
     // The per-repo pulls endpoint has NO 1000-result cap (unlike Search), so we
     // can page the whole repo. Cap pages defensively at ~5000 PRs. With `since`
@@ -381,6 +471,7 @@ pub async fn list_repo_pulls(
             if let (Some(s), Some(u)) = (since, item.get("updated_at").and_then(|v| v.as_str())) {
                 if u < s {
                     crossed = true;
+                    continue;
                 }
             }
             // pulls exposes `merged_at` at the top level; the UI reads
@@ -394,8 +485,11 @@ pub async fn list_repo_pulls(
             if item.get("repository_url").map_or(true, |v| v.is_null()) {
                 item["repository_url"] = serde_json::Value::String(repo_url.clone());
             }
-            if let Ok(ps) = serde_json::from_value::<PullSummary>(item) {
-                out.push(ps);
+            match serde_json::from_value::<PullSummary>(item) {
+                Ok(ps) => out.push(ps),
+                Err(error) => {
+                    tracing::warn!(owner, repo, %error, "skipping malformed pull response")
+                }
             }
         }
         if n < 100 || page >= MAX_PAGES || crossed {
@@ -433,10 +527,7 @@ pub async fn list_pull_files(
     loop {
         let url = format!("{API}/repos/{owner}/{repo}/pulls/{number}/files");
         let res = auth_request(state, token, reqwest::Method::GET, &url)
-            .query(&[
-                ("per_page", "100".to_string()),
-                ("page", page.to_string()),
-            ])
+            .query(&[("per_page", "100".to_string()), ("page", page.to_string())])
             .send()
             .await?;
         let res = check(res).await?;
@@ -536,8 +627,15 @@ pub async fn submit_review(
     input: &SubmitReviewInput,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/pulls/{number}/reviews");
+    let mut input = input.clone();
+    input.body = Some(with_reviewly_signature(
+        input.body.as_deref().unwrap_or_default(),
+    ));
+    for comment in &mut input.comments {
+        comment.body = with_reviewly_signature(&comment.body);
+    }
     let res = auth_request(state, token, reqwest::Method::POST, &url)
-        .json(input)
+        .json(&input)
         .send()
         .await?;
     let res = check(res).await?;
@@ -553,6 +651,7 @@ pub async fn create_issue_comment(
     body: &str,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/issues/{number}/comments");
+    let body = with_reviewly_signature(body);
     let res = auth_request(state, token, reqwest::Method::POST, &url)
         .json(&serde_json::json!({ "body": body }))
         .send()
@@ -571,6 +670,7 @@ pub async fn create_review_reply(
     body: &str,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies");
+    let body = with_reviewly_signature(body);
     let res = auth_request(state, token, reqwest::Method::POST, &url)
         .json(&serde_json::json!({ "body": body }))
         .send()
@@ -596,6 +696,7 @@ pub async fn create_review_comment(
     body: &str,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/pulls/{number}/comments");
+    let body = with_reviewly_signature(body);
     let res = auth_request(state, token, reqwest::Method::POST, &url)
         .json(&serde_json::json!({
             "body": body,
@@ -617,10 +718,7 @@ pub async fn list_notifications(
 ) -> AppResult<Vec<Notification>> {
     let url = format!("{API}/notifications");
     let res = auth_request(state, token, reqwest::Method::GET, &url)
-        .query(&[
-            ("all", all.to_string()),
-            ("per_page", "50".to_string()),
-        ])
+        .query(&[("all", all.to_string()), ("per_page", "50".to_string())])
         .send()
         .await?;
     let res = check(res).await?;
@@ -660,11 +758,13 @@ pub async fn list_checks(
     sha: &str,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/commits/{sha}/check-runs");
-    let res = auth_request(state, token, reqwest::Method::GET, &url)
-        .query(&[("per_page", "100"), ("filter", "latest")])
-        .send()
-        .await?;
-    let res = check(res).await?;
+    let res = resilient_get(
+        state,
+        token,
+        &url,
+        &[("per_page", "100"), ("filter", "latest")],
+    )
+    .await?;
     let mut body: Value = res.json().await?;
     dedupe_latest_check_runs(&mut body);
     Ok(body)
@@ -711,7 +811,10 @@ fn dedupe_latest_check_runs(body: &mut Value) {
             }
         }
     }
-    let deduped: Vec<Value> = order.into_iter().filter_map(|k| latest.remove(&k)).collect();
+    let deduped: Vec<Value> = order
+        .into_iter()
+        .filter_map(|k| latest.remove(&k))
+        .collect();
     body["total_count"] = Value::from(deduped.len());
     body["check_runs"] = Value::Array(deduped);
 }
@@ -726,11 +829,7 @@ pub async fn check_annotations(
     check_run_id: u64,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/check-runs/{check_run_id}/annotations");
-    let res = auth_request(state, token, reqwest::Method::GET, &url)
-        .query(&[("per_page", "50")])
-        .send()
-        .await?;
-    let res = check(res).await?;
+    let res = resilient_get(state, token, &url, &[("per_page", "50")]).await?;
     Ok(res.json().await?)
 }
 
@@ -744,10 +843,7 @@ pub async fn actions_job(
     job_id: u64,
 ) -> AppResult<Value> {
     let url = format!("{API}/repos/{owner}/{repo}/actions/jobs/{job_id}");
-    let res = auth_request(state, token, reqwest::Method::GET, &url)
-        .send()
-        .await?;
-    let res = check(res).await?;
+    let res = resilient_get(state, token, &url, &[]).await?;
     Ok(res.json().await?)
 }
 
@@ -765,7 +861,11 @@ async fn post_actions_rerun(state: &AppState, token: &str, url: &str) -> AppResu
     // Surface GitHub's own `message` rather than a guess.
     let gh: String = serde_json::from_str::<Value>(&body)
         .ok()
-        .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_string))
+        .and_then(|v| {
+            v.get("message")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| body.chars().take(140).collect());
     let said = if gh.is_empty() {
         String::new()
@@ -840,4 +940,53 @@ pub async fn rerun_check_run(
         status: status.as_u16(),
         body,
     })
+}
+
+/// The files that differ between two commits (`compare/{base}...{head}`), in
+/// the same shape as a pull request's files: what moved since a review.
+pub async fn compare_files(
+    state: &AppState,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    base: &str,
+    head: &str,
+) -> AppResult<Vec<PullFile>> {
+    #[derive(Deserialize)]
+    struct Compare {
+        #[serde(default)]
+        files: Vec<PullFile>,
+    }
+    let url = format!("{API}/repos/{owner}/{repo}/compare/{base}...{head}");
+    let res = auth_request(state, token, reqwest::Method::GET, &url)
+        .query(&[("per_page", "100")])
+        .send()
+        .await?;
+    let res = check(res).await?;
+    let c: Compare = res.json().await?;
+    Ok(c.files)
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::{with_reviewly_signature, REVIEWLY_SIGNATURE};
+
+    #[test]
+    fn appends_the_reviewly_link_after_content() {
+        assert_eq!(
+            with_reviewly_signature("Looks good."),
+            format!("Looks good.\n\n{REVIEWLY_SIGNATURE}")
+        );
+    }
+
+    #[test]
+    fn signs_an_empty_review_body() {
+        assert_eq!(with_reviewly_signature("  \n"), REVIEWLY_SIGNATURE);
+    }
+
+    #[test]
+    fn never_duplicates_the_signature() {
+        let signed = with_reviewly_signature("Please rename this.");
+        assert_eq!(with_reviewly_signature(&signed), signed);
+    }
 }

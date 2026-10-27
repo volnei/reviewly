@@ -3,19 +3,17 @@ use crate::state::AppState;
 use std::process::Stdio;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
-/// Hard cap on how long an AI CLI may run before we give up and kill it.
-/// Generous enough for a full-diff review, short enough to never hang forever.
+/// Default silence window for an AI CLI without repository access.
+/// Streaming Claude/Codex runs reset this window whenever the CLI emits output.
 const AI_TIMEOUT: Duration = Duration::from_secs(180);
 
-/// Longer cap for the *conscious* review: with the PR's local clone present the
-/// agent actually reads/greps the repo (an agentic loop with tool calls), which
-/// legitimately takes minutes on a large PR. It runs in the background and
-/// survives navigation, so a generous ceiling costs the user nothing — far
-/// better than killing a valid run at 180s.
-const REVIEW_TIMEOUT: Duration = Duration::from_secs(420);
+/// Repository discovery can be quiet while a large read or search is running.
+/// This is an inactivity guard, not a wall-clock deadline: a healthy agent may
+/// keep working for longer as long as it continues to report activity.
+const REVIEW_TIMEOUT: Duration = Duration::from_secs(900);
 
 /// The right cap for a run: the long agentic one when it can read the repo,
 /// the short one for diff-only / chat.
@@ -28,8 +26,7 @@ fn run_timeout(cwd: Option<&str>) -> Duration {
 }
 
 /// The effective timeout: the user's explicit Settings override (seconds) when
-/// set and positive, else the provided smart default. With no override the auto
-/// behavior stays byte-identical.
+/// set and positive, else the provided smart default.
 fn resolve_timeout(override_secs: Option<u64>, default: Duration) -> Duration {
     match override_secs {
         Some(s) if s > 0 => Duration::from_secs(s),
@@ -248,7 +245,16 @@ pub async fn ai_review(
     api_key: Option<String>,
     timeout_secs: Option<u64>,
 ) -> AppResult<String> {
-    run_provider(&provider, &prompt, cwd.as_deref(), base_url, model, api_key, timeout_secs).await
+    run_provider(
+        &provider,
+        &prompt,
+        cwd.as_deref(),
+        base_url,
+        model,
+        api_key,
+        timeout_secs,
+    )
+    .await
 }
 
 /// Run a review in the BACKGROUND, keyed by `key` (the PR). Returns immediately;
@@ -272,7 +278,10 @@ pub async fn ai_review_bg(
     timeout_secs: Option<u64>,
 ) -> AppResult<()> {
     {
-        let mut set = state.ai_inflight.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut set = state
+            .ai_inflight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if set.contains(&key) {
             return Ok(()); // already generating for this PR — don't double-spawn
         }
@@ -283,9 +292,16 @@ pub async fn ai_review_bg(
     let head_sha = head_sha.unwrap_or_default();
     let task_key = key.clone();
     let handle = tauri::async_runtime::spawn(async move {
-        let result =
-            run_provider(&provider, &prompt, cwd.as_deref(), base_url, model, api_key, timeout_secs)
-                .await;
+        let result = run_provider(
+            &provider,
+            &prompt,
+            cwd.as_deref(),
+            base_url,
+            model,
+            api_key,
+            timeout_secs,
+        )
+        .await;
         if let Ok(mut set) = inflight.lock() {
             set.remove(&task_key);
         }
@@ -315,7 +331,10 @@ pub async fn ai_review_bg(
 #[tauri::command]
 pub fn ai_cancel(app: AppHandle, state: State<'_, AppState>, key: String) {
     let was_running = {
-        let mut t = state.ai_tasks.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut t = state
+            .ai_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match t.remove(&key) {
             Some(handle) => {
                 handle.abort();
@@ -396,7 +415,7 @@ async fn run_claude(
         // On timeout the dropped future kills the child (kill_on_drop).
         Err(_) => {
             return Err(AppError::Other(format!(
-                "Claude took longer than {}s and was stopped. Try again, or pick a smaller PR.",
+                "Claude took longer than {}s and was stopped. Try again, or increase the AI time limit in Settings.",
                 timeout.as_secs()
             )))
         }
@@ -461,6 +480,113 @@ pub async fn apply_with_claude(prompt: &str, cwd: &str) -> AppResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+async fn apply_with_codex(prompt: &str, cwd: &str, model: Option<&str>) -> AppResult<String> {
+    const APPLY_TIMEOUT: Duration = Duration::from_secs(900);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let out_path = std::env::temp_dir().join(format!("reviewly-codex-apply-{nanos}.md"));
+    let mut cmd = cli_command("codex");
+    cmd.arg("exec")
+        .arg("--skip-git-repo-check")
+        .arg("-s")
+        .arg("workspace-write")
+        .arg("--output-last-message")
+        .arg(&out_path);
+    add_model(&mut cmd, "-m", model);
+    cmd.arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    apply_cwd(&mut cmd, Some(cwd));
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn codex: {e}")))?;
+    feed_stdin(&mut child, prompt);
+    let output = tokio::time::timeout(APPLY_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| {
+            AppError::Other(
+                "The implementation took longer than 15 minutes and was stopped.".into(),
+            )
+        })?
+        .map_err(|e| AppError::Other(format!("wait codex: {e}")))?;
+    if !output.status.success() {
+        let _ = tokio::fs::remove_file(&out_path).await;
+        return Err(cli_error(
+            "codex",
+            &exit_code(&output.status),
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    let text = tokio::fs::read_to_string(&out_path)
+        .await
+        .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
+    let _ = tokio::fs::remove_file(&out_path).await;
+    Ok(text.trim().to_string())
+}
+
+async fn apply_with_gemini(prompt: &str, cwd: &str, model: Option<&str>) -> AppResult<String> {
+    const APPLY_TIMEOUT: Duration = Duration::from_secs(900);
+    let mut cmd = cli_command("gemini");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--yolo")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "-m", model);
+    apply_cwd(&mut cmd, Some(cwd));
+    let output = tokio::time::timeout(
+        APPLY_TIMEOUT,
+        cmd.spawn()
+            .map_err(|e| AppError::Other(format!("failed to spawn gemini: {e}")))?
+            .wait_with_output(),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Other("The implementation took longer than 15 minutes and was stopped.".into())
+    })?
+    .map_err(|e| AppError::Other(format!("wait gemini: {e}")))?;
+    if !output.status.success() {
+        return Err(cli_error(
+            "gemini",
+            &exit_code(&output.status),
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Run an explicitly authorized implementation agent in a local clone. This
+/// command edits and tests, but deliberately never commits, pushes or opens a
+/// PR; the caller inspects its result before performing those Git operations.
+#[tauri::command]
+pub async fn ai_apply(
+    provider: String,
+    prompt: String,
+    cwd: String,
+    model: Option<String>,
+) -> AppResult<String> {
+    if !has_repo(Some(&cwd)) {
+        return Err(AppError::Other(
+            "the local repository is unavailable".into(),
+        ));
+    }
+    match provider.as_str() {
+        "claude" => apply_with_claude(&prompt, &cwd).await,
+        "codex" => apply_with_codex(&prompt, &cwd, model.as_deref()).await,
+        "gemini" => apply_with_gemini(&prompt, &cwd, model.as_deref()).await,
+        _ => Err(AppError::Other(
+            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex or Gemini to implement it."
+                .into(),
+        )),
+    }
+}
+
 async fn run_codex(
     prompt: &str,
     cwd: Option<&str>,
@@ -504,7 +630,7 @@ async fn run_codex(
         Err(_) => {
             let _ = tokio::fs::remove_file(&out_path).await;
             return Err(AppError::Other(format!(
-                "Codex took longer than {}s and was stopped. Try again, or pick a smaller PR.",
+                "Codex took longer than {}s and was stopped. Try again, or increase the AI time limit in Settings.",
                 timeout.as_secs()
             )));
         }
@@ -559,7 +685,7 @@ async fn run_gemini(
         Ok(res) => res.map_err(|e| AppError::Other(format!("wait gemini: {e}")))?,
         Err(_) => {
             return Err(AppError::Other(format!(
-                "Gemini took longer than {}s and was stopped. Try again, or pick a smaller PR.",
+                "Gemini took longer than {}s and was stopped. Try again, or increase the AI time limit in Settings.",
                 timeout.as_secs()
             )))
         }
@@ -657,7 +783,9 @@ async fn run_openai_compatible(
         .map(|s| s.trim().to_string());
     match content {
         Some(c) if !c.is_empty() => Ok(c),
-        _ => Err(AppError::Other("Endpoint returned no message content.".into())),
+        _ => Err(AppError::Other(
+            "Endpoint returned no message content.".into(),
+        )),
     }
 }
 
@@ -678,7 +806,10 @@ pub async fn ai_stream(
     timeout_secs: Option<u64>,
 ) -> AppResult<()> {
     {
-        let mut set = state.ai_inflight.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut set = state
+            .ai_inflight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if set.contains(&key) {
             return Ok(());
         }
@@ -688,6 +819,16 @@ pub async fn ai_stream(
     let tasks = state.ai_tasks.clone();
     let task_key = key.clone();
     let handle = tauri::async_runtime::spawn(async move {
+        let _ = app.emit(
+            "ai:progress",
+            serde_json::json!({
+                "key": &task_key,
+                "provider": &provider,
+                "phase": "starting",
+                "message": "Starting the local model session",
+                "model": &model,
+            }),
+        );
         let result = stream_provider(
             &app,
             &task_key,
@@ -722,9 +863,8 @@ pub async fn ai_stream(
     Ok(())
 }
 
-/// Returns (full_text, cost_usd). Claude and OpenAI-compatible stream live;
-/// codex/gemini have no clean token stream, so they run once and the whole
-/// result is emitted as a single chunk.
+/// Returns (full_text, cost_usd). Claude and OpenAI-compatible stream text live;
+/// Codex streams structured run telemetry and emits its clean final answer.
 async fn stream_provider(
     app: &AppHandle,
     key: &str,
@@ -738,12 +878,48 @@ async fn stream_provider(
 ) -> AppResult<(String, Option<f64>)> {
     match provider {
         "claude" => stream_claude(app, key, prompt, cwd, model.as_deref(), timeout_secs).await,
+        "codex" => stream_codex(app, key, prompt, cwd, model.as_deref(), timeout_secs).await,
         "openai" => stream_openai(app, key, prompt, base_url, model, api_key, timeout_secs).await,
         other => {
-            let text = run_provider(other, prompt, cwd, base_url, model, api_key, timeout_secs).await?;
+            let text =
+                run_provider(other, prompt, cwd, base_url, model, api_key, timeout_secs).await?;
             let _ = app.emit("ai:chunk", serde_json::json!({ "key": key, "delta": text }));
             Ok((text, None))
         }
+    }
+}
+
+fn short_tool_value(value: &str) -> String {
+    const LIMIT: usize = 96;
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= LIMIT {
+        compact
+    } else {
+        format!("{}…", compact.chars().take(LIMIT).collect::<String>())
+    }
+}
+
+fn claude_tool_progress(name: &str, input: &serde_json::Value) -> String {
+    match name {
+        "Read" => input
+            .get("file_path")
+            .and_then(|value| value.as_str())
+            .map(short_tool_value)
+            .map(|path| format!("Reading {path}"))
+            .unwrap_or_else(|| "Reading a repository file".into()),
+        "Glob" => input
+            .get("pattern")
+            .and_then(|value| value.as_str())
+            .map(short_tool_value)
+            .map(|pattern| format!("Mapping files matching {pattern}"))
+            .unwrap_or_else(|| "Mapping the affected repository surface".into()),
+        "Grep" => input
+            .get("pattern")
+            .and_then(|value| value.as_str())
+            .map(short_tool_value)
+            .map(|pattern| format!("Searching for {pattern}"))
+            .unwrap_or_else(|| "Searching the repository".into()),
+        _ => format!("Inspecting the repository with {name}"),
     }
 }
 
@@ -767,6 +943,12 @@ async fn stream_claude(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    let spec_discovery = key.starts_with("spec-draft:");
+    if spec_discovery {
+        // A spec needs repository evidence, not an unrestricted coding agent.
+        // Keep Claude's native search loop while preventing edits and shell work.
+        cmd.arg("--tools").arg("Read,Glob,Grep");
+    }
     add_model(&mut cmd, "--model", model);
     apply_cwd(&mut cmd, cwd);
     let mut child = cmd
@@ -777,19 +959,40 @@ async fn stream_claude(
         .stdout
         .take()
         .ok_or_else(|| AppError::Other("claude: no stdout".into()))?;
+    let mut stderr = child.stderr.take();
+    // Drain stderr concurrently. A verbose CLI can otherwise fill its pipe and
+    // block even though stdout is still healthy, which looks like a timeout.
+    let stderr_task = tauri::async_runtime::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(ref mut stream) = stderr {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
     let mut lines = BufReader::new(stdout).lines();
     let mut full = String::new();
     // Non-stream-json stdout lines: Claude prints failures (expired login, bad
     // model) as plain text there, so keep them to explain an empty run.
     let mut noise = String::new();
     let mut cost: Option<f64> = None;
+    let mut active_tool: Option<String> = None;
+    let mut tool_input = String::new();
+    let mut writing_announced = false;
 
+    let idle = resolve_timeout(timeout_secs, run_timeout(cwd));
     let read = async {
-        while let Some(line) = lines
-            .next_line()
-            .await
-            .map_err(|e| AppError::Other(format!("read claude: {e}")))?
-        {
+        loop {
+            let line = match tokio::time::timeout(idle, lines.next_line()).await {
+                Ok(result) => result
+                    .map_err(|e| AppError::Other(format!("read claude: {e}")))?,
+                Err(_) => {
+                    return Err(AppError::Other(format!(
+                        "Claude produced no activity for {}s and was stopped. Try again, or increase the AI inactivity limit in Settings.",
+                        idle.as_secs()
+                    )))
+                }
+            };
+            let Some(line) = line else { break };
             if line.is_empty() {
                 continue;
             }
@@ -801,21 +1004,107 @@ async fn stream_claude(
                 continue;
             };
             match v.get("type").and_then(|t| t.as_str()) {
+                Some("system") if v.get("subtype").and_then(|s| s.as_str()) == Some("init") => {
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "claude",
+                            "phase": "thinking",
+                            "message": if spec_discovery { "Session ready; mapping the repository" } else { "Session ready; analyzing the current context" },
+                            "model": v.get("model").and_then(|x| x.as_str()),
+                            "sessionId": v.get("session_id").and_then(|x| x.as_str()),
+                        }),
+                    );
+                }
                 Some("stream_event") => {
                     let ev = v.get("event");
-                    let is_delta = ev.and_then(|e| e.get("type")).and_then(|t| t.as_str())
-                        == Some("content_block_delta");
+                    let event_type = ev
+                        .and_then(|event| event.get("type"))
+                        .and_then(|kind| kind.as_str());
+                    if event_type == Some("message_start") {
+                        let message = ev.and_then(|e| e.get("message"));
+                        let usage = message.and_then(|m| m.get("usage"));
+                        let _ = app.emit(
+                            "ai:progress",
+                            serde_json::json!({
+                                "key": key,
+                                "provider": "claude",
+                                "phase": if spec_discovery { "exploring" } else { "writing" },
+                                "message": if spec_discovery { "Finding the affected specs, code and tests" } else { "Generating the response" },
+                                "model": message.and_then(|m| m.get("model")).and_then(|x| x.as_str()),
+                                "inputTokens": usage.and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()),
+                                "cachedTokens": usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|x| x.as_u64()),
+                            }),
+                        );
+                    }
+                    if event_type == Some("content_block_start") {
+                        let block = ev.and_then(|event| event.get("content_block"));
+                        if block
+                            .and_then(|value| value.get("type"))
+                            .and_then(|kind| kind.as_str())
+                            == Some("tool_use")
+                        {
+                            active_tool = block
+                                .and_then(|value| value.get("name"))
+                                .and_then(|name| name.as_str())
+                                .map(str::to_string);
+                            tool_input.clear();
+                        }
+                    }
+                    let is_delta = event_type == Some("content_block_delta");
                     if is_delta {
                         let delta = ev.and_then(|e| e.get("delta"));
+                        if delta.and_then(|d| d.get("type")).and_then(|t| t.as_str())
+                            == Some("input_json_delta")
+                        {
+                            if let Some(partial) = delta
+                                .and_then(|d| d.get("partial_json"))
+                                .and_then(|value| value.as_str())
+                            {
+                                tool_input.push_str(partial);
+                            }
+                        }
                         let is_text = delta.and_then(|d| d.get("type")).and_then(|t| t.as_str())
                             == Some("text_delta");
                         if is_text {
-                            if let Some(txt) = delta.and_then(|d| d.get("text")).and_then(|t| t.as_str())
+                            if let Some(txt) =
+                                delta.and_then(|d| d.get("text")).and_then(|t| t.as_str())
                             {
+                                if spec_discovery && !writing_announced {
+                                    writing_announced = true;
+                                    let _ = app.emit(
+                                        "ai:progress",
+                                        serde_json::json!({
+                                            "key": key,
+                                            "provider": "claude",
+                                            "phase": "writing",
+                                            "message": "Repository mapped; drafting the spec",
+                                        }),
+                                    );
+                                }
                                 full.push_str(txt);
-                                let _ = app
-                                    .emit("ai:chunk", serde_json::json!({ "key": key, "delta": txt }));
+                                let _ = app.emit(
+                                    "ai:chunk",
+                                    serde_json::json!({ "key": key, "delta": txt }),
+                                );
                             }
+                        }
+                    }
+                    if event_type == Some("content_block_stop") {
+                        if let Some(name) = active_tool.take() {
+                            let input = serde_json::from_str::<serde_json::Value>(&tool_input)
+                                .unwrap_or_else(|_| serde_json::json!({}));
+                            let _ = app.emit(
+                                "ai:progress",
+                                serde_json::json!({
+                                    "key": key,
+                                    "provider": "claude",
+                                    "phase": "exploring",
+                                    "message": claude_tool_progress(&name, &input),
+                                }),
+                            );
+                            tool_input.clear();
                         }
                     }
                 }
@@ -826,6 +1115,23 @@ async fn stream_claude(
                         }
                     }
                     cost = v.get("total_cost_usd").and_then(|c| c.as_f64());
+                    let usage = v.get("usage");
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "claude",
+                            "phase": "complete",
+                            "message": "Draft generated",
+                            "sessionId": v.get("session_id").and_then(|x| x.as_str()),
+                            "inputTokens": usage.and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()),
+                            "outputTokens": usage.and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()),
+                            "cachedTokens": usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|x| x.as_u64()),
+                            "costUsd": cost,
+                            "durationMs": v.get("duration_ms").and_then(|x| x.as_u64()),
+                            "turns": v.get("num_turns").and_then(|x| x.as_u64()),
+                        }),
+                    );
                 }
                 _ => {}
             }
@@ -833,22 +1139,174 @@ async fn stream_claude(
         Ok::<(), AppError>(())
     };
 
-    let cap = resolve_timeout(timeout_secs, AI_TIMEOUT);
-    match tokio::time::timeout(cap, read).await {
-        Ok(r) => r?,
-        Err(_) => {
-            return Err(AppError::Other(format!(
-                "Claude took longer than {}s and was stopped. Try again, or pick a smaller PR.",
-                cap.as_secs()
-            )))
+    read.await?;
+    let status = child.wait().await.ok();
+    let stderr = stderr_task.await.unwrap_or_default();
+    if noise.len() < 1000 && !stderr.is_empty() {
+        noise.push_str(&String::from_utf8_lossy(&stderr));
+    }
+    if let Some(status) = status.as_ref() {
+        if !status.success() {
+            return Err(cli_error("claude", &exit_code(status), noise.trim()));
         }
     }
-    let status = child.wait().await.ok();
     if full.is_empty() {
-        let code = status.map(|s| exit_code(&s)).unwrap_or_else(|| "?".to_string());
+        let code = status
+            .map(|s| exit_code(&s))
+            .unwrap_or_else(|| "?".to_string());
         return Err(cli_error("claude", &code, noise.trim()));
     }
     Ok((full, cost))
+}
+
+/// Codex's JSONL is an activity stream rather than token deltas. We surface its
+/// stable lifecycle and usage fields, then emit only the clean final answer.
+/// Unknown event shapes are deliberately ignored so a CLI update cannot break a run.
+async fn stream_codex(
+    app: &AppHandle,
+    key: &str,
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> AppResult<(String, Option<f64>)> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut out_path = std::env::temp_dir();
+    out_path.push(format!("reviewly-codex-stream-{nanos}.md"));
+
+    let mut cmd = cli_command("codex");
+    cmd.arg("exec")
+        .arg("--skip-git-repo-check")
+        .arg("-s")
+        .arg("read-only")
+        .arg("--json")
+        .arg("--output-last-message")
+        .arg(&out_path);
+    add_model(&mut cmd, "-m", model);
+    cmd.arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    apply_cwd(&mut cmd, cwd);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn codex: {e}")))?;
+    feed_stdin(&mut child, prompt);
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Other("codex: no stdout".into()))?;
+    let mut stderr = child.stderr.take();
+    let stderr_task = tauri::async_runtime::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(ref mut stream) = stderr {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+    let mut lines = BufReader::new(stdout).lines();
+
+    let idle = resolve_timeout(timeout_secs, run_timeout(cwd));
+    let read = async {
+        loop {
+            let line = match tokio::time::timeout(idle, lines.next_line()).await {
+                Ok(result) => result
+                    .map_err(|e| AppError::Other(format!("read codex: {e}")))?,
+                Err(_) => {
+                    return Err(AppError::Other(format!(
+                        "Codex produced no activity for {}s and was stopped. Try again, or increase the AI inactivity limit in Settings.",
+                        idle.as_secs()
+                    )))
+                }
+            };
+            let Some(line) = line else { break };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            match v.get("type").and_then(|x| x.as_str()) {
+                Some("thread.started") => {
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "codex",
+                            "phase": "thinking",
+                            "message": "Session ready; analyzing the current specs",
+                            "model": model,
+                            "sessionId": v.get("thread_id").and_then(|x| x.as_str()),
+                        }),
+                    );
+                }
+                Some("turn.started") => {
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "codex",
+                            "phase": "writing",
+                            "message": "Generating the structured spec draft",
+                            "model": model,
+                        }),
+                    );
+                }
+                Some("turn.completed") => {
+                    let usage = v.get("usage");
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "codex",
+                            "phase": "complete",
+                            "message": "Draft generated",
+                            "model": model,
+                            "inputTokens": usage.and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()),
+                            "outputTokens": usage.and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()),
+                            "cachedTokens": usage.and_then(|u| u.get("cached_input_tokens")).and_then(|x| x.as_u64()),
+                        }),
+                    );
+                }
+                _ => {}
+            }
+        }
+        Ok::<(), AppError>(())
+    };
+
+    if let Err(error) = read.await {
+        let _ = tokio::fs::remove_file(&out_path).await;
+        return Err(error);
+    }
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::Other(format!("wait codex: {e}")))?;
+    let stderr = stderr_task.await.unwrap_or_default();
+    if !status.success() {
+        let _ = tokio::fs::remove_file(&out_path).await;
+        return Err(cli_error(
+            "codex",
+            &exit_code(&status),
+            &String::from_utf8_lossy(&stderr),
+        ));
+    }
+    let text = tokio::fs::read_to_string(&out_path)
+        .await
+        .unwrap_or_default();
+    let _ = tokio::fs::remove_file(&out_path).await;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(cli_error(
+            "codex",
+            &exit_code(&status),
+            &String::from_utf8_lossy(&stderr),
+        ));
+    }
+    let _ = app.emit("ai:chunk", serde_json::json!({ "key": key, "delta": text }));
+    Ok((text, None))
 }
 
 async fn stream_openai(
@@ -885,16 +1343,44 @@ async fn stream_openai(
         .timeout(resolve_timeout(timeout_secs, AI_TIMEOUT))
         .build()
         .map_err(|e| AppError::Other(format!("http client: {e}")))?;
-    let mut req = client.post(&url).json(&body);
-    if let Some(k) = api_key.as_deref() {
-        if !k.trim().is_empty() {
-            req = req.bearer_auth(k.trim());
+    // Retry only before streaming begins. Once a token has been emitted, an
+    // automatic retry could duplicate part of the answer in the UI.
+    let mut attempt = 0u32;
+    let mut res = loop {
+        let mut req = client.post(&url).json(&body);
+        if let Some(k) = api_key.as_deref() {
+            if !k.trim().is_empty() {
+                req = req.bearer_auth(k.trim());
+            }
         }
-    }
-    let mut res = req
-        .send()
-        .await
-        .map_err(|e| AppError::Other(format!("request to {base} failed: {e}")))?;
+        match req.send().await {
+            Ok(response)
+                if (response.status().as_u16() == 429 || response.status().is_server_error())
+                    && attempt < 2 =>
+            {
+                let wait = response
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(1u64 << attempt)
+                    .clamp(1, 15);
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+                attempt += 1;
+            }
+            Ok(response) => break response,
+            Err(error) if attempt < 2 && (error.is_timeout() || error.is_connect()) => {
+                tokio::time::sleep(Duration::from_millis(500 * (1u64 << attempt))).await;
+                attempt += 1;
+            }
+            Err(error) => {
+                return Err(AppError::Other(format!(
+                    "request to {base} failed after {} attempt(s): {error}",
+                    attempt + 1
+                )))
+            }
+        }
+    };
     if !res.status().is_success() {
         let status = res.status().as_u16();
         let text = res.text().await.unwrap_or_default();
@@ -906,6 +1392,7 @@ async fn stream_openai(
 
     let mut full = String::new();
     let mut buf = String::new();
+    let mut completed = false;
     // Server-Sent Events: lines of `data: {json}` ending with `data: [DONE]`.
     while let Some(bytes) = res
         .chunk()
@@ -913,6 +1400,11 @@ async fn stream_openai(
         .map_err(|e| AppError::Other(format!("stream error: {e}")))?
     {
         buf.push_str(&String::from_utf8_lossy(&bytes));
+        if buf.len() > 1_048_576 {
+            return Err(AppError::Other(
+                "The model stream sent more than 1 MB without a complete event.".into(),
+            ));
+        }
         while let Some(nl) = buf.find('\n') {
             let line = buf[..nl].trim().to_string();
             buf.drain(..=nl);
@@ -920,10 +1412,28 @@ async fn stream_openai(
                 continue;
             };
             let data = data.trim();
-            if data.is_empty() || data == "[DONE]" {
+            if data.is_empty() {
+                continue;
+            }
+            if data == "[DONE]" {
+                completed = true;
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+                if let Some(message) = v
+                    .get("error")
+                    .and_then(|e| e.get("message").or(Some(e)))
+                    .and_then(|m| m.as_str())
+                {
+                    return Err(AppError::Other(format!("The model stopped: {message}")));
+                }
+                if v.get("choices")
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("finish_reason"))
+                    .is_some_and(|r| !r.is_null())
+                {
+                    completed = true;
+                }
                 if let Some(delta) = v
                     .get("choices")
                     .and_then(|c| c.get(0))
@@ -933,15 +1443,25 @@ async fn stream_openai(
                 {
                     if !delta.is_empty() {
                         full.push_str(delta);
-                        let _ =
-                            app.emit("ai:chunk", serde_json::json!({ "key": key, "delta": delta }));
+                        let _ = app.emit(
+                            "ai:chunk",
+                            serde_json::json!({ "key": key, "delta": delta }),
+                        );
                     }
                 }
             }
         }
     }
     if full.is_empty() {
-        return Err(AppError::Other("Endpoint returned no message content.".into()));
+        return Err(AppError::Other(
+            "Endpoint returned no message content.".into(),
+        ));
+    }
+    if !completed {
+        return Err(AppError::Other(
+            "The model connection closed before the answer completed. The partial answer was kept; retry to start a clean run."
+                .into(),
+        ));
     }
     Ok((full, None))
 }

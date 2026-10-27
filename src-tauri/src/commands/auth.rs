@@ -16,17 +16,26 @@ pub struct AuthStatus {
 #[tauri::command]
 pub async fn auth_status(state: State<'_, AppState>) -> AppResult<AuthStatus> {
     let Some(token) = creds::load_token()? else {
-        return Ok(AuthStatus { signed_in: false, viewer: None });
+        return Ok(AuthStatus {
+            signed_in: false,
+            viewer: None,
+        });
     };
     match github::viewer(&state, &token).await {
-        Ok(v) => Ok(AuthStatus { signed_in: true, viewer: Some(v) }),
+        Ok(v) => Ok(AuthStatus {
+            signed_in: true,
+            viewer: Some(v),
+        }),
         Err(e) => {
             tracing::warn!("viewer probe failed, clearing creds: {e}");
             // If the token is invalid (401), wipe it so the UI returns to onboarding.
             if matches!(&e, crate::error::AppError::Upstream { status: 401, .. }) {
                 let _ = creds::delete_token();
             }
-            Ok(AuthStatus { signed_in: false, viewer: None })
+            Ok(AuthStatus {
+                signed_in: false,
+                viewer: None,
+            })
         }
     }
 }
@@ -93,9 +102,7 @@ pub async fn auth_use_gh_cli(
     }
     let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if token.is_empty() {
-        return Err(AppError::Auth(
-            "gh auth token returned empty output".into(),
-        ));
+        return Err(AppError::Auth("gh auth token returned empty output".into()));
     }
     // Verify by hitting /user first so we don't store a stale token.
     let viewer = github::viewer(&state, &token).await?;

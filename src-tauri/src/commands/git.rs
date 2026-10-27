@@ -4,13 +4,72 @@ use base64::Engine;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use tokio::process::Command;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(20);
 const GIT_NET_TIMEOUT: Duration = Duration::from_secs(180);
+const MAX_GIT_ERROR_CHARS: usize = 900;
+
+/// Git writes fetch progress (including every new remote branch) to stderr,
+/// even though only the final error is useful to someone in the app. Keep the
+/// actionable tail and put a hard ceiling on what can reach a toast.
+fn concise_git_error(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let actionable = lines
+        .iter()
+        .position(|line| line.starts_with("error:") || line.starts_with("fatal:"))
+        .unwrap_or_else(|| lines.len().saturating_sub(6));
+    let message = lines[actionable..].join("\n");
+
+    if message.chars().count() <= MAX_GIT_ERROR_CHARS {
+        message
+    } else {
+        let mut shortened: String = message.chars().take(MAX_GIT_ERROR_CHARS - 1).collect();
+        shortened.push('…');
+        shortened
+    }
+}
+
+#[cfg(test)]
+mod git_error_tests {
+    use super::{concise_git_error, MAX_GIT_ERROR_CHARS};
+
+    #[test]
+    fn drops_fetch_progress_before_the_actionable_error() {
+        let stderr = r#"
+From github.com:calcom/cal
+ * [new branch] jack/eng-6895-discover-city -> origin/jack/eng-6895-discover-city
+   abc123..def456 main -> origin/main
+error: Your local changes to the following files would be overwritten by merge:
+        package.json
+Please commit your changes or stash them before you merge.
+Aborting
+"#;
+
+        assert_eq!(
+            concise_git_error(stderr),
+            "error: Your local changes to the following files would be overwritten by merge:\npackage.json\nPlease commit your changes or stash them before you merge.\nAborting"
+        );
+    }
+
+    #[test]
+    fn caps_unstructured_git_output() {
+        let output = "x".repeat(MAX_GIT_ERROR_CHARS + 200);
+        let concise = concise_git_error(&output);
+
+        assert_eq!(concise.chars().count(), MAX_GIT_ERROR_CHARS);
+        assert!(concise.ends_with('…'));
+    }
+}
 
 /// Run `git -C <path> <args...>` with a timeout and return trimmed stdout.
 /// Shells out to the system `git` (same approach as the AI CLIs) — no extra
@@ -26,10 +85,15 @@ async fn run_git(path: &str, args: &[&str], timeout: Duration) -> AppResult<Stri
         .map_err(|_| AppError::Other("git timed out".into()))?
         .map_err(|e| AppError::Other(format!("failed to spawn git: {e}")))?;
     if !out.status.success() {
+        let stderr = concise_git_error(&String::from_utf8_lossy(&out.stderr));
         return Err(AppError::Other(format!(
             "git {} failed: {}",
             args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
+            if stderr.is_empty() {
+                "unknown error"
+            } else {
+                &stderr
+            }
         )));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
@@ -41,11 +105,30 @@ async fn git(path: &str, args: &[&str]) -> AppResult<String> {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RepoInfo {
     pub remote_url: Option<String>,
     pub current_branch: String,
     pub dirty: bool,
+}
+
+#[cfg(test)]
+mod repo_info_tests {
+    use super::RepoInfo;
+
+    #[test]
+    fn serializes_with_the_frontend_contract() {
+        let value = serde_json::to_value(RepoInfo {
+            remote_url: Some("git@github.com:calcom/cal.git".into()),
+            current_branch: "main".into(),
+            dirty: false,
+        })
+        .expect("RepoInfo should serialize");
+
+        assert_eq!(value["remote_url"], "git@github.com:calcom/cal.git");
+        assert_eq!(value["current_branch"], "main");
+        assert!(value.get("remoteUrl").is_none());
+        assert!(value.get("currentBranch").is_none());
+    }
 }
 
 /// Inspect a local git work tree: origin remote, current branch, dirty flag.
@@ -54,9 +137,18 @@ pub struct RepoInfo {
 pub async fn git_repo_info(path: String) -> AppResult<RepoInfo> {
     git(&path, &["rev-parse", "--is-inside-work-tree"]).await?;
     let remote_url = git(&path, &["remote", "get-url", "origin"]).await.ok();
-    let current_branch = git(&path, &["branch", "--show-current"]).await.unwrap_or_default();
-    let dirty = !git(&path, &["status", "--porcelain"]).await.unwrap_or_default().is_empty();
-    Ok(RepoInfo { remote_url, current_branch, dirty })
+    let current_branch = git(&path, &["branch", "--show-current"])
+        .await
+        .unwrap_or_default();
+    let dirty = !git(&path, &["status", "--porcelain"])
+        .await
+        .unwrap_or_default()
+        .is_empty();
+    Ok(RepoInfo {
+        remote_url,
+        current_branch,
+        dirty,
+    })
 }
 
 const CLONE_TIMEOUT: Duration = Duration::from_secs(600);
@@ -68,11 +160,16 @@ pub async fn git_clone(url: String, parent_dir: String) -> AppResult<String> {
     let trimmed = url.trim().trim_end_matches('/').trim_end_matches(".git");
     let name = trimmed.rsplit(['/', ':']).next().unwrap_or("");
     if name.is_empty() {
-        return Err(AppError::Other("could not derive a repo name from the URL".into()));
+        return Err(AppError::Other(
+            "could not derive a repo name from the URL".into(),
+        ));
     }
     let dest = std::path::Path::new(&parent_dir).join(name);
     if dest.exists() {
-        return Err(AppError::Other(format!("{} already exists", dest.display())));
+        return Err(AppError::Other(format!(
+            "{} already exists",
+            dest.display()
+        )));
     }
     let dest_str = dest.to_string_lossy().to_string();
     let out = tokio::time::timeout(
@@ -116,7 +213,9 @@ pub async fn list_dir(path: String) -> AppResult<Vec<DirEntry>> {
         out.push(DirEntry { name, is_dir });
     }
     out.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(out)
 }
@@ -182,9 +281,16 @@ pub struct Branches {
 /// Local branches + the current one, for the branch switcher.
 #[tauri::command]
 pub async fn git_branches(path: String) -> AppResult<Branches> {
-    let current = git(&path, &["branch", "--show-current"]).await.unwrap_or_default();
+    let current = git(&path, &["branch", "--show-current"])
+        .await
+        .unwrap_or_default();
     let out = git(&path, &["branch", "--format=%(refname:short)"]).await?;
-    let all = out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+    let all = out
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect();
     Ok(Branches { current, all })
 }
 
@@ -213,7 +319,10 @@ pub async fn git_worktrees(path: String) -> AppResult<Vec<Worktree>> {
             if let Some(w) = cur.take() {
                 wts.push(w);
             }
-            cur = Some(Worktree { path: p.to_string(), branch: None });
+            cur = Some(Worktree {
+                path: p.to_string(),
+                branch: None,
+            });
         } else if let Some(b) = line.strip_prefix("branch ") {
             if let Some(w) = cur.as_mut() {
                 w.branch = Some(b.trim_start_matches("refs/heads/").to_string());
@@ -224,6 +333,208 @@ pub async fn git_worktrees(path: String) -> AppResult<Vec<Worktree>> {
         wts.push(w);
     }
     Ok(wts)
+}
+
+/// Create (or recover) a persistent isolated worktree for an agent-owned
+/// branch. The user's checkout is never switched or required to be clean.
+#[tauri::command]
+pub async fn git_create_worktree(path: String, branch: String) -> AppResult<String> {
+    git(&path, &["check-ref-format", "--branch", &branch]).await?;
+
+    if let Some(existing) = git_worktrees(path.clone())
+        .await?
+        .into_iter()
+        .find(|worktree| worktree.branch.as_deref() == Some(branch.as_str()))
+    {
+        return Ok(existing.path);
+    }
+
+    let root = git(&path, &["rev-parse", "--show-toplevel"]).await?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    root.hash(&mut hasher);
+    let repository = std::path::Path::new(&root)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repository")
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let branch_dir = branch
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let destination = std::env::temp_dir()
+        .join("reviewly-worktrees")
+        .join(format!("{repository}-{:x}", hasher.finish()))
+        .join(branch_dir);
+    if destination.exists() {
+        return Err(AppError::Other(format!(
+            "the worktree destination already exists: {}",
+            destination.display()
+        )));
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| AppError::Other(format!("create worktree folder: {error}")))?;
+    }
+    let destination_string = destination.to_string_lossy().to_string();
+    let branch_ref = format!("refs/heads/{branch}");
+    let branch_exists = git(&path, &["show-ref", "--verify", "--quiet", &branch_ref])
+        .await
+        .is_ok();
+    if branch_exists {
+        git(&path, &["worktree", "add", &destination_string, &branch]).await?;
+    } else {
+        git(
+            &path,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                &branch,
+                &destination_string,
+                "HEAD",
+            ],
+        )
+        .await?;
+    }
+    Ok(destination_string)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeLabResult {
+    pub clean: bool,
+    pub base: String,
+    pub applied: Vec<u64>,
+    pub conflicts: Vec<String>,
+    pub changed_files: Vec<String>,
+    pub duration_ms: u128,
+}
+
+/// Prove a proposed merge set in a disposable detached worktree. The user's
+/// checkout, index and branches are never changed; fetched PR objects remain in
+/// the repository's object store, while the worktree and its commits are removed.
+#[tauri::command]
+pub async fn git_merge_lab(path: String, prs: Vec<u64>) -> AppResult<MergeLabResult> {
+    if prs.is_empty() || prs.len() > 8 {
+        return Err(AppError::Other(
+            "select between 1 and 8 pull requests".into(),
+        ));
+    }
+    if prs.iter().copied().collect::<HashSet<_>>().len() != prs.len() {
+        return Err(AppError::Other(
+            "duplicate pull request in merge set".into(),
+        ));
+    }
+    git(&path, &["rev-parse", "--is-inside-work-tree"]).await?;
+    let started = std::time::Instant::now();
+    let base = git(&path, &["rev-parse", "HEAD"]).await?;
+    let mut heads: Vec<(u64, String)> = Vec::with_capacity(prs.len());
+    for number in &prs {
+        let pull_ref = format!("pull/{number}/head");
+        run_git(
+            &path,
+            &["fetch", "--quiet", "origin", &pull_ref],
+            GIT_NET_TIMEOUT,
+        )
+        .await?;
+        heads.push((*number, git(&path, &["rev-parse", "FETCH_HEAD"]).await?));
+    }
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let temp = env::temp_dir().join(format!("reviewly-merge-lab-{}-{nonce}", std::process::id()));
+    let temp_string = temp.to_string_lossy().to_string();
+    git(
+        &path,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "--detach",
+            &temp_string,
+            &base,
+        ],
+    )
+    .await?;
+
+    let mut applied = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut unexpected: Option<AppError> = None;
+    for (number, head) in &heads {
+        let merge = git(
+            &temp_string,
+            &[
+                "-c",
+                "user.name=Reviewly Merge Lab",
+                "-c",
+                "user.email=merge-lab@reviewly.local",
+                "merge",
+                "--no-edit",
+                "--no-ff",
+                head,
+            ],
+        )
+        .await;
+        match merge {
+            Ok(_) => applied.push(*number),
+            Err(error) => {
+                conflicts = git(&temp_string, &["diff", "--name-only", "--diff-filter=U"])
+                    .await
+                    .unwrap_or_default()
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(String::from)
+                    .collect();
+                let _ = git(&temp_string, &["merge", "--abort"]).await;
+                if conflicts.is_empty() {
+                    unexpected = Some(error);
+                }
+                break;
+            }
+        }
+    }
+    let changed_files = git(
+        &temp_string,
+        &["diff", "--name-only", &format!("{base}..HEAD")],
+    )
+    .await
+    .unwrap_or_default()
+    .lines()
+    .map(str::trim)
+    .filter(|line| !line.is_empty())
+    .map(String::from)
+    .collect();
+    let _ = git(&path, &["worktree", "remove", "--force", &temp_string]).await;
+    let _ = std::fs::remove_dir_all(&temp);
+    if let Some(error) = unexpected {
+        return Err(error);
+    }
+
+    Ok(MergeLabResult {
+        clean: conflicts.is_empty() && applied.len() == prs.len(),
+        base,
+        applied,
+        conflicts,
+        changed_files,
+        duration_ms: started.elapsed().as_millis(),
+    })
 }
 
 /// Run `gh` inside a repo dir (it handles GitHub auth/credentials).
@@ -260,8 +571,9 @@ pub async fn gh_pr_create(
         return Err(AppError::Other("not on a branch".into()));
     }
     git(&path, &["push", "-u", "origin", &branch]).await?;
-    let mut args: Vec<&str> =
-        vec!["pr", "create", "--head", &branch, "--title", &title, "--body", &body];
+    let mut args: Vec<&str> = vec![
+        "pr", "create", "--head", &branch, "--title", &title, "--body", &body,
+    ];
     if let Some(b) = base.as_deref() {
         args.push("--base");
         args.push(b);
@@ -296,7 +608,11 @@ async fn run_dependabot_ai_fix(
     };
     // Refuse on a dirty tree — `git add -A` below would otherwise sweep the
     // user's uncommitted work into the fix commit (and push it).
-    if !git(&path, &["status", "--porcelain"]).await?.trim().is_empty() {
+    if !git(&path, &["status", "--porcelain"])
+        .await?
+        .trim()
+        .is_empty()
+    {
         return Err(AppError::Other(
             "Your working tree has uncommitted changes — commit or stash them first, then retry."
                 .into(),
@@ -328,7 +644,11 @@ async fn run_dependabot_ai_fix(
     );
     let summary = crate::commands::ai::apply_with_claude(&prompt, &path).await?;
 
-    if git(&path, &["status", "--porcelain"]).await?.trim().is_empty() {
+    if git(&path, &["status", "--porcelain"])
+        .await?
+        .trim()
+        .is_empty()
+    {
         return Err(AppError::Other(
             "The AI didn't change any files — nothing to open a PR for.".into(),
         ));
@@ -342,11 +662,20 @@ async fn run_dependabot_ai_fix(
     // earlier non-fast-forward reject). Fetch the ref first so the lease has a
     // baseline; ignore the error when the branch doesn't exist remotely yet.
     let _ = git_net(&path, &["fetch", "origin", &branch]).await;
-    git_net(&path, &["push", "--force-with-lease", "-u", "origin", &branch]).await?;
+    git_net(
+        &path,
+        &["push", "--force-with-lease", "-u", "origin", &branch],
+    )
+    .await?;
 
     // A retry just force-updated the branch — if a PR already exists for it,
     // return that (now-updated) PR rather than failing on "already exists".
-    if let Ok(existing) = gh(&path, &["pr", "view", &branch, "--json", "url", "--jq", ".url"]).await {
+    if let Ok(existing) = gh(
+        &path,
+        &["pr", "view", &branch, "--json", "url", "--jq", ".url"],
+    )
+    .await
+    {
         let url = existing.trim();
         if url.starts_with("http") {
             return Ok(url.to_string());
@@ -378,7 +707,11 @@ pub struct BranchList {
 pub async fn gh_list_branches(path: String) -> AppResult<BranchList> {
     let raw = git(
         &path,
-        &["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
+        &[
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "refs/remotes/origin",
+        ],
     )
     .await?;
     let mut branches: Vec<String> = raw
@@ -389,22 +722,25 @@ pub async fn gh_list_branches(path: String) -> AppResult<BranchList> {
         .collect();
     branches.sort();
     branches.dedup();
-    let default = git(&path, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .await
-        .ok()
-        .map(|s| {
-            let s = s.trim();
-            s.strip_prefix("origin/").unwrap_or(s).to_string()
-        })
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            ["main", "master", "develop"]
-                .into_iter()
-                .find(|c| branches.iter().any(|b| b == c))
-                .map(String::from)
-        })
-        .or_else(|| branches.first().cloned())
-        .unwrap_or_else(|| "main".to_string());
+    let default = git(
+        &path,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .await
+    .ok()
+    .map(|s| {
+        let s = s.trim();
+        s.strip_prefix("origin/").unwrap_or(s).to_string()
+    })
+    .filter(|s| !s.is_empty())
+    .or_else(|| {
+        ["main", "master", "develop"]
+            .into_iter()
+            .find(|c| branches.iter().any(|b| b == c))
+            .map(String::from)
+    })
+    .or_else(|| branches.first().cloned())
+    .unwrap_or_else(|| "main".to_string());
     Ok(BranchList { default, branches })
 }
 
@@ -424,6 +760,19 @@ pub async fn gh_dependabot_ai_fix_bg(
     advisory: String,
     base: Option<String>,
 ) -> AppResult<()> {
+    // Reject before scheduling the worker so the UI never announces that a fix
+    // started when the clone cannot safely be used. Keep the worker check too:
+    // the tree may still change in the small window between here and execution.
+    if !git(&path, &["status", "--porcelain"])
+        .await?
+        .trim()
+        .is_empty()
+    {
+        return Err(AppError::Other(
+            "Your working tree has uncommitted changes — review, commit, or stash them before running the fix."
+                .into(),
+        ));
+    }
     {
         let mut set = state.dependabot_inflight.lock().unwrap();
         if set.contains(&key) {
@@ -435,9 +784,11 @@ pub async fn gh_dependabot_ai_fix_bg(
     let tasks = state.dependabot_tasks.clone();
     let task_key = key.clone();
     let pkg = package.clone();
+    let clone_path = path.clone();
     let handle = tauri::async_runtime::spawn(async move {
         let result =
-            run_dependabot_ai_fix(path, package, fixed_version, manifest_path, advisory, base).await;
+            run_dependabot_ai_fix(path, package, fixed_version, manifest_path, advisory, base)
+                .await;
         if let Ok(mut s) = inflight.lock() {
             s.remove(&task_key);
         }
@@ -446,10 +797,10 @@ pub async fn gh_dependabot_ai_fix_bg(
         }
         let payload = match result {
             Ok(url) => serde_json::json!({
-                "key": task_key, "ok": true, "url": url, "package": pkg,
+                "key": task_key, "ok": true, "url": url, "package": pkg, "path": clone_path,
             }),
             Err(e) => serde_json::json!({
-                "key": task_key, "ok": false, "error": e.to_string(), "package": pkg,
+                "key": task_key, "ok": false, "error": e.to_string(), "package": pkg, "path": clone_path,
             }),
         };
         let _ = app.emit("dependabot:done", payload);
@@ -592,10 +943,17 @@ pub async fn git_status(path: String) -> AppResult<WorkingTree> {
             p = new.to_string();
         }
         if x != " " && x != "?" {
-            wt.staged.push(FileChange { path: p.clone(), status: x.to_string() });
+            wt.staged.push(FileChange {
+                path: p.clone(),
+                status: x.to_string(),
+            });
         }
         if y != " " {
-            let status = if x == "?" { "?".to_string() } else { y.to_string() };
+            let status = if x == "?" {
+                "?".to_string()
+            } else {
+                y.to_string()
+            };
             wt.unstaged.push(FileChange { path: p, status });
         }
     }
@@ -659,7 +1017,18 @@ pub async fn git_discard(path: String, file: String, untracked: bool) -> AppResu
     if untracked {
         git(&path, &["clean", "-fd", "--", &file]).await?;
     } else {
-        git(&path, &["restore", "--source=HEAD", "--staged", "--worktree", "--", &file]).await?;
+        git(
+            &path,
+            &[
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                &file,
+            ],
+        )
+        .await?;
     }
     Ok(())
 }
@@ -707,7 +1076,12 @@ pub async fn git_log(path: String, limit: Option<u32>) -> AppResult<Vec<Commit>>
     let n = limit.unwrap_or(50).to_string();
     let out = git(
         &path,
-        &["log", "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s", "-n", &n],
+        &[
+            "log",
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s",
+            "-n",
+            &n,
+        ],
     )
     .await?;
     let mut commits = Vec::new();
@@ -734,7 +1108,10 @@ pub async fn git_fetch(path: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn git_pull(path: String) -> AppResult<()> {
-    git_net(&path, &["pull", "--ff-only"]).await?;
+    // `--quiet` suppresses the potentially enormous list of fetched refs. Any
+    // actual failure still reaches `run_git`, where it is reduced to its useful
+    // error lines.
+    git_net(&path, &["pull", "--ff-only", "--quiet"]).await?;
     Ok(())
 }
 
@@ -773,9 +1150,12 @@ pub async fn git_grep(path: String, query: String, limit: Option<u32>) -> AppRes
         return Ok(Vec::new());
     }
     // `git grep` exits non-zero when there are no matches — treat that as empty.
-    let out = git(&path, &["grep", "-n", "-I", "-F", "-i", "--no-color", "-e", q])
-        .await
-        .unwrap_or_default();
+    let out = git(
+        &path,
+        &["grep", "-n", "-I", "-F", "-i", "--no-color", "-e", q],
+    )
+    .await
+    .unwrap_or_default();
     let cap = limit.unwrap_or(200) as usize;
     let mut hits = Vec::new();
     for line in out.lines() {
@@ -889,7 +1269,13 @@ pub struct BranchChanges {
 #[tauri::command]
 pub async fn git_branch_changes(path: String) -> AppResult<BranchChanges> {
     let mut base = String::new();
-    for cand in ["origin/HEAD", "origin/main", "origin/master", "main", "master"] {
+    for cand in [
+        "origin/HEAD",
+        "origin/main",
+        "origin/master",
+        "main",
+        "master",
+    ] {
         if let Ok(b) = git(&path, &["merge-base", "HEAD", cand]).await {
             if !b.is_empty() {
                 base = b;
@@ -898,10 +1284,15 @@ pub async fn git_branch_changes(path: String) -> AppResult<BranchChanges> {
         }
     }
     if base.is_empty() {
-        return Ok(BranchChanges { base: None, files: Vec::new() });
+        return Ok(BranchChanges {
+            base: None,
+            files: Vec::new(),
+        });
     }
     let range = format!("{base}..HEAD");
-    let out = git(&path, &["diff", "--numstat", "--no-color", &range]).await.unwrap_or_default();
+    let out = git(&path, &["diff", "--numstat", "--no-color", &range])
+        .await
+        .unwrap_or_default();
     let mut files = Vec::new();
     for line in out.lines() {
         let mut it = line.split('\t');
@@ -913,7 +1304,10 @@ pub async fn git_branch_changes(path: String) -> AppResult<BranchChanges> {
             });
         }
     }
-    Ok(BranchChanges { base: Some(base), files })
+    Ok(BranchChanges {
+        base: Some(base),
+        files,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -1101,13 +1495,17 @@ async fn app_icon_data_url(app_name: Option<&str>) -> Option<String> {
         };
         Some(resources.join(name))
     };
-    let icon_path = icon_file
-        .filter(|path| path.exists())
-        .or_else(|| std::fs::read_dir(resources).ok()?.flatten().map(|e| e.path()).find(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
-        }))?;
+    let icon_path = icon_file.filter(|path| path.exists()).or_else(|| {
+        std::fs::read_dir(resources)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .find(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
+            })
+    })?;
 
     let out_path = env::temp_dir().join(format!(
         "reviewly-editor-icon-{}-{}.png",
@@ -1182,7 +1580,9 @@ fn parse_shell_editor_output(out: &[u8]) -> Option<(String, String)> {
             }
         }
     }
-    editor.map(|v| ("EDITOR".to_string(), v)).or_else(|| visual.map(|v| ("VISUAL".to_string(), v)))
+    editor
+        .map(|v| ("EDITOR".to_string(), v))
+        .or_else(|| visual.map(|v| ("VISUAL".to_string(), v)))
 }
 
 async fn shell_env_editor(interactive: bool) -> Option<(String, String)> {
@@ -1248,7 +1648,10 @@ pub async fn local_editor_targets() -> AppResult<Vec<LocalEditorTarget>> {
 
     for c in EDITOR_CANDIDATES {
         if let Some(mut target) = target_for_candidate(*c).await {
-            if env_key.as_deref().is_some_and(|key| candidate_matches(*c, key)) {
+            if env_key
+                .as_deref()
+                .is_some_and(|key| candidate_matches(*c, key))
+            {
                 target.is_default = true;
                 target.source = env_choice.as_ref().map(|(name, _)| format!("${name}"));
             }
@@ -1258,8 +1661,12 @@ pub async fn local_editor_targets() -> AppResult<Vec<LocalEditorTarget>> {
 
     if let Some((name, raw)) = env_choice {
         let key = editor_key(&raw);
-        let matched_known = EDITOR_CANDIDATES.iter().any(|c| candidate_matches(*c, &key));
-        let already_listed = targets.iter().any(|t| t.command.as_deref() == Some(key.as_str()));
+        let matched_known = EDITOR_CANDIDATES
+            .iter()
+            .any(|c| candidate_matches(*c, &key));
+        let already_listed = targets
+            .iter()
+            .any(|t| t.command.as_deref() == Some(key.as_str()));
         if !matched_known && !already_listed && command_available(&key).await {
             targets.insert(
                 0,
@@ -1324,4 +1731,78 @@ pub async fn open_local_editor(path: String, target_id: String) -> AppResult<()>
     }
 
     Err(AppError::Other("editor is not installed".into()))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BlameLine {
+    pub line: u32,
+    pub hash: String,
+    pub short: String,
+    pub author: String,
+    /// Unix seconds.
+    pub time: i64,
+    pub summary: String,
+}
+
+/// Who last touched each of these lines of a file at `rev` (a sha or a ref),
+/// from `git blame --line-porcelain`.
+#[tauri::command]
+pub async fn git_blame_lines(
+    path: String,
+    file: String,
+    start: u32,
+    end: u32,
+    rev: Option<String>,
+) -> AppResult<Vec<BlameLine>> {
+    let range = format!("{},{}", start.max(1), end.max(start.max(1)));
+    let mut args: Vec<&str> = vec!["blame", "--line-porcelain", "-L", &range];
+    if let Some(r) = rev.as_deref() {
+        args.push(r);
+    }
+    args.push("--");
+    args.push(&file);
+    let out = git(&path, &args).await?;
+    let mut lines: Vec<BlameLine> = Vec::new();
+    let mut cur: Option<BlameLine> = None;
+    for raw in out.lines() {
+        if let Some(content) = raw.strip_prefix('\t') {
+            let _ = content;
+            if let Some(b) = cur.take() {
+                lines.push(b);
+            }
+            continue;
+        }
+        let mut parts = raw.splitn(2, ' ');
+        let key = parts.next().unwrap_or("");
+        let val = parts.next().unwrap_or("");
+        if key.len() == 40 && key.chars().all(|c| c.is_ascii_hexdigit()) {
+            // "<hash> <orig> <final> [count]"
+            let final_line = val
+                .split(' ')
+                .nth(1)
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(0);
+            cur = Some(BlameLine {
+                line: final_line,
+                hash: key.to_string(),
+                short: key[..7].to_string(),
+                author: String::new(),
+                time: 0,
+                summary: String::new(),
+            });
+            continue;
+        }
+        if let Some(b) = cur.as_mut() {
+            match key {
+                "author" => b.author = val.to_string(),
+                "author-time" => b.time = val.parse().unwrap_or(0),
+                "summary" => b.summary = val.to_string(),
+                _ => {}
+            }
+        }
+    }
+    if let Some(b) = cur.take() {
+        lines.push(b);
+    }
+    Ok(lines)
 }

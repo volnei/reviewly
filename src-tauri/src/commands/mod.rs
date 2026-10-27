@@ -7,6 +7,8 @@ pub mod comments;
 pub mod git;
 pub mod monorepo;
 pub mod notifications;
+pub mod openspec;
 pub mod pulls;
 pub mod reviews;
 pub mod search;
+pub mod stacks;

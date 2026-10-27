@@ -38,17 +38,7 @@ export interface LayerPlan {
 }
 
 /** The trailing catch-all layer id — see `reconcileLayers`. */
-export const REST_LAYER_ID = "rest";
-
-/**
- * Background-task key prefix for a layer-plan generation. The backend keys AI
- * runs by an opaque string and broadcasts `ai:done` to every listener, so the
- * layered planner and the guided tour MUST use distinct keys for the same PR —
- * otherwise each would try to parse the other's reply and report a failure.
- */
-export const LAYERS_KEY_PREFIX = "layers:";
-
-export const layersKey = (prKey: string): string => `${LAYERS_KEY_PREFIX}${prKey}`;
+const REST_LAYER_ID = "rest";
 
 const RISKS = new Set<LayerRisk>(["low", "medium", "high"]);
 
