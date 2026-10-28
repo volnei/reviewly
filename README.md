@@ -202,10 +202,16 @@ Reviewly is a **Tauri 2** application: a Rust core with a React front end, shipp
 
 ## Install
 
-Download the latest installer for your platform from the [**Releases**](https://github.com/volnei/reviewly/releases) page:
+On macOS, install with [Homebrew](https://brew.sh):
 
-- **macOS** — `Reviewly_<version>_universal.dmg` (Apple Silicon + Intel, signed & notarized)
-- **Windows** — `Reviewly_<version>_x64-setup.exe` or `.msi`
+```sh
+brew install --cask volnei/tap/reviewly
+```
+
+Or download the latest installer for your platform from the [**Releases**](https://github.com/volnei/reviewly/releases) page:
+
+- **macOS** — `Reviewly-<version>-macos.dmg` (Apple Silicon + Intel, signed & notarized)
+- **Windows** — `Reviewly-<version>-windows-setup.exe` or `.msi`
 - **Linux** — `.AppImage`, `.deb`, or `.rpm`
 
 On first launch, Reviewly walks you through a short setup: connect your GitHub account (a device code you approve in the browser), pick the repositories to watch, and you're in. The app updates itself from then on.
