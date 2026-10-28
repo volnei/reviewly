@@ -38,6 +38,7 @@ fn resolve_timeout(override_secs: Option<u64>, default: Duration) -> Duration {
 fn provider_bin(provider: &str) -> &str {
     match provider {
         "codex" => "codex",
+        "agy" => "agy",
         "gemini" => "gemini",
         _ => "claude",
     }
@@ -55,6 +56,7 @@ async fn run_provider(
 ) -> AppResult<String> {
     match provider {
         "codex" => run_codex(prompt, cwd, model.as_deref(), timeout_secs).await,
+        "agy" => run_agy(prompt, cwd, model.as_deref(), timeout_secs).await,
         "gemini" => run_gemini(prompt, cwd, model.as_deref(), timeout_secs).await,
         "openai" => run_openai_compatible(prompt, base_url, model, api_key, timeout_secs).await,
         _ => run_claude(prompt, cwd, model.as_deref(), timeout_secs).await,
@@ -528,6 +530,41 @@ async fn apply_with_codex(prompt: &str, cwd: &str, model: Option<&str>) -> AppRe
     Ok(text.trim().to_string())
 }
 
+async fn apply_with_agy(prompt: &str, cwd: &str, model: Option<&str>) -> AppResult<String> {
+    const APPLY_TIMEOUT: Duration = Duration::from_secs(900);
+    let mut cmd = cli_command("agy");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--mode")
+        .arg("accept-edits")
+        .arg("--dangerously-skip-permissions")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, Some(cwd));
+    let output = tokio::time::timeout(
+        APPLY_TIMEOUT,
+        cmd.spawn()
+            .map_err(|e| AppError::Other(format!("failed to spawn agy: {e}")))?
+            .wait_with_output(),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Other("The implementation took longer than 15 minutes and was stopped.".into())
+    })?
+    .map_err(|e| AppError::Other(format!("wait agy: {e}")))?;
+    if !output.status.success() {
+        return Err(cli_error(
+            "agy",
+            &exit_code(&output.status),
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 async fn apply_with_gemini(prompt: &str, cwd: &str, model: Option<&str>) -> AppResult<String> {
     const APPLY_TIMEOUT: Duration = Duration::from_secs(900);
     let mut cmd = cli_command("gemini");
@@ -579,9 +616,10 @@ pub async fn ai_apply(
     match provider.as_str() {
         "claude" => apply_with_claude(&prompt, &cwd).await,
         "codex" => apply_with_codex(&prompt, &cwd, model.as_deref()).await,
+        "agy" => apply_with_agy(&prompt, &cwd, model.as_deref()).await,
         "gemini" => apply_with_gemini(&prompt, &cwd, model.as_deref()).await,
         _ => Err(AppError::Other(
-            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex or Gemini to implement it."
+            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex or Antigravity to implement it."
                 .into(),
         )),
     }
@@ -658,6 +696,55 @@ async fn run_codex(
         ));
     }
     Ok(text)
+}
+
+/// Antigravity CLI in non-interactive mode (`agy -p`). Drop-in like Claude/Codex;
+/// runs inside the PR clone when present so it can read the repo.
+async fn run_agy(
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> AppResult<String> {
+    let mut cmd = cli_command("agy");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--dangerously-skip-permissions")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, cwd);
+    let child = cmd
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn agy: {e}")))?;
+    let timeout = resolve_timeout(timeout_secs, run_timeout(cwd));
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(res) => res.map_err(|e| AppError::Other(format!("wait agy: {e}")))?,
+        Err(_) => {
+            return Err(AppError::Other(format!(
+                "Antigravity took longer than {}s and was stopped. Try again, or increase the AI time limit in Settings.",
+                timeout.as_secs()
+            )))
+        }
+    };
+    if !output.status.success() {
+        return Err(cli_error(
+            "agy",
+            &exit_code(&output.status),
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if out.is_empty() {
+        return Err(cli_error(
+            "agy",
+            "0",
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    Ok(out)
 }
 
 /// Gemini CLI in non-interactive mode (`gemini -p`). Drop-in like Claude/Codex;
@@ -879,6 +966,7 @@ async fn stream_provider(
     match provider {
         "claude" => stream_claude(app, key, prompt, cwd, model.as_deref(), timeout_secs).await,
         "codex" => stream_codex(app, key, prompt, cwd, model.as_deref(), timeout_secs).await,
+        "agy" => stream_agy(app, key, prompt, cwd, model.as_deref(), timeout_secs).await,
         "openai" => stream_openai(app, key, prompt, base_url, model, api_key, timeout_secs).await,
         other => {
             let text =
@@ -1307,6 +1395,170 @@ async fn stream_codex(
     }
     let _ = app.emit("ai:chunk", serde_json::json!({ "key": key, "delta": text }));
     Ok((text, None))
+}
+
+/// Antigravity CLI in non-interactive streaming mode (`agy -p --output-format stream-json`).
+/// Streams incremental tokens and parses run telemetry in real time.
+async fn stream_agy(
+    app: &AppHandle,
+    key: &str,
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> AppResult<(String, Option<f64>)> {
+    let mut cmd = cli_command("agy");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--dangerously-skip-permissions")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, cwd);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn agy: {e}")))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Other("agy: no stdout".into()))?;
+    let mut stderr = child.stderr.take();
+    let stderr_task = tauri::async_runtime::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(ref mut stream) = stderr {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+    let mut lines = BufReader::new(stdout).lines();
+
+    let mut full = String::new();
+    let idle = resolve_timeout(timeout_secs, run_timeout(cwd));
+    let read = async {
+        loop {
+            let line = match tokio::time::timeout(idle, lines.next_line()).await {
+                Ok(result) => result.map_err(|e| AppError::Other(format!("read agy: {e}")))?,
+                Err(_) => {
+                    return Err(AppError::Other(format!(
+                        "Antigravity produced no activity for {}s and was stopped. Try again, or increase the AI inactivity limit in Settings.",
+                        idle.as_secs()
+                    )))
+                }
+            };
+            let Some(line) = line else { break };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            match v.get("event").and_then(|x| x.as_str()) {
+                Some("init") => {
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "agy",
+                            "phase": "starting",
+                            "message": "Antigravity session initialized",
+                            "model": model,
+                        }),
+                    );
+                }
+                Some("step_update") => {
+                    if let Some(step) = v.get("step_update") {
+                        if let Some(delta) = step.get("text_delta").and_then(|d| d.as_str()) {
+                            if !delta.is_empty() {
+                                full.push_str(delta);
+                                let _ = app.emit(
+                                    "ai:chunk",
+                                    serde_json::json!({ "key": key, "delta": delta }),
+                                );
+                            }
+                        }
+                        if step.get("state").and_then(|s| s.as_str()) == Some("ACTIVE") {
+                            let _ = app.emit(
+                                "ai:progress",
+                                serde_json::json!({
+                                    "key": key,
+                                    "provider": "agy",
+                                    "phase": "writing",
+                                    "message": "Generating response",
+                                    "model": model,
+                                }),
+                            );
+                        }
+                        if let Some(usage) = step.get("usage") {
+                            let _ = app.emit(
+                                "ai:progress",
+                                serde_json::json!({
+                                    "key": key,
+                                    "provider": "agy",
+                                    "phase": "writing",
+                                    "message": "Generating response",
+                                    "model": model,
+                                    "inputTokens": usage.get("input_tokens").and_then(|x| x.as_u64()),
+                                    "outputTokens": usage.get("output_tokens").and_then(|x| x.as_u64()),
+                                    "cachedTokens": usage.get("cache_read_tokens").and_then(|x| x.as_u64()),
+                                }),
+                            );
+                        }
+                    }
+                }
+                Some("result") => {
+                    if let Some(res) = v.get("result") {
+                        if full.is_empty() {
+                            if let Some(resp) = res.get("response").and_then(|r| r.as_str()) {
+                                full = resp.to_string();
+                            }
+                        }
+                        let usage = res.get("usage");
+                        let _ = app.emit(
+                            "ai:progress",
+                            serde_json::json!({
+                                "key": key,
+                                "provider": "agy",
+                                "phase": "complete",
+                                "message": "Response complete",
+                                "model": model,
+                                "inputTokens": usage.and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()),
+                                "outputTokens": usage.and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()),
+                                "cachedTokens": usage.and_then(|u| u.get("cache_read_tokens")).and_then(|x| x.as_u64()),
+                                "turns": res.get("num_turns").and_then(|x| x.as_u64()),
+                            }),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok::<(), AppError>(())
+    };
+
+    read.await?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::Other(format!("wait agy: {e}")))?;
+    let stderr = stderr_task.await.unwrap_or_default();
+    if !status.success() {
+        return Err(cli_error(
+            "agy",
+            &exit_code(&status),
+            &String::from_utf8_lossy(&stderr),
+        ));
+    }
+    let trimmed = full.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(cli_error(
+            "agy",
+            &exit_code(&status),
+            &String::from_utf8_lossy(&stderr),
+        ));
+    }
+    Ok((trimmed, None))
 }
 
 async fn stream_openai(

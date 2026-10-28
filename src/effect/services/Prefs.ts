@@ -44,7 +44,7 @@ export const Prefs = Schema.Struct({
   launchAtLogin: Schema.Boolean,
   startInTray: Schema.Boolean,
   ai: Schema.Struct({
-    provider: Schema.Literals(["claude", "codex", "gemini", "openai"]),
+    provider: Schema.Literals(["claude", "codex", "agy", "gemini", "openai"]),
     model: Schema.String,
     apiKey: Schema.String,
     baseUrl: Schema.String,
@@ -148,7 +148,10 @@ function decode(raw: unknown): Prefs {
     if (!(k in raw)) continue;
     const stored = raw[k];
     const fallback = defaultPrefs[k];
-    const candidate = isRecord(fallback) && isRecord(stored) ? { ...fallback, ...stored } : stored;
+    let candidate = isRecord(fallback) && isRecord(stored) ? { ...fallback, ...stored } : stored;
+    if (k === "ai" && isRecord(candidate) && candidate.provider === "gemini") {
+      candidate = { ...candidate, provider: "agy" };
+    }
     try {
       out[k] = Schema.decodeUnknownSync(Prefs.fields[k])(candidate);
     } catch {

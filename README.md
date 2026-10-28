@@ -21,7 +21,7 @@ Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR revie
 
 Built with **Tauri 2** (Rust + React). Free and open source under the [GPL-3.0](LICENSE).
 
-> **Local-first by design.** Your GitHub token lives in the OS keychain. AI review runs through _your_ local CLI (Claude, Codex, Gemini) or _your_ own OpenAI-compatible endpoint — only the PR diff is ever sent, and there is no Reviewly server in the middle.
+> **Local-first by design.** Your GitHub token lives in the OS keychain. AI review runs through _your_ local CLI (Claude, Codex, Antigravity) or _your_ own OpenAI-compatible endpoint — only the PR diff is ever sent, and there is no Reviewly server in the middle.
 
 ---
 
@@ -129,7 +129,7 @@ Reviewly drives an AI you control — a local CLI or your own endpoint — to he
 | --------------------- | ------------------------------- | ------------------------------------------------------------------- |
 | **Claude**            | the `claude` CLI on your `PATH` | [Claude Code](https://claude.com/claude-code) installed & signed in |
 | **Codex**             | the `codex` CLI on your `PATH`  | OpenAI Codex CLI installed                                          |
-| **Gemini**            | the `gemini` CLI on your `PATH` | Gemini CLI installed                                                |
+| **Antigravity**       | the `agy` CLI on your `PATH`    | [Antigravity CLI](https://antigravity.google) installed & signed in |
 | **OpenAI-compatible** | an HTTP endpoint you provide    | base URL + model (+ optional API key)                               |
 
 The OpenAI-compatible option works with OpenAI, Ollama, LM Studio, OpenRouter, and anything else that speaks the same API. A **custom instructions** field in Settings is prepended to every prompt, so you can encode your team's review standards once.
@@ -233,7 +233,7 @@ The hostname and token stay together in the OS keychain. Switching between GitHu
 
 AI features are optional — Reviewly is a great review client without them. To turn them on, open **Settings → AI review** and pick a provider:
 
-- **Already have an AI CLI?** Select **Claude**, **Codex**, or **Gemini** — Reviewly detects whether the binary is on your `PATH` and signed in. (For Claude, install [Claude Code](https://claude.com/claude-code) and run `claude` once to log in.)
+- **Already have an AI CLI?** Select **Claude**, **Codex**, or **Antigravity** — Reviewly detects whether the binary is on your `PATH` and signed in. (For Claude, install [Claude Code](https://claude.com/claude-code) and run `claude` once to log in; for Antigravity, install `agy`.)
 - **Prefer your own endpoint?** Choose **OpenAI-compatible** and enter a base URL, model, and optional API key — point it at OpenAI, a local Ollama/LM Studio server, OpenRouter, or anything that speaks the OpenAI API.
 
 Add **custom review instructions** in the same panel to bake your team's standards into every tour and chat.

@@ -137,8 +137,7 @@ export function parseGuided(content: string): GuidedPlan | null {
   let rawSteps: unknown[] = [];
 
   // Prefer the LAST balanced top-level {…} that actually carries steps — robust
-  // to trailing prose, a banner line, or a second illustrative JSON object
-  // (gemini has no final-message isolation, so this is its dominant failure).
+  // to trailing prose, a banner line, or a second illustrative JSON object.
   const objs = extractObjects(s);
   const planObj = [...objs].reverse().find((o) => {
     if (!o || typeof o !== "object") return false;

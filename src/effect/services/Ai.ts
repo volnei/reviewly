@@ -8,24 +8,28 @@ import { PrefsService } from "./Prefs";
  * OpenAI-compatible endpoint, driven by the Rust side. One run = one key;
  * the answer arrives as `ai:chunk` deltas and ends with `ai:complete`.
  */
-export class AiError extends Data.TaggedError("AiError")<{ readonly message: string }> {}
+export class AiError extends Data.TaggedError("AiError")<{ readonly message: string }> { }
 
 export const PROVIDERS = [
   ["claude", "Claude CLI"],
   ["codex", "Codex CLI"],
-  ["gemini", "Gemini CLI"],
+  ["agy", "Antigravity CLI"],
   ["openai", "OpenAI-compatible endpoint"],
 ] as const;
 export type Provider = (typeof PROVIDERS)[number][0];
 
 /** The short name the UI says ("Reading with Claude…"). */
 export const providerName = (p: string): string =>
-  ({ claude: "Claude", codex: "Codex", gemini: "Gemini", openai: "your model" })[p] ?? p;
+  ({ claude: "Claude", codex: "Codex", agy: "Antigravity", gemini: "Antigravity", openai: "your model" })[p] ?? p;
 
 export const MODEL_SUGGESTIONS: Record<Provider, ReadonlyArray<string>> = {
   claude: ["sonnet", "opus", "haiku", "claude-opus-5", "claude-sonnet-5", "claude-fable-5-1"],
   codex: ["gpt-5-codex", "gpt-5", "o3", "o4-mini"],
-  gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  agy: [
+    "gemini-3.8-flash-high",
+    "gemini-3.8-flash-medium",
+    "gemini-3.8-flash-low",
+  ],
   openai: [],
 };
 
@@ -44,7 +48,7 @@ const Progress = Schema.Struct({
   durationMs: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   turns: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 });
-export interface AiProgress extends Schema.Schema.Type<typeof Progress> {}
+export interface AiProgress extends Schema.Schema.Type<typeof Progress> { }
 const Complete = Schema.Struct({
   key: Schema.String,
   ok: Schema.Boolean,
@@ -69,7 +73,7 @@ export class Ai extends Context.Service<
     readonly apply: (prompt: string, cwd: string) => Effect.Effect<string, AiError>;
     readonly cancel: (key: string) => Effect.Effect<void>;
   }
->()("reviewly/Ai") {}
+>()("reviewly/Ai") { }
 
 export const AiLive = Layer.effect(
   Ai,
