@@ -45,7 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { run, useEffectQuery } from "@/effect/runtime";
-import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS } from "@/effect/services/Ai";
+import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS, type Provider } from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
@@ -438,7 +438,7 @@ export function SettingsScreen() {
                 }
               >
                 <Autocomplete
-                  items={MODEL_SUGGESTIONS[prefs.ai.provider]}
+                  items={MODEL_SUGGESTIONS[prefs.ai.provider as Provider]}
                   value={prefs.ai.model}
                   onValueChange={(value) => set("ai", { ...prefs.ai, model: value })}
                 >
@@ -719,7 +719,7 @@ function About() {
     void import("@tauri-apps/api/app")
       .then(({ getVersion }) => getVersion())
       .then(setVersion)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
   return (
     <div className="grid gap-3 text-[13px]">
@@ -953,6 +953,7 @@ const OPENAI_PRESETS = [
 const INSTALL: Record<string, string> = {
   claude: "npm i -g @anthropic-ai/claude-code",
   codex: "npm i -g @openai/codex",
+  agy: "curl -fsSL https://antigravity.google/install.sh | bash",
   gemini: "npm i -g @google/gemini-cli",
 };
 

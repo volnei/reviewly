@@ -1,7 +1,7 @@
 import type { PullDetail, PullFile } from "@/lib/tauri";
 
 /** Total character budget for the diff portion of the AI context. Claude and
- * Codex receive the prompt over stdin (no OS arg-length ceiling) and Gemini as
+ * Codex receive the prompt over stdin (no OS arg-length ceiling) and Antigravity (agy) as
  * an argument (well under ARG_MAX at this size), so a large PR gets a richer,
  * less-truncated diff without risking a spawn failure. */
 const DIFF_BUDGET = 90_000;
