@@ -22,8 +22,6 @@ const NAV: &[(&str, &str, &str)] = &[
 ];
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    build_panel(app)?;
     let menu = fallback_menu(app)?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
@@ -125,8 +123,21 @@ fn fallback_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 fn toggle_panel(app: &AppHandle, position: PhysicalPosition<f64>) {
-    let Some(panel) = app.get_webview_window(TRAY_WINDOW) else {
-        return;
+    // Building this transparent secondary WebView alongside the main window
+    // during startup terminates their shared WebContent process on macOS 26.
+    // Create it on the first tray click, after the main WebView is established.
+    let panel = match app.get_webview_window(TRAY_WINDOW) {
+        Some(panel) => panel,
+        None => {
+            if let Err(error) = build_panel(app) {
+                tracing::warn!("tray panel build failed: {error}");
+                return;
+            }
+            let Some(panel) = app.get_webview_window(TRAY_WINDOW) else {
+                return;
+            };
+            panel
+        }
     };
     if panel.is_visible().unwrap_or(false) {
         let _ = panel.hide();
