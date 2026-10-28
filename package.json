@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:appstore": "VITE_REVIEWLY_EDITION=appstore tsc -b && VITE_REVIEWLY_EDITION=appstore vite build",
+    "tauri:appstore": "tauri build --config src-tauri/tauri.appstore.conf.json -- --no-default-features --features custom-protocol,appstore",
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "tsc -b --noEmit",

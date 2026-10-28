@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "macOSPrivateApi": true,
+    "macOSPrivateApi": false,
     "windows": [
       {
         "title": "Reviewly",
@@ -27,7 +27,17 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        "main-capability",
+        "chat-capability",
+        {
+          "identifier": "direct-capability",
+          "description": "Self-update for the direct-download build; the App Store edition (tauri.appstore.conf.json) drops it",
+          "windows": ["main"],
+          "permissions": ["updater:default", "process:default"]
+        }
+      ]
     }
   },
   "bundle": {

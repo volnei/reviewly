@@ -4,6 +4,7 @@ import { toast } from "@/app/toast";
 import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
 import { IconButton } from "@/components/icon-button";
 import { isNative } from "@/effect/Tauri";
+import { APP_STORE } from "@/lib/edition";
 import { run } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
 import { GitHub } from "@/effect/services/GitHub";
@@ -145,7 +146,7 @@ export function useItemActions() {
   );
   /** `c`: the pull request checked out in its clone, when Local knows one. */
   const checkout = useCheckout();
-  return { done, snooze, snoozeFor, unsnooze, checkout };
+  return { done, snooze, snoozeFor, unsnooze, checkout: APP_STORE ? undefined : checkout };
 }
 
 function recordInboxAction(title: string, item: Ranked) {

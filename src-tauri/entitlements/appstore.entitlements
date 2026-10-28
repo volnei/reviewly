@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Required for the Mac App Store. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- GitHub / GitHub Enterprise API and the OpenAI-compatible AI endpoint. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Saving attachments and exports through the save dialog. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <!-- Filled in at signing: <TEAMID>.dev.volnei.reviewly -->
+  <key>com.apple.application-identifier</key>
+  <string>J84T2FB28Z.dev.volnei.reviewly</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>J84T2FB28Z</string>
+</dict>
+</plist>

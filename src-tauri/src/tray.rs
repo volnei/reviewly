@@ -80,12 +80,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn build_panel(app: &AppHandle) -> tauri::Result<()> {
-    WebviewWindowBuilder::new(app, TRAY_WINDOW, WebviewUrl::App("tray.html".into()))
+    let builder = WebviewWindowBuilder::new(app, TRAY_WINDOW, WebviewUrl::App("tray.html".into()))
         .title("Reviewly")
         .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
         .resizable(false)
-        .decorations(false)
-        .transparent(true)
+        .decorations(false);
+    // A transparent window needs macOS private API, which the App Store
+    // rejects; that edition gets the panel on the window background instead.
+    #[cfg(any(not(target_os = "macos"), feature = "direct"))]
+    let builder = builder.transparent(true);
+    builder
         .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)

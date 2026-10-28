@@ -26,6 +26,7 @@ import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, authStore, useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
 import { Tauri } from "@/effect/Tauri";
+import { APP_STORE } from "@/lib/edition";
 import { clearHomeCache } from "@/features/home/cache";
 import { clearInboxCache } from "@/features/inbox/cache";
 import { recordFix } from "@/features/list/fixes";
@@ -179,7 +180,7 @@ const TRAY_ROUTES: Record<string, string> = {
   // Accept events from older native builds while the app is being upgraded.
   "/notifications": "/mentions",
   "/dependabot": "/health",
-  "/repos": "/local",
+  "/repos": APP_STORE ? "/inbox" : "/local",
   "/history": "/history",
   "/settings": "/settings",
 };
@@ -301,7 +302,10 @@ function useNativeChrome() {
 function useGlobalKeys() {
   const navigate = useNavigate();
   useEffect(() => {
-    const views = ["home", "inbox", "prs", "mentions", "health", "local"] as const;
+    // The App Store edition has no Local repositories (⌘6), Turborepo or Spec Lens.
+    const views = APP_STORE
+      ? (["home", "inbox", "prs", "mentions", "health"] as const)
+      : (["home", "inbox", "prs", "mentions", "health", "local"] as const);
     // `g` then a letter: the view by its name. Half a chord dies after a second.
     const GO: Record<string, string> = {
       h: "/",
@@ -316,12 +320,15 @@ function useGlobalKeys() {
       y: "/history",
       s: "/settings",
     };
+    if (APP_STORE) for (const k of ["t", "v", "l"]) delete GO[k];
     let pendingG = 0;
     const onKey = (e: KeyboardEvent) => {
       const c = chord(e);
       if (/^mod\+[1-6]$/.test(c)) {
+        const view = views[Number(c.slice(-1)) - 1];
+        if (!view) return;
         e.preventDefault();
-        void navigate({ to: VIEW_PATHS[views[Number(c.slice(-1)) - 1]] });
+        void navigate({ to: VIEW_PATHS[view] });
         return;
       }
       if (c === "mod+=" || c === "mod++" || c === "mod+-" || c === "mod+0") {

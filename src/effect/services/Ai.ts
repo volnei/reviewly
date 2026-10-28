@@ -2,6 +2,7 @@ import { Cause, Context, Data, Effect, Layer, Queue, Schema, Stream } from "effe
 import { Tauri } from "../Tauri";
 import * as S from "../schema";
 import { PrefsService } from "./Prefs";
+import { APP_STORE } from "@/lib/edition";
 
 /**
  * The review assistant: a CLI on this machine (claude, codex, gemini) or an
@@ -10,13 +11,17 @@ import { PrefsService } from "./Prefs";
  */
 export class AiError extends Data.TaggedError("AiError")<{ readonly message: string }> {}
 
-export const PROVIDERS = [
+const ALL_PROVIDERS = [
   ["claude", "Claude CLI"],
   ["codex", "Codex CLI"],
   ["gemini", "Gemini CLI"],
   ["openai", "OpenAI-compatible endpoint"],
 ] as const;
-export type Provider = (typeof PROVIDERS)[number][0];
+export type Provider = (typeof ALL_PROVIDERS)[number][0];
+/** The App Store edition can't spawn CLIs from the sandbox: endpoint only. */
+export const PROVIDERS: ReadonlyArray<(typeof ALL_PROVIDERS)[number]> = APP_STORE
+  ? ALL_PROVIDERS.filter(([id]) => id === "openai")
+  : ALL_PROVIDERS;
 
 /** The short name the UI says ("Reading with Claude…"). */
 export const providerName = (p: string): string =>

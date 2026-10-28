@@ -39,6 +39,7 @@ import type { Verdict } from "@/effect/services/Prefs";
 import { applyView, savedViewPath, useSavedViews } from "@/features/list/filters";
 import { VerdictWord } from "@/features/list/row";
 import { parsePrRef } from "@/lib/pr-ref";
+import { APP_STORE } from "@/lib/edition";
 import { inboxQuery, useOpenItem } from "@/screens/inbox";
 
 interface Entry {
@@ -62,7 +63,7 @@ const VIEWS: ReadonlyArray<{ to: string; label: string; icon: LucideIcon; key: s
   { to: "/local", label: "Local repositories", icon: FolderGit2, key: "⌘6" },
   { to: "/history", label: "History", icon: History, key: "G Y" },
   { to: "/settings", label: "Settings", icon: Settings2, key: "⌘," },
-];
+].filter((v) => !(APP_STORE && v.to === "/local"));
 
 const text = (e: Entry) => `${e.label} ${e.hint}`;
 
@@ -164,7 +165,9 @@ export function Palette({
       verdict: it.kind === "pr" ? undefined : it.verdict,
       run: () => openItem(it),
     }));
-    return [...typed, ...actions, ...views, ...savedViews, ...items, ...app];
+    // The store updates the App Store edition.
+    const appEntries = APP_STORE ? app.filter((e) => e.id !== "app:updates") : app;
+    return [...typed, ...actions, ...views, ...savedViews, ...items, ...appEntries];
   }, [inbox.data, navigate, openItem, query, commands, saved, auth.host]);
 
   const close = (o: boolean) => {

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
+#[cfg(feature = "direct")]
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::error::{AppError, AppResult};
@@ -37,6 +38,7 @@ pub fn set_start_in_tray(app: AppHandle, enabled: bool) -> AppResult<()> {
 }
 
 /// Register/unregister the app to launch at login (OS autostart).
+#[cfg(feature = "direct")]
 #[tauri::command]
 pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> AppResult<()> {
     let mgr = app.autolaunch();
@@ -45,11 +47,35 @@ pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> AppResult<()> {
 }
 
 /// Whether the app is currently registered to launch at login.
+#[cfg(feature = "direct")]
 #[tauri::command]
 pub fn get_launch_at_login(app: AppHandle) -> AppResult<bool> {
     app.autolaunch()
         .is_enabled()
         .map_err(|e| AppError::Other(format!("autostart: {e}")))
+}
+
+/// The App Store edition has no autostart plugin; Settings hides the row.
+#[cfg(not(feature = "direct"))]
+#[tauri::command]
+pub fn set_launch_at_login(_app: AppHandle, _enabled: bool) -> AppResult<()> {
+    Err(AppError::Other("Launch at login isn't available in this edition".into()))
+}
+
+#[cfg(not(feature = "direct"))]
+#[tauri::command]
+pub fn get_launch_at_login(_app: AppHandle) -> AppResult<bool> {
+    Ok(false)
+}
+
+/// Which build this is: `"direct"` (GitHub/Homebrew) or `"appstore"`.
+#[tauri::command]
+pub fn app_edition() -> &'static str {
+    if cfg!(feature = "direct") {
+        "direct"
+    } else {
+        "appstore"
+    }
 }
 
 #[cfg(target_os = "macos")]

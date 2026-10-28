@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "@/components/ui/menu";
 import { isNative } from "@/effect/Tauri";
+import { APP_STORE } from "@/lib/edition";
 import { useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
 import {
@@ -191,10 +192,12 @@ export function Rail() {
           item={{ to: "/history", label: "History", key: "G Y", icon: History }}
           active={active("/history")}
         />
-        <NavItem
-          item={{ to: "/local", label: "Local repositories", key: "⌘6", icon: FolderGit2 }}
-          active={active("/local")}
-        />
+        {APP_STORE ? null : (
+          <NavItem
+            item={{ to: "/local", label: "Local repositories", key: "⌘6", icon: FolderGit2 }}
+            active={active("/local")}
+          />
+        )}
         <NavItem
           item={{ to: "/settings", label: "Settings", key: "⌘,", icon: Settings2 }}
           active={active("/settings")}

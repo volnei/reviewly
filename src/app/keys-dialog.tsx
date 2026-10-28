@@ -5,15 +5,20 @@ import {
   DialogPopup,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { APP_STORE } from "@/lib/edition";
 
 const GROUPS: ReadonlyArray<{ title: string; keys: ReadonlyArray<[string, string]> }> = [
   {
     title: "Everywhere",
     keys: [
       ["⌘K", "jump to anything"],
-      ["⌘1 – ⌘6", "Home, Inbox, Pull requests, Mentions, Health, Local"],
+      APP_STORE
+        ? ["⌘1 – ⌘5", "Home, Inbox, Pull requests, Mentions, Health"]
+        : ["⌘1 – ⌘6", "Home, Inbox, Pull requests, Mentions, Health, Local"],
       ["⌘,", "settings"],
-      ["g then h i p m a l s", "go to Home, Inbox, PRs, Mentions, heAlth, Local, Settings"],
+      APP_STORE
+        ? ["g then h i p m a s", "go to Home, Inbox, PRs, Mentions, heAlth, Settings"]
+        : ["g then h i p m a l s", "go to Home, Inbox, PRs, Mentions, heAlth, Local, Settings"],
       ["⌘= ⌘- ⌘0", "zoom in, out, reset"],
       ["?", "these keys"],
     ],
@@ -28,7 +33,7 @@ const GROUPS: ReadonlyArray<{ title: string; keys: ReadonlyArray<[string, string
       ["e", "done — out of the Inbox"],
       ["s", "snooze until tomorrow"],
       ["o", "open on GitHub"],
-      ["c", "check it out in its clone"],
+      ...(APP_STORE ? [] : [["c", "check it out in its clone"] as [string, string]]),
       ["home end", "first, last row"],
       ["1 2 3", "in Mentions: mentions, reviews & comments, everything"],
     ],

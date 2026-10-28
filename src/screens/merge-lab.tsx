@@ -19,6 +19,7 @@ import {
   type MergeSimulation,
   simulateMerge,
 } from "@/features/merge-lab/model";
+import { APP_STORE } from "@/lib/edition";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { Effect } from "effect";
@@ -494,13 +495,16 @@ function SimulationResult({
         <FutureBranch stages={result.stages} onOpen={onOpen} />
       </section>
 
-      <LocalProof
-        path={localClone}
-        proof={proof}
-        proving={proving}
-        count={result.order.length}
-        onProve={onProve}
-      />
+      {/* Proving needs Git on a local clone, which the App Store sandbox can't reach. */}
+      {APP_STORE ? null : (
+        <LocalProof
+          path={localClone}
+          proof={proof}
+          proving={proving}
+          count={result.order.length}
+          onProve={onProve}
+        />
+      )}
 
       <section className="grid items-start gap-5 lg:grid-cols-[1.2fr_.8fr]">
         <div className="rounded-lg border border-hair bg-page p-5">

@@ -14,7 +14,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# Turns on macOS private API for the `direct` build only (see the crate).
+reviewly-macos-private-api = { path = "crates/macos-private-api", optional = true }
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 
@@ -42,14 +44,27 @@ tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-window-state = "2"
 base64 = "0.22"
 urlencoding = "2"
-tauri-plugin-updater = "2.10.1"
-tauri-plugin-process = "2.3.1"
-tauri-plugin-autostart = "2"
+# Direct-download build only — the Mac App Store edition (`appstore`) updates
+# through the store and registers login items with SMAppService instead.
+tauri-plugin-updater = { version = "2.10.1", optional = true }
+tauri-plugin-process = { version = "2.3.1", optional = true }
+tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-single-instance = "2"
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "direct"]
 custom-protocol = ["tauri/custom-protocol"]
+# The GitHub/Homebrew build: self-updating, private API (transparent tray
+# panel), LaunchAgent autostart.
+direct = [
+  "dep:reviewly-macos-private-api",
+  "dep:tauri-plugin-updater",
+  "dep:tauri-plugin-process",
+  "dep:tauri-plugin-autostart",
+]
+# The Mac App Store edition: sandboxed, none of the above. Build it with
+# `bun run tauri:appstore` (see tauri.appstore.conf.json).
+appstore = []
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"

@@ -1,4 +1,5 @@
 import { persistedStore, useStore } from "@/effect/store";
+import { APP_STORE } from "@/lib/edition";
 import { Context, Effect, Layer, Schema } from "effect";
 
 /**
@@ -112,7 +113,7 @@ const defaultPrefs: Prefs = {
   launchAtLogin: false,
   startInTray: false,
   ai: {
-    provider: "claude",
+    provider: APP_STORE ? "openai" : "claude",
     model: "",
     apiKey: "",
     baseUrl: "",
@@ -154,6 +155,13 @@ function decode(raw: unknown): Prefs {
     } catch {
       /* keep the default */
     }
+  }
+  // The sandbox can't run the AI CLIs or read repo folders, so a value carried
+  // over from the direct build never survives into the App Store edition.
+  if (APP_STORE) {
+    out.ai = { ...(out.ai as Prefs["ai"]), provider: "openai" };
+    out.localRepos = [];
+    out.launchAtLogin = false;
   }
   return out as Prefs;
 }

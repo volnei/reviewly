@@ -177,7 +177,7 @@ pub fn run() {
         },
     ];
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Keep this plugin first so a second launch can only activate the
         // already-running app instead of creating another tray process.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -189,14 +189,21 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
+
+    // The App Store edition updates through the store and can't write a
+    // LaunchAgent from the sandbox.
+    #[cfg(feature = "direct")]
+    let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_autostart::Builder::new()
                 .arg("--reviewly-autostart")
                 .build(),
-        )
+        );
+
+    let app = builder
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:reviewly.db", migrations)
@@ -395,6 +402,7 @@ pub fn run() {
             commands::app::get_launch_at_login,
             commands::app::set_start_in_tray,
             commands::app::set_app_icon,
+            commands::app::app_edition,
             // attachments
             commands::attachments::gh_fetch_attachment,
             // actions (mutations: reactions, labels, reviewers, merge, etc.)

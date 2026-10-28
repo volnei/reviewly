@@ -1,5 +1,6 @@
 import { toast } from "@/app/toast";
 import { isNative } from "@/effect/Tauri";
+import { APP_STORE } from "@/lib/edition";
 import { useEffect } from "react";
 
 type Update = NonNullable<Awaited<ReturnType<typeof import("@tauri-apps/plugin-updater").check>>>;
@@ -45,6 +46,7 @@ const offer = (update: Update) =>
 
 /** Settings → About → Check for updates: says what it found, either way. */
 export async function checkForUpdates(): Promise<void> {
+  if (APP_STORE) return;
   if (!isNative()) {
     toast.say("Updates come with the desktop app");
     return;
@@ -61,7 +63,8 @@ export async function checkForUpdates(): Promise<void> {
 /** A quiet check on launch: speaks only when there is something to install. */
 export function useUpdater() {
   useEffect(() => {
-    if (!isNative()) return;
+    // The App Store updates the store build itself.
+    if (APP_STORE || !isNative()) return;
     let cancelled = false;
     void (async () => {
       try {

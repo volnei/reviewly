@@ -13,6 +13,7 @@ import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
 import { prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { safeOpenUrl } from "@/lib/ui";
+import { APP_STORE } from "@/lib/edition";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,6 +59,8 @@ function Connect() {
   const cli = useEffectQuery(
     ["gh-cli", host],
     Effect.flatMap(Auth, (a) => a.ghCliAvailable(host || "github.com")),
+    // The sandboxed App Store edition can't run gh: device flow or a token only.
+    { enabled: !APP_STORE },
   );
   const [device, setDevice] = useState<DeviceStart | null>(null);
   const [busy, setBusy] = useState<"device" | "cli" | null>(null);
@@ -168,14 +171,16 @@ function Connect() {
             Sign in with GitHub
           </Button>
         ) : null}
-        <Button
-          variant="outline"
-          size="default"
-          onClick={useCli}
-          disabled={busy !== null || cli.data === false || !host}
-        >
-          Use the GitHub CLI
-        </Button>
+        {APP_STORE ? null : (
+          <Button
+            variant="outline"
+            size="default"
+            onClick={useCli}
+            disabled={busy !== null || cli.data === false || !host}
+          >
+            Use the GitHub CLI
+          </Button>
+        )}
         {kind === "enterprise" ? (
           <div className="flex gap-2">
             <input
@@ -196,6 +201,7 @@ function Connect() {
             </Button>
           </div>
         ) : null}
+        {APP_STORE ? null : (
         <p className="text-[12px] text-ink-3">
           {cli.data === false
             ? kind === "enterprise"
@@ -205,6 +211,7 @@ function Connect() {
               ? `Reuses the token already authorised for ${host || "this server"}.`
               : "Checking for the GitHub CLI…"}
         </p>
+        )}
       </div>
       {busy === "cli" ? (
         <p className="mt-3 text-[12.5px] text-ink-3">Asking gh for the token…</p>

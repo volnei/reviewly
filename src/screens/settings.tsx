@@ -52,6 +52,7 @@ import { GitHub } from "@/effect/services/GitHub";
 import { type Prefs, prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
+import { APP_STORE } from "@/lib/edition";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
@@ -101,7 +102,7 @@ const CATEGORIES = [
   {
     id: "about",
     label: "About Reviewly",
-    description: "Version, updates and release notes.",
+    description: APP_STORE ? "Version and release notes." : "Version, updates and release notes.",
     icon: Info,
   },
 ] as const;
@@ -192,16 +193,18 @@ export function SettingsScreen() {
                   ]}
                 />
               </Field>
-              <Toggle
-                label="Launch at login"
-                checked={prefs.launchAtLogin}
-                onChange={(v) => {
-                  set("launchAtLogin", v);
-                  run(Effect.flatMap(AppSettings, (a) => a.setLaunchAtLogin(v))).catch((e) =>
-                    toast.fail("Couldn’t change launch at login", e),
-                  );
-                }}
-              />
+              {APP_STORE ? null : (
+                <Toggle
+                  label="Launch at login"
+                  checked={prefs.launchAtLogin}
+                  onChange={(v) => {
+                    set("launchAtLogin", v);
+                    run(Effect.flatMap(AppSettings, (a) => a.setLaunchAtLogin(v))).catch((e) =>
+                      toast.fail("Couldn’t change launch at login", e),
+                    );
+                  }}
+                />
+              )}
               <Toggle
                 label="Start in the menu bar"
                 hint="No window until you ask for one."
@@ -418,15 +421,21 @@ export function SettingsScreen() {
             </header>
             <Section
               title="Review assistant"
-              blurb="A CLI on this machine or an OpenAI-compatible endpoint, used only when you ask on a PR. The prompt and the diff go to the provider you pick; nothing else does."
+              blurb={
+                APP_STORE
+                  ? "An OpenAI-compatible endpoint, used only when you ask on a PR. The prompt and the diff go to that endpoint; nothing else does."
+                  : "A CLI on this machine or an OpenAI-compatible endpoint, used only when you ask on a PR. The prompt and the diff go to the provider you pick; nothing else does."
+              }
             >
               <Field label="Provider">
-                <Choice
-                  inline
-                  value={prefs.ai.provider}
-                  onChange={(v) => set("ai", { ...prefs.ai, provider: v })}
-                  options={PROVIDERS.map(([value, label]) => ({ value, label }))}
-                />
+                {APP_STORE ? null : (
+                  <Choice
+                    inline
+                    value={prefs.ai.provider}
+                    onChange={(v) => set("ai", { ...prefs.ai, provider: v })}
+                    options={PROVIDERS.map(([value, label]) => ({ value, label }))}
+                  />
+                )}
                 <ProviderStatus provider={prefs.ai.provider} ai={prefs.ai} />
               </Field>
               <Field
@@ -506,7 +515,11 @@ export function SettingsScreen() {
               ) : null}
               <Field
                 label="Stop after no activity"
-                hint="Streaming Claude and Codex runs keep going while they report progress. Auto allows 3 minutes of silence, or 15 while reading a local repository."
+                hint={
+                  APP_STORE
+                    ? "Streaming runs keep going while the endpoint answers. Auto allows 3 minutes of silence."
+                    : "Streaming Claude and Codex runs keep going while they report progress. Auto allows 3 minutes of silence, or 15 while reading a local repository."
+                }
               >
                 <Choice
                   inline
@@ -522,7 +535,11 @@ export function SettingsScreen() {
               </Field>
               <Toggle
                 label="Start the tour when a pull request opens"
-                hint="Once per pull request, when the provider answers from this machine."
+                hint={
+                  APP_STORE
+                    ? "Once per pull request."
+                    : "Once per pull request, when the provider answers from this machine."
+                }
                 checked={prefs.ai.autoTour}
                 onChange={(v) => set("ai", { ...prefs.ai, autoTour: v })}
               />
@@ -728,9 +745,11 @@ function About() {
         pull requests, with the model you choose and nothing leaving the machine unless you say so.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => void checkForUpdates()}>
-          Check for updates
-        </Button>
+        {APP_STORE ? null : (
+          <Button variant="outline" size="sm" onClick={() => void checkForUpdates()}>
+            Check for updates
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={openWhatsNew}>
           What’s new
         </Button>

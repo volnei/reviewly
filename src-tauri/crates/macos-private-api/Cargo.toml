@@ -1,0 +1,12 @@
+[package]
+name = "reviewly-macos-private-api"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Turns on tauri's `macos-private-api` feature for the direct-download build."
+
+# Depending on this crate is the whole point: Cargo unifies features, so the
+# app's `tauri` gets `macos-private-api` without listing it in its own
+# `tauri` dependency, which tauri-build checks against tauri.conf.json.
+[dependencies]
+tauri = { version = "2", default-features = false, features = ["macos-private-api"] }

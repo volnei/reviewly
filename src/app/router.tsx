@@ -1,5 +1,6 @@
 import { Shell } from "@/app/shell";
 import { prefsStore } from "@/effect/services/Prefs";
+import { APP_STORE } from "@/lib/edition";
 import { InboxScreen } from "@/screens/inbox";
 import {
   createMemoryHistory,
@@ -7,9 +8,15 @@ import {
   createRoute,
   createRouter,
   lazyRouteComponent,
+  redirect,
 } from "@tanstack/react-router";
 
 const root = createRootRoute({ component: Shell });
+
+/** Screens that read a local repository; the sandboxed App Store edition sends them home. */
+const localOnly = () => {
+  if (APP_STORE) throw redirect({ to: "/" });
+};
 
 const home = createRoute({
   getParentRoute: () => root,
@@ -39,11 +46,13 @@ const health = createRoute({
 const turbo = createRoute({
   getParentRoute: () => root,
   path: "/turbo",
+  beforeLoad: localOnly,
   component: lazyRouteComponent(() => import("@/screens/turbo"), "TurboScreen"),
 });
 const specLens = createRoute({
   getParentRoute: () => root,
   path: "/spec-lens",
+  beforeLoad: localOnly,
   component: lazyRouteComponent(() => import("@/screens/spec-lens"), "SpecLensScreen"),
 });
 const mergeLab = createRoute({
@@ -59,11 +68,13 @@ const history = createRoute({
 const local = createRoute({
   getParentRoute: () => root,
   path: "/local",
+  beforeLoad: localOnly,
   component: lazyRouteComponent(() => import("@/screens/local"), "LocalScreen"),
 });
 const localRepo = createRoute({
   getParentRoute: () => root,
   path: "/local/$id",
+  beforeLoad: localOnly,
   validateSearch: (
     search: Record<string, unknown>,
   ): {

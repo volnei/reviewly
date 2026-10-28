@@ -2,6 +2,7 @@ import { isNative } from "@/effect/Tauri";
 import { useEffectQuery } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
 import { usePrefs } from "@/effect/services/Prefs";
+import { APP_STORE } from "@/lib/edition";
 import { Effect } from "effect";
 import { useMemo } from "react";
 
@@ -99,7 +100,7 @@ export function useSpecWorkspaces(): ReadonlyArray<SpecWorkspace> {
   // The browser build is Reviewly's design fixture. Give it one believable
   // workspace so this Labs screen can be exercised without a native folder
   // picker; the Tauri app always scans only repositories the user added.
-  const candidates = paths.length || isNative() ? paths : ["/fixture/reviewly"];
+  const candidates = APP_STORE ? [] : paths.length || isNative() ? paths : ["/fixture/reviewly"];
   const query = useEffectQuery(
     ["openspec-workspaces", candidates],
     Effect.forEach(

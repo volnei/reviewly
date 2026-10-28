@@ -3873,6 +3873,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "reqwest 0.12.28",
+ "reviewly-macos-private-api",
  "serde",
  "serde_json",
  "tauri",
@@ -3896,6 +3897,13 @@ dependencies = [
  "url",
  "urlencoding",
  "window-vibrancy",
+]
+
+[[package]]
+name = "reviewly-macos-private-api"
+version = "0.1.0"
+dependencies = [
+ "tauri",
 ]
 
 [[package]]

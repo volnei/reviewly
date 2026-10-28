@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "bun run build:appstore"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["main-capability", "chat-capability"]
+    }
+  },
+  "bundle": {
+    "targets": ["app"],
+    "createUpdaterArtifacts": false,
+    "category": "DeveloperTool",
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "Apple Distribution",
+      "entitlements": "./entitlements/appstore.entitlements",
+      "files": {
+        "embedded.provisionprofile": "./entitlements/appstore.provisionprofile"
+      }
+    }
+  },
+  "plugins": {
+    "updater": null
+  }
+}

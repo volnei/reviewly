@@ -12,6 +12,7 @@ import { Git } from "@/effect/services/Git";
 import type { Ranked } from "@/effect/services/Triage";
 import { useLocalClone } from "@/features/pr/clone";
 import { toLocalId } from "@/lib/local-id";
+import { APP_STORE } from "@/lib/edition";
 import { safeOpenUrl } from "@/lib/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { Effect } from "effect";
@@ -85,7 +86,8 @@ function AdvisoryPeek({ item }: { item: Ranked }) {
     { enabled: !!clone, refetchInterval: 5000, retry: false },
   );
   const [base, setBase] = useState<string | null>(null);
-  const canFix = !!item.patchedVersion && !!item.packageName;
+  // The fix runs an AI CLI in a local clone, out of reach of the App Store sandbox.
+  const canFix = !APP_STORE && !!item.patchedVersion && !!item.packageName;
   const changedFiles = status.data
     ? new Set([...status.data.staged, ...status.data.unstaged].map((file) => file.path)).size
     : 0;
