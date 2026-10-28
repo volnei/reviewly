@@ -257,25 +257,6 @@ pub fn run() {
         .setup(|app| {
             app.manage(AppState::new());
 
-            #[cfg(target_os = "macos")]
-            {
-                use window_vibrancy::{
-                    apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState,
-                };
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Err(e) = apply_vibrancy(
-                        &window,
-                        NSVisualEffectMaterial::HudWindow,
-                        Some(NSVisualEffectState::FollowsWindowActiveState),
-                        None,
-                    ) {
-                        tracing::warn!("apply_vibrancy failed: {e:?}");
-                    } else {
-                        tracing::info!("vibrancy applied (HudWindow material)");
-                    }
-                }
-            }
-
             #[cfg(target_os = "windows")]
             {
                 use window_vibrancy::apply_mica;
