@@ -1,0 +1,68 @@
+name: homebrew
+
+# Bumps the Reviewly cask in volnei/homebrew-tap whenever a release is
+# PUBLISHED (release.yml only drafts it, and a draft's assets 404 for brew).
+# Can also be run by hand from the Actions tab for an already-published tag.
+#
+# Pushes with the write-enabled deploy key of volnei/homebrew-tap, stored here
+# as the HOMEBREW_TAP_DEPLOY_KEY secret. Inert (skips) until that exists.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag to put in the cask (e.g. v1.0.5)."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump-cask:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      HAS_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }}
+    steps:
+      - name: Check deploy key
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "HOMEBREW_TAP_DEPLOY_KEY not set — skipping cask bump."
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          repository: volnei/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+
+      - name: Update version & sha256
+        if: env.HAS_KEY == 'true'
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          url="https://github.com/${{ github.repository }}/releases/download/$TAG/Reviewly-$VER-macos.dmg"
+          curl -fsSL --retry 5 --retry-delay 5 -o "$RUNNER_TEMP/reviewly.dmg" "$url"
+          sha=$(sha256sum "$RUNNER_TEMP/reviewly.dmg" | cut -d' ' -f1)
+          sed -i -E \
+            -e "s/^  version \".*\"/  version \"$VER\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" \
+            Casks/reviewly.rb
+          grep -q "version \"$VER\"" Casks/reviewly.rb && grep -q "sha256 \"$sha\"" Casks/reviewly.rb \
+            || { echo "::error::cask was not updated"; cat Casks/reviewly.rb; exit 1; }
+          echo "reviewly $VER  sha256 $sha"
+
+      - name: Commit & push
+        if: env.HAS_KEY == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Cask already at ${TAG#v} — nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "reviewly ${TAG#v}"
+          git push
