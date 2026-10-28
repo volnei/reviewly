@@ -152,7 +152,7 @@ fn toggle_panel(app: &AppHandle, position: PhysicalPosition<f64>) {
     let _ = panel.set_focus();
 }
 
-fn bring_to_front(app: &AppHandle) {
+pub(crate) fn bring_to_front(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

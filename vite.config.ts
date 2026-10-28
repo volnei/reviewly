@@ -26,11 +26,12 @@ export default defineConfig(async () => ({
           if (/react-markdown|remark|rehype|micromark|mdast|hast|unist|unified/.test(id))
             return "markdown";
           if (/refractor|prismjs|highlight\.js/.test(id)) return "prism";
-          if (/@tanstack/.test(id)) return "tanstack";
           if (/node_modules\/effect\//.test(id)) return "effect";
-          if (/node_modules\/@base-ui\//.test(id)) return "react";
-          if (/node_modules\/lucide-react\//.test(id)) return "icons";
-          if (/react-dom|react\/|scheduler/.test(id)) return "react";
+          // React, TanStack and Base UI form one runtime graph. Splitting them
+          // into separate manual chunks creates a production-only circular
+          // dependency where TanStack executes before React is initialized.
+          if (/@tanstack|@base-ui|lucide-react|react-dom|react\/|scheduler/.test(id))
+            return "react";
         },
       },
     },

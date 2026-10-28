@@ -177,7 +177,12 @@ pub fn run() {
         },
     ];
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // Keep this plugin first so a second launch can only activate the
+        // already-running app instead of creating another tray process.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::bring_to_front(app);
+        }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -187,7 +192,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .arg("--reviewly-autostart")
+                .build(),
+        )
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:reviewly.db", migrations)
@@ -269,9 +278,10 @@ pub fn run() {
                 tracing::warn!("tray build failed: {e}");
             }
 
-            // Start hidden in the tray when the user opted in (read from a flag
-            // file written by `set_start_in_tray`, before the frontend loads).
-            if commands::app::should_start_in_tray(app.handle()) {
+            // Only a login launch may start hidden. A normal Dock/Finder launch
+            // must always show Reviewly, even when "start in tray" is enabled.
+            let launched_by_autostart = std::env::args().any(|arg| arg == "--reviewly-autostart");
+            if launched_by_autostart && commands::app::should_start_in_tray(app.handle()) {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.hide();
                 }
@@ -432,6 +442,13 @@ pub fn run() {
             tray::tray_set_inbox_count,
             tray::tray_set_title,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = event {
+            tray::bring_to_front(app);
+        }
+    });
 }
