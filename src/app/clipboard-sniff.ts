@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { toast } from "@/app/toast";
 import { useAuth } from "@/effect/services/Auth";
-import { isNative } from "@/effect/Tauri";
+import { hasBackend } from "@/effect/Tauri";
 import { parsePrRef } from "@/lib/pr-ref";
 
 /**
@@ -15,7 +15,7 @@ export function useClipboardSniff() {
   const navigate = useNavigate();
   const auth = useAuth();
   useEffect(() => {
-    if (!isNative()) return;
+    if (!hasBackend()) return;
     let last: string | null = null;
     let stopped = false;
     const offered = new Set<string>();

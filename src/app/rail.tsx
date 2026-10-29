@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "@/components/ui/menu";
-import { isNative } from "@/effect/Tauri";
+import { hasBackend } from "@/effect/Tauri";
 import { APP_STORE } from "@/lib/edition";
 import { useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
@@ -78,7 +78,7 @@ export function Rail() {
   const openPulls = useQuery({
     queryKey: ["prs", "open-count", countedRepos],
     queryFn: () => countOpenPrs(countedRepos),
-    enabled: isNative() && countedRepos.length > 0,
+    enabled: hasBackend() && countedRepos.length > 0,
     staleTime: 60_000,
   });
   const views = useSavedViews();

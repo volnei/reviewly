@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import { isNative } from "../Tauri";
+import { hasBackend } from "../Tauri";
 import type { AppError } from "../errors";
 import { TauriError } from "../errors";
 import type * as S from "../schema";
@@ -264,7 +264,7 @@ export const InboxLive = Layer.effect(
             },
             { concurrency: 4 },
           ),
-          isNative()
+          hasBackend()
             ? Effect.succeed(null)
             : gh
                 .dashboard(qualifier)

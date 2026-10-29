@@ -52,6 +52,7 @@ import { GitHub } from "@/effect/services/GitHub";
 import { type Prefs, prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
+import { isDemo, setDemo } from "@/lib/demo";
 import { APP_STORE } from "@/lib/edition";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -677,19 +678,27 @@ export function SettingsScreen() {
                       @{auth.viewer.login}
                       <ActivityChips login={auth.viewer.login} />
                     </p>
-                    <p className="mt-0.5 font-mono text-[11.5px] text-ink-3">{auth.host}</p>
+                    <p className="mt-0.5 font-mono text-[11.5px] text-ink-3">
+                      {isDemo() ? "sample data · not connected to GitHub" : auth.host}
+                    </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      run(Effect.flatMap(Auth, (a) => a.signOut)).catch((e) =>
-                        toast.fail("Couldn’t sign out", e),
-                      )
-                    }
-                  >
-                    Sign out
-                  </Button>
+                  {isDemo() ? (
+                    <Button variant="outline" size="sm" onClick={() => setDemo(false)}>
+                      Exit sample data
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        run(Effect.flatMap(Auth, (a) => a.signOut)).catch((e) =>
+                          toast.fail("Couldn’t sign out", e),
+                        )
+                      }
+                    >
+                      Sign out
+                    </Button>
+                  )}
                 </div>
               ) : null}
             </Section>

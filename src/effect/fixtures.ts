@@ -20,10 +20,10 @@ const user = (login: string, id: number) => ({
 const av = (login: string) => user(login, login.length * 1001).avatar_url;
 
 const viewer = {
-  login: "volnei",
-  avatar_url: av("volnei"),
-  name: "Volnei Munhoz",
-  html_url: "https://github.com/volnei",
+  login: "sam",
+  avatar_url: av("sam"),
+  name: "Sam Rivera",
+  html_url: "https://github.com/sam",
 };
 
 const dash = (
@@ -85,17 +85,17 @@ const incoming = [
   }),
 ];
 const mine = [
-  dash("acme/ledger-api", 2179, "Refactor fee calculation into a policy table", "volnei", {
+  dash("acme/ledger-api", 2179, "Refactor fee calculation into a policy table", "sam", {
     reviewDecision: "CHANGES_REQUESTED",
     age: 1,
     unresolved: 2,
   }),
-  dash("volnei/reviewly", 88, "Guided tour regenerates after a force-push", "volnei", {
+  dash("sam/reviewly", 88, "Guided tour regenerates after a force-push", "sam", {
     reviewDecision: "APPROVED",
     age: 3,
   }),
-  dash("acme/ledger-api", 2044, "Drop the legacy settlements endpoint", "volnei", { age: 3 }),
-  dash("acme/web", 7702, "Remove the legacy invoice PDF path", "volnei", {
+  dash("acme/ledger-api", 2044, "Drop the legacy settlements endpoint", "sam", { age: 3 }),
+  dash("acme/web", 7702, "Remove the legacy invoice PDF path", "sam", {
     isDraft: true,
     age: 5,
   }),
@@ -161,13 +161,13 @@ const notifications = [
     last_read_at: null,
     subject: {
       title: "Guided tour regenerates after a force-push",
-      url: "https://api.github.com/repos/volnei/reviewly/pulls/88",
+      url: "https://api.github.com/repos/sam/reviewly/pulls/88",
       latest_comment_url: null,
       type: "PullRequest",
     },
     repository: {
-      full_name: "volnei/reviewly",
-      html_url: "https://github.com/volnei/reviewly",
+      full_name: "sam/reviewly",
+      html_url: "https://github.com/sam/reviewly",
     },
   },
 ];
@@ -200,7 +200,7 @@ const alerts: Record<string, unknown[]> = {
 
 const marina = user("marina", 1001);
 const pedro = user("pedro", 1002);
-const me = user("volnei", 1000);
+const me = user("sam", 1000);
 
 const pull = {
   id: 2184 * 7,
@@ -677,7 +677,7 @@ type Handler = (args: Record<string, unknown>) => unknown;
 
 /** One clone on this machine, for the Local pages: a branch ahead of main with work in progress. */
 const localTree = {
-  branch: "volnei/retry-metrics",
+  branch: "sam/retry-metrics",
   upstream: true,
   ahead: 2,
   behind: 0,
@@ -700,14 +700,14 @@ const localLog = [
   {
     hash: "9c1f2e4a1b",
     short: "9c1f2e4",
-    author: "volnei",
+    author: "sam",
     date: "2026-10-05T18:10:00Z",
     subject: "metrics: count retries per intent",
   },
   {
     hash: "7b3a9d0c2e",
     short: "7b3a9d0",
-    author: "volnei",
+    author: "sam",
     date: "2026-10-05T16:42:00Z",
     subject: "retry: expose the attempt number",
   },
@@ -978,7 +978,7 @@ const commands: Record<string, Handler> = {
     {
       path: "src/metrics/retry.ts",
       last_short: "c3d4e5f",
-      last_author: "volnei",
+      last_author: "sam",
       last_time: Math.floor((Date.now() - 30 * day) / 1000),
       last_subject: "chore: retry metrics",
       churn: 2,
@@ -1281,7 +1281,7 @@ const commands: Record<string, Handler> = {
     localLog.unshift({
       hash: Math.random().toString(16).slice(2, 12),
       short: "new1234",
-      author: "volnei",
+      author: "sam",
       date: new Date().toISOString(),
       subject: String(message).split("\n")[0],
     });
@@ -1415,7 +1415,7 @@ const commands: Record<string, Handler> = {
     const r = {
       id: nextReaction++,
       content: String(content),
-      user: { login: "volnei" },
+      user: { login: "sam" },
     };
     reactions.set(num(id), [...(reactions.get(num(id)) ?? []), r]);
     return r;
@@ -1494,7 +1494,7 @@ const commands: Record<string, Handler> = {
     incoming,
     mine,
   }),
-  gh_list_repos: () => ["acme/ledger-api", "acme/web", "acme/infra", "volnei/reviewly"],
+  gh_list_repos: () => ["acme/ledger-api", "acme/web", "acme/infra", "sam/reviewly"],
   gh_get_pull: () => ({ ...pull, ...pullPatch }),
   gh_list_pull_files: () => files,
   gh_list_review_comments: () => reviewComments,

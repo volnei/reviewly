@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { storageKey } from "@/lib/demo";
+
 /**
  * A tiny external store persisted on the machine: React subscribes without a
  * provider, effects read it directly, and one bad field never takes the rest
@@ -12,7 +14,8 @@ export interface Store<T> {
   readonly subscribe: (l: () => void) => () => void;
 }
 
-export function persistedStore<T>(key: string, fallback: T, decode: (raw: unknown) => T): Store<T> {
+export function persistedStore<T>(name: string, fallback: T, decode: (raw: unknown) => T): Store<T> {
+  const key = storageKey(name);
   const listeners = new Set<() => void>();
   let current: T = fallback;
   if (typeof localStorage !== "undefined") {

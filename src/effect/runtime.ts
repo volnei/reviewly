@@ -1,6 +1,6 @@
 import { type QueryKey, type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import { type Effect, Layer, ManagedRuntime } from "effect";
-import { type Tauri, TauriLive, isNative } from "./Tauri";
+import { type Tauri, TauriLive, hasBackend } from "./Tauri";
 import { TauriFixtures } from "./fixtures";
 import { type Ai, AiLive } from "./services/Ai";
 import { type AppSettings, AppSettingsLive } from "./services/AppSettings";
@@ -14,9 +14,9 @@ import { type Triage, TriageRules } from "./services/Triage";
 /**
  * The application layer. Inside the Tauri shell the Rust side answers; in a
  * plain browser (`bun run dev`) the fixtures do, so every screen can be built
- * and looked at without GitHub.
+ * and looked at without GitHub — and in the app too, in sample-data mode.
  */
-const TauriLayer = isNative() ? TauriLive : TauriFixtures;
+const TauriLayer = hasBackend() ? TauriLive : TauriFixtures;
 
 const AppLayer = Layer.mergeAll(
   TauriLayer,

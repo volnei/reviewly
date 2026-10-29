@@ -13,6 +13,7 @@ import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
 import { prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { safeOpenUrl } from "@/lib/ui";
+import { setDemo } from "@/lib/demo";
 import { APP_STORE } from "@/lib/edition";
 import { cn } from "@/lib/utils";
 
@@ -213,6 +214,15 @@ function Connect() {
         </p>
         )}
       </div>
+      <Button
+        variant="ghost"
+        size="default"
+        className="mt-3 w-full text-ink-2"
+        onClick={() => setDemo(true)}
+        disabled={busy !== null}
+      >
+        Try with sample data
+      </Button>
       {busy === "cli" ? (
         <p className="mt-3 text-[12.5px] text-ink-3">Asking gh for the token…</p>
       ) : null}

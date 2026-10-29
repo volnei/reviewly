@@ -1,4 +1,4 @@
-import { isNative } from "@/effect/Tauri";
+import { hasBackend } from "@/effect/Tauri";
 import { useEffectQuery } from "@/effect/runtime";
 import type { PullStack } from "@/effect/schema";
 import { GitHub, splitRepo } from "@/effect/services/GitHub";
@@ -104,7 +104,7 @@ export function reconcileStackItems(
  * the rows then carry "2/4" and the filter can keep only stacked ones.
  */
 export function useWithStacks(items: ReadonlyArray<Ranked>): ReadonlyArray<Ranked> {
-  const native = isNative();
+  const native = hasBackend();
   const repos = useMemo(
     () => [...new Set(items.filter((i) => i.kind === "pr" && i.number).map((i) => i.repo))].sort(),
     [items],

@@ -1,7 +1,7 @@
 import { readRepoPrs } from "@/lib/prs-db";
 import { Context, Effect, Layer, Schema } from "effect";
 import { Tauri } from "../Tauri";
-import { isNative } from "../Tauri";
+import { hasBackend } from "../Tauri";
 import { TauriError } from "../errors";
 import type { AppError } from "../errors";
 import * as S from "../schema";
@@ -219,7 +219,7 @@ export const GitHubLive = Layer.effect(
       activity: (login) => t.invoke("gh_activity", { login }, S.Activity),
       search: (query) => t.invoke("gh_search", { query }, Schema.Array(S.PullSummary)),
       repoPulls: (owner, repo, state = "open") =>
-        isNative()
+        hasBackend()
           ? Effect.tryPromise({
               try: () => readRepoPrs(`${owner}/${repo}`, state),
               catch: (error) => new TauriError({ cmd: "read_local_prs", message: String(error) }),

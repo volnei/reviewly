@@ -1,6 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { Context, Effect, Layer, Queue, Schema, Stream } from "effect";
+import { isDemo } from "@/lib/demo";
 import { DecodeError, TauriError } from "./errors";
 
 /**
@@ -31,6 +32,9 @@ export class Tauri extends Context.Service<Tauri, TauriShape>()("reviewly/Tauri"
 
 export const isNative = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** The Rust side answers for real: native, and not showing the sample data. */
+export const hasBackend = (): boolean => isNative() && !isDemo();
 
 /** The real thing: `@tauri-apps/api` behind Effect. */
 export const TauriLive = Layer.effect(

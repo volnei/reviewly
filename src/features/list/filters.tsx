@@ -13,6 +13,7 @@ import {
 import type { Verdict } from "@/effect/services/Prefs";
 import type { Ranked } from "@/effect/services/Triage";
 import { persistedStore, useStore } from "@/effect/store";
+import { storageKey } from "@/lib/demo";
 import { cn } from "@/lib/utils";
 import {
   Check,
@@ -84,7 +85,7 @@ const storeOf = (key: string) => {
   if (!s) {
     let state = EMPTY_FILTER;
     try {
-      const raw = localStorage.getItem(`reviewly.v2.filter.${key}`);
+      const raw = localStorage.getItem(storageKey(`reviewly.v2.filter.${key}`));
       if (raw) state = deserializeFilter(JSON.parse(raw));
     } catch {
       /* Invalid or unavailable storage starts with an empty filter. */
@@ -257,7 +258,7 @@ export function applyView(view: SavedView) {
 function persistFilter(key: string, filter: ListFilter) {
   try {
     localStorage.setItem(
-      `reviewly.v2.filter.${key}`,
+      storageKey(`reviewly.v2.filter.${key}`),
       JSON.stringify(serializeFilter(filter)),
     );
   } catch {
