@@ -100,6 +100,7 @@ pub struct FastLanePolicy {
     pub exclude_conflicts: bool,
     pub exclude_changes_requested: bool,
     pub exclude_open_threads: bool,
+    pub blocked_paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -337,10 +338,12 @@ async fn teams_api_request(
 
 #[tauri::command]
 pub async fn teams_fast_lane_policy(organization_id: String) -> AppResult<FastLanePolicy> {
-    Ok(teams_api_request(&organization_id, "fast-lane", reqwest::Method::GET, None)
-        .await?
-        .json()
-        .await?)
+    Ok(
+        teams_api_request(&organization_id, "fast-lane", reqwest::Method::GET, None)
+            .await?
+            .json()
+            .await?,
+    )
 }
 
 #[tauri::command]

@@ -6,7 +6,7 @@ import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
 import { IconButton } from "@/components/icon-button";
 import { isNative } from "@/effect/Tauri";
 import { APP_STORE } from "@/lib/edition";
-import { run } from "@/effect/runtime";
+import { run, useEffectQuery } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
 import { GitHub } from "@/effect/services/GitHub";
 import { Inbox, type InboxData } from "@/effect/services/Inbox";
@@ -208,6 +208,56 @@ function synced(at: number): string {
   return a === "now" ? "just now" : `${a} ago`;
 }
 
+function useFastLaneChangedPaths(
+  items: ReadonlyArray<Ranked>,
+  policies: ReadonlyMap<string, import("@/effect/schema").FastLanePolicy>,
+) {
+  const candidates = useMemo(
+    () =>
+      items.filter((item) => {
+        const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+        return (
+          policy?.blockedPaths.length &&
+          item.owner &&
+          item.repoName &&
+          item.number &&
+          isFastLane(item, { ...policy, blockedPaths: [] })
+        );
+      }),
+    [items, policies],
+  );
+  const signature = candidates.map((item) => item.id).sort().join(",");
+
+  return useEffectQuery(
+    ["teams", "fast-lane", "changed-paths", signature],
+    Effect.forEach(
+      candidates,
+      (item) =>
+        Effect.flatMap(GitHub, (github) =>
+          github.files({
+            owner: item.owner ?? "",
+            repo: item.repoName ?? "",
+            number: item.number ?? 0,
+          }),
+        ).pipe(
+          Effect.map(
+            (files) => [item.id, files.map((file) => file.filename)] as const,
+          ),
+          Effect.orElseSucceed(() => [item.id, null] as const),
+        ),
+      { concurrency: 3 },
+    ).pipe(
+      Effect.map(
+        (entries) =>
+          new Map<string, ReadonlyArray<string> | null>(
+            entries as ReadonlyArray<readonly [string, ReadonlyArray<string> | null]>,
+          ),
+      ),
+    ),
+    { enabled: candidates.length > 0, staleTime: 30_000 },
+  );
+}
+
 export function InboxScreen() {
   const workspace = useWorkspace();
   const fastLanePolicies = useFastLanePolicies();
@@ -253,17 +303,25 @@ export function InboxScreen() {
         : undefined,
     [inbox.data, all],
   );
+  const enabledFastLanePolicies = useMemo(
+    () =>
+      new Map(
+        (fastLanePolicies.data ?? [])
+          .filter(({ policy }) => policy.enabled)
+          .map(({ organization, policy }) => [organization.login.toLowerCase(), policy] as const),
+      ),
+    [fastLanePolicies.data],
+  );
+  const fastLanePaths = useFastLaneChangedPaths(
+    stackVisible ? [...stackVisible.turn, ...stackVisible.unsorted] : [],
+    enabledFastLanePolicies,
+  );
   const sections = useMemo(() => {
-    const enabled = new Map(
-      (fastLanePolicies.data ?? [])
-        .filter(({ policy }) => policy.enabled)
-        .map(({ organization, policy }) => [organization.login.toLowerCase(), policy] as const),
-    );
-    return toSections(stackVisible, enabled).map((s) => ({
+    return toSections(stackVisible, enabledFastLanePolicies, fastLanePaths.data).map((s) => ({
       ...s,
       items: applyFilter(s.items, filter),
     }));
-  }, [stackVisible, filter, fastLanePolicies.data]);
+  }, [stackVisible, filter, enabledFastLanePolicies, fastLanePaths.data]);
 
   return (
     <div
@@ -339,6 +397,7 @@ export function InboxScreen() {
 function toSections(
   data: InboxData | undefined,
   policies: ReadonlyMap<string, import("@/effect/schema").FastLanePolicy>,
+  changedPaths?: ReadonlyMap<string, ReadonlyArray<string> | null>,
 ): Section[] {
   if (!data) return [];
   const { turn, unsorted, later } = data;
@@ -346,7 +405,7 @@ function toSections(
   const fastLaneEnabled = policies.size > 0;
   const fastLane = active.filter((item) => {
     const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
-    return policy ? isFastLane(item, policy) : false;
+    return policy ? isFastLane(item, policy, changedPaths?.get(item.id)) : false;
   });
   const fastLaneIds = new Set(fastLane.map((item) => item.id));
   const waiting = later.filter((i) => i.verdict === "waiting").length;

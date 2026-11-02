@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Ranked } from "../src/effect/services/Triage";
-import { fastLaneReason, isFastLane } from "../src/features/fast-lane";
+import {
+  fastLaneReason,
+  isFastLane,
+  matchesFastLanePath,
+} from "../src/features/fast-lane";
 
 const policy = {
   enabled: true,
@@ -12,6 +16,7 @@ const policy = {
   excludeConflicts: true,
   excludeChangesRequested: true,
   excludeOpenThreads: true,
+  blockedPaths: [],
 } as const;
 
 const pr = (patch: Partial<Ranked> = {}): Ranked => ({
@@ -66,5 +71,25 @@ describe("Teams Fast lane", () => {
     expect(isFastLane(pr(), { ...policy, includeDependabot: false })).toBe(false);
     expect(isFastLane(pr({ ci: "failure" }), { ...policy, requireGreenCi: false })).toBe(true);
     expect(isFastLane(pr({ draft: true }), { ...policy, excludeDrafts: false })).toBe(true);
+  });
+
+  test("keeps PRs touching blocked paths out of Fast lane", () => {
+    const guarded = { ...policy, blockedPaths: ["src/auth/**", "db/migrations/**", "**/*.sql"] };
+    expect(isFastLane(pr(), guarded, ["src/ui/button.tsx"])).toBe(true);
+    expect(isFastLane(pr(), guarded, ["src/auth/session.ts"])).toBe(false);
+    expect(isFastLane(pr(), guarded, ["db/schema.sql"])).toBe(false);
+  });
+
+  test("fails closed when changed files cannot be verified", () => {
+    expect(isFastLane(pr(), { ...policy, blockedPaths: ["src/auth/**"] })).toBe(false);
+    expect(isFastLane(pr(), { ...policy, blockedPaths: ["src/auth/**"] }, null)).toBe(false);
+  });
+
+  test("supports repository-relative path globs", () => {
+    expect(matchesFastLanePath("src/auth/session.ts", "src/auth/**")).toBe(true);
+    expect(matchesFastLanePath("src/auth/nested/token.ts", "src/auth/**")).toBe(true);
+    expect(matchesFastLanePath("schema.sql", "**/*.sql")).toBe(true);
+    expect(matchesFastLanePath("db/schema.sql", "**/*.sql")).toBe(true);
+    expect(matchesFastLanePath("src/auth.ts", "src/auth/**")).toBe(false);
   });
 });

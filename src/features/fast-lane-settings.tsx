@@ -6,12 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { run } from "@/effect/runtime";
 import type { FastLanePolicy } from "@/effect/schema";
 import { Teams } from "@/effect/services/Teams";
 import { Effect } from "effect";
 
-type BooleanPolicyKey = Exclude<keyof FastLanePolicy, "enabled">;
+type BooleanPolicyKey = Exclude<keyof FastLanePolicy, "enabled" | "blockedPaths">;
+
+const normalizePaths = (value: ReadonlyArray<string>): string[] => [
+  ...new Set(value.map((path) => path.trim()).filter(Boolean)),
+];
 
 const OPTIONS: ReadonlyArray<{
   key: BooleanPolicyKey;
@@ -74,9 +79,10 @@ function WorkspacePolicy({
     if (!canEdit || !dirty || saving) return;
     setSaving(true);
     try {
+      const next = { ...draft, blockedPaths: normalizePaths(draft.blockedPaths) };
       await run(
         Effect.flatMap(Teams, (service) =>
-          service.updateFastLanePolicy(organization.id, draft),
+          service.updateFastLanePolicy(organization.id, next),
         ),
       );
       await refresh();
@@ -134,6 +140,28 @@ function WorkspacePolicy({
                 </span>
               </label>
             ))}
+          </div>
+          <div className="mt-5 border-t border-hair pt-4">
+            <label className="block" htmlFor={`fast-lane-paths-${organization.id}`}>
+              <span className="block text-[12px] font-medium text-ink">Blocked paths</span>
+              <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">
+                One glob per line. A matching file keeps the PR in Review requested.
+              </span>
+            </label>
+            <Textarea
+              id={`fast-lane-paths-${organization.id}`}
+              value={draft.blockedPaths.join("\n")}
+              disabled={!canEdit || saving}
+              spellCheck={false}
+              placeholder={"src/auth/**\ndb/migrations/**\n**/*.sql\n.github/workflows/**"}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  blockedPaths: event.target.value.split("\n"),
+                }))
+              }
+              className="mt-3 [&_textarea]:min-h-28 [&_textarea]:font-mono [&_textarea]:text-[12px] [&_textarea]:leading-5"
+            />
           </div>
           {canEdit ? (
             <div className="mt-5 flex items-center justify-between border-t border-hair pt-4">

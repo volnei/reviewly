@@ -773,6 +773,7 @@ let fixtureFastLanePolicy = {
   excludeConflicts: true,
   excludeChangesRequested: true,
   excludeOpenThreads: true,
+  blockedPaths: ["src/auth/**", "db/migrations/**", "**/*.sql"],
 };
 const fixtureTeamPull = (
   id: string,

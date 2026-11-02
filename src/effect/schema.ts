@@ -122,6 +122,7 @@ export const FastLanePolicy = S.Struct({
   excludeConflicts: S.Boolean,
   excludeChangesRequested: S.Boolean,
   excludeOpenThreads: S.Boolean,
+  blockedPaths: S.Array(S.String),
 });
 export type FastLanePolicy = typeof FastLanePolicy.Type;
 
