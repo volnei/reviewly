@@ -41,14 +41,13 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .hero-source { display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; color: var(--muted); font-size: 15px; }
 .hero-download { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .hero-download > a:last-child { color: var(--muted); font-size: 14px; }
-.product-window { overflow: hidden; margin: 0; border: 1px solid #34322f; /* taste-skill-ignore */ border-radius: 12px 12px 0 0; background: #1d1c1a; box-shadow: 0 32px 90px rgba(0,0,0,.32); /* taste-skill-ignore */ }
+.product-window { position: relative; overflow: hidden; margin: 0; border: 1px solid #34322f; /* taste-skill-ignore */ border-radius: 12px 12px 0 0; background: #1d1c1a; box-shadow: 0 32px 90px rgba(0,0,0,.32); /* taste-skill-ignore */ }
 .hero-window { width: min(1380px, 100%); margin: 92px auto 0; }
-.window-bar { position: relative; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #252320; }
-.window-bar > span { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); /* taste-skill-ignore */ }
-.window-bar .window-close { background: #ff5f57; }
-.window-bar .window-minimize { background: #febc2e; }
-.window-bar .window-expand { background: #28c840; }
-.window-bar small { position: absolute; inset: 0; display: grid; place-items: center; color: #9b9790; font-size: 13px; }
+.window-controls { position: absolute; z-index: 2; top: 14px; left: 17px; display: flex; align-items: center; gap: 8px; }
+.window-controls > span { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); /* taste-skill-ignore */ }
+.window-controls .window-close { background: #ff5f57; }
+.window-controls .window-minimize { background: #febc2e; }
+.window-controls .window-expand { background: #28c840; }
 .product-window img { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: contain; }
 
 .manifesto, .showcase, .workflow, .teams, .install, .pricing, .faq { max-width: 1484px; margin: 0 auto; padding: 180px var(--margin); }
@@ -153,8 +152,8 @@ footer a:hover { color: var(--ink); }
   .hero { padding: 148px var(--margin) 0; }
   .hero-support { margin-top: 32px; gap: 28px; }
   .hero-window { width: calc(100% + 20px); margin: 64px -10px 0; }
-  .window-bar { height: 34px; }
-  .window-bar small { display: none; }
+  .window-controls { top: 5px; left: 7px; gap: 4px; }
+  .window-controls > span { width: 7px; height: 7px; }
   .manifesto, .showcase, .workflow, .teams, .install, .pricing, .faq { padding-block: 92px; }
   .principles { grid-template-columns: 1fr; margin-top: 72px; }
   .principles article { display: block; }
