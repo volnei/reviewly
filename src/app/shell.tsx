@@ -106,6 +106,7 @@ function MainShell() {
 const SCREEN_TITLES: Record<string, string> = {
   "/": "Home",
   "/inbox": "Inbox",
+  "/fast-lane": "Fast lane",
   "/prs": "Pull requests",
   "/team": "Team queue",
   "/mentions": "Mentions",
@@ -313,6 +314,7 @@ function useGlobalKeys() {
     const GO: Record<string, string> = {
       h: "/",
       i: "/inbox",
+      f: "/fast-lane",
       p: "/prs",
       q: "/team",
       m: "/mentions",

@@ -15,11 +15,13 @@ import {
   Pencil,
   ScanSearch,
   Settings2,
+  TrainFrontTunnel,
   Trash2,
   UsersRound,
 } from "lucide-react";
 import { useState } from "react";
 
+import { useFastLaneItems } from "@/app/fast-lane-items";
 import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import {
   AlertDialog,
@@ -76,6 +78,7 @@ export function Rail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const inbox = useWorkspaceInbox();
+  const fastLane = useFastLaneItems();
   const counts = inbox.data?.counts;
   const watched = usePrefs((p) => p.watchedRepos);
   const countedRepos = workspace ? [workspace] : watched;
@@ -95,6 +98,17 @@ export function Rail() {
   );
   const items: Item[] = [
     { to: "/inbox", label: "Inbox", key: "⌘2", icon: Inbox, count: counts?.inbox },
+    ...(teams.signedIn && teams.organizations.length
+      ? [
+          {
+            to: "/fast-lane",
+            label: "Fast lane",
+            key: "G F",
+            icon: TrainFrontTunnel,
+            count: fastLane.items.length,
+          },
+        ]
+      : []),
     {
       to: "/prs",
       label: "Pull requests",

@@ -29,6 +29,11 @@ const inbox = createRoute({
   path: "/inbox",
   component: InboxScreen,
 });
+const fastLane = createRoute({
+  getParentRoute: () => root,
+  path: "/fast-lane",
+  component: lazyRouteComponent(() => import("@/screens/fast-lane"), "FastLaneScreen"),
+});
 const prs = createRoute({
   getParentRoute: () => root,
   path: "/prs",
@@ -126,6 +131,7 @@ const chat = createRoute({
 const routeTree = root.addChildren([
   home,
   inbox,
+  fastLane,
   prs,
   team,
   mentions,
@@ -172,9 +178,13 @@ declare module "@tanstack/react-router" {
 }
 
 export type ListView = "inbox" | "prs" | "mentions" | "health" | "local";
-export const VIEW_PATHS: Record<ListView | "home" | "history" | "settings" | "team", string> = {
+export const VIEW_PATHS: Record<
+  ListView | "home" | "history" | "settings" | "team" | "fastLane",
+  string
+> = {
   home: "/",
   inbox: "/inbox",
+  fastLane: "/fast-lane",
   prs: "/prs",
   team: "/team",
   mentions: "/mentions",
