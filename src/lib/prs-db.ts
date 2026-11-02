@@ -177,24 +177,24 @@ export async function countOpenPrs(repos: ReadonlyArray<string>): Promise<number
   return Number(rows[0]?.count ?? 0);
 }
 
-/** Stack identities whose foundation (layer 1) is still open in the complete mirror. */
-export async function readOpenStackFoundations(
+/** Per stack, the lowest position closed without merging, from the complete mirror. */
+export async function readStackCutoffs(
   repos: ReadonlyArray<string>,
-): Promise<ReadonlySet<string>> {
-  if (!repos.length) return new Set();
+): Promise<ReadonlyMap<string, number>> {
+  if (!repos.length) return new Map();
   const placeholders = repos.map((_, index) => `$${index + 1}`).join(",");
   const rows = await (
     await db()
-  ).select<Array<{ repo: string; stack_number: number }>>(
-    `SELECT DISTINCT repo, stack_number FROM prs
+  ).select<Array<{ repo: string; stack_number: number; cutoff: number }>>(
+    `SELECT repo, stack_number, MIN(stack_position) AS cutoff FROM prs
       WHERE repo IN (${placeholders})
         AND stack_number IS NOT NULL
-        AND stack_position = 1
-        AND state = 'open'
-        AND merged_at IS NULL`,
+        AND state = 'closed'
+        AND merged_at IS NULL
+      GROUP BY repo, stack_number`,
     [...repos],
   );
-  return new Set(rows.map((row) => `${row.repo}#${row.stack_number}`));
+  return new Map(rows.map((row) => [`${row.repo}#${row.stack_number}`, Number(row.cutoff)]));
 }
 
 export async function upsertPrs(repo: string, pulls: ReadonlyArray<S.PullSummary>): Promise<void> {
@@ -361,7 +361,7 @@ export async function applyRepoStacks(
     await database.execute(
       `UPDATE prs
       SET stack_number = NULL, stack_position = NULL, stack_size = NULL, stack_base = NULL
-      WHERE repo = $1 AND state = 'open' AND merged_at IS NULL AND stack_number IS NOT NULL`,
+      WHERE repo = $1 AND stack_number IS NOT NULL`,
       [repo],
     );
     const rows = stacks.flatMap((stack) =>

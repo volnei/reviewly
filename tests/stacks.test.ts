@@ -24,40 +24,70 @@ const stack = (number: number, position: number, size = 3) => ({
   size,
   base: "main",
 });
-const nativeStack = (foundationState: string): PullStack => ({
+type Layer = { state: string; merged?: boolean };
+const open: Layer = { state: "open" };
+const closed: Layer = { state: "closed" };
+const merged: Layer = { state: "closed", merged: true };
+const nativeStack = (layers: ReadonlyArray<Layer>): PullStack => ({
   number: 42,
   base: { ref: "main" },
   open: true,
-  pull_requests: [
-    { number: 1, state: foundationState, head: { ref: "one" } },
-    { number: 2, state: "open", head: { ref: "two" } },
-  ],
+  pull_requests: layers.map((layer, i) => ({
+    number: i + 1,
+    state: layer.state,
+    merged_at: layer.merged ? "2026-10-29T11:48:48Z" : null,
+    head: { ref: `layer-${i + 1}` },
+  })),
 });
+const repoStacks = (layers: ReadonlyArray<Layer>) => [
+  { repo: "owner/repo", stacks: [nativeStack(layers)] },
+];
 
 describe("Native stack visibility", () => {
-  test("keeps and annotates the stack while layer 1 is open", () => {
+  test("keeps and annotates the stack while every layer is open", () => {
     const items = applyNativeStacks(
       [pr("pr:owner/repo#1"), pr("pr:owner/repo#2")],
-      [{ repo: "owner/repo", stacks: [nativeStack("open")] }],
+      repoStacks([open, open]),
     );
     expect(items.map((item) => item.stack?.position)).toEqual([1, 2]);
   });
 
-  test("hides every layer when layer 1 is no longer open", () => {
+  test("hides the open layers above a layer 1 closed without merging", () => {
     const unrelated = pr("pr:owner/repo#9");
     const items = applyNativeStacks(
-      [pr("pr:owner/repo#1"), pr("pr:owner/repo#2"), unrelated],
-      [{ repo: "owner/repo", stacks: [nativeStack("closed")] }],
+      [pr("pr:owner/repo#2"), pr("pr:owner/repo#3"), unrelated],
+      repoStacks([closed, open, open]),
     );
     expect(items).toEqual([unrelated]);
   });
 
-  test("keeps a partial queue when GitHub says layer 1 is open", () => {
-    const unrelated = pr("pr:owner/repo#9");
+  test("keeps the closed layer itself for the history view", () => {
     const items = applyNativeStacks(
-      [pr("pr:owner/repo#2"), unrelated],
-      [{ repo: "owner/repo", stacks: [nativeStack("open")] }],
+      [pr("pr:owner/repo#1"), pr("pr:owner/repo#2")],
+      repoStacks([closed, open]),
     );
+    expect(items.map((item) => [item.id, item.stack?.position])).toEqual([["pr:owner/repo#1", 1]]);
+  });
+
+  test("keeps the rest of the stack when layer 1 merged", () => {
+    const items = applyNativeStacks(
+      [pr("pr:owner/repo#2"), pr("pr:owner/repo#3")],
+      repoStacks([merged, open, open]),
+    );
+    expect(items.map((item) => item.stack?.position)).toEqual([2, 3]);
+  });
+
+  test("a closed middle layer hides only what sits above it", () => {
+    const items = applyNativeStacks(
+      [pr("pr:owner/repo#1"), pr("pr:owner/repo#3"), pr("pr:owner/repo#4")],
+      repoStacks([open, closed, open, open]),
+    );
+    expect(items.map((item) => [item.id, item.stack?.position])).toEqual([["pr:owner/repo#1", 1]]);
+  });
+
+  test("keeps a partial queue when GitHub says every layer is open", () => {
+    const unrelated = pr("pr:owner/repo#9");
+    const items = applyNativeStacks([pr("pr:owner/repo#2"), unrelated], repoStacks([open, open]));
     expect(items.map((item) => item.stack?.position)).toEqual([2, undefined]);
   });
 });
@@ -78,18 +108,21 @@ describe("Persisted stack visibility", () => {
     ).toEqual([pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2)), unrelated]);
   });
 
-  test("uses the complete SQLite foundation snapshot for a partial queue", () => {
-    const dependent = pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2));
+  test("uses the complete SQLite cutoff snapshot for a partial queue", () => {
+    const below = pr("pr:owner/repo#1", "owner/repo", stack(42, 1, 3));
+    const above = pr("pr:owner/repo#3", "owner/repo", stack(42, 3, 3));
     const unrelated = pr("pr:owner/repo#9");
 
-    expect(applyPersistedStacks([dependent, unrelated], new Set(["owner/repo#42"]))).toEqual([
-      dependent,
+    const cutoffs = new Map([["owner/repo#42", 2]]);
+    expect(applyPersistedStacks([below, above, unrelated], cutoffs)).toEqual([below, unrelated]);
+    expect(applyPersistedStacks([below, above, unrelated], new Map())).toEqual([
+      below,
+      above,
       unrelated,
     ]);
-    expect(applyPersistedStacks([dependent, unrelated], new Set())).toEqual([unrelated]);
   });
 
-  test("hides the entire persisted stack when its foundation is closed", () => {
+  test("hides the open layers above a foundation closed without merging", () => {
     const foundation = {
       ...pr("pr:owner/repo#1", "owner/repo", stack(42, 1, 2)),
       state: "closed",
@@ -97,7 +130,29 @@ describe("Persisted stack visibility", () => {
     const dependent = pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2));
     const unrelated = pr("pr:owner/repo#9");
 
-    expect(applyPersistedStacks([foundation, dependent, unrelated])).toEqual([unrelated]);
+    expect(applyPersistedStacks([foundation, dependent, unrelated])).toEqual([
+      foundation,
+      unrelated,
+    ]);
+  });
+
+  test("keeps the rest of the persisted stack when the foundation merged", () => {
+    const foundation = {
+      ...pr("pr:owner/repo#1", "owner/repo", stack(42, 1, 2)),
+      state: "closed",
+      merged: true,
+    };
+    const dependent = pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 2));
+
+    expect(applyPersistedStacks([foundation, dependent])).toEqual([foundation, dependent]);
+  });
+
+  test("a closed middle layer on screen hides only what sits above it", () => {
+    const first = pr("pr:owner/repo#1", "owner/repo", stack(42, 1, 3));
+    const middle = { ...pr("pr:owner/repo#2", "owner/repo", stack(42, 2, 3)), state: "closed" };
+    const top = pr("pr:owner/repo#3", "owner/repo", stack(42, 3, 3));
+
+    expect(applyPersistedStacks([first, middle, top])).toEqual([first, middle]);
   });
 
   test("does not restore hidden stack layers as standalone Inbox rows", () => {
