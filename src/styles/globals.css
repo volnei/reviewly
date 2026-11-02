@@ -5018,77 +5018,71 @@ mark.dm {
   gap: 8px;
   border-color: transparent;
   border-radius: 999px;
-  background: linear-gradient(
-    112deg,
-    #ff7a21 0%,
-    #f04d45 22%,
-    #d93e72 40%,
-    #ff6b2c 62%,
-    #ffad32 82%,
-    #ff6b2c 100%
-  );
-  background-size: 320% 100%;
+  background: #f2633f;
   color: #fffaf4;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.32),
     inset 0 -1px 0 rgba(112, 27, 8, 0.18),
-    0 8px 22px rgba(182, 55, 22, 0.24);
+    0 5px 14px rgba(182, 55, 22, 0.2);
   font-weight: 600;
   letter-spacing: -0.01em;
   transition:
-    box-shadow 180ms ease,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    filter 180ms ease;
-  animation: ai-review-aurora 4s linear infinite;
+    background-color 240ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 240ms cubic-bezier(0.2, 0, 0, 1),
+    transform 240ms cubic-bezier(0.2, 0, 0, 1);
 }
 .pr-v2 .pr-ai-review::before {
   position: absolute;
-  z-index: -1;
-  inset: 0;
-  background:
-    radial-gradient(circle at 14% 0%, rgba(255, 247, 205, 0.52), transparent 25%),
-    radial-gradient(circle at 78% 120%, rgba(255, 221, 104, 0.4), transparent 42%);
+  z-index: 0;
+  top: 50%;
+  left: 21px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
   content: "";
   pointer-events: none;
-  animation: ai-review-glow 2.2s ease-in-out infinite alternate;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.15);
+  transition:
+    opacity 200ms cubic-bezier(0.2, 0, 0, 1),
+    transform 520ms cubic-bezier(0.2, 0, 0, 1);
 }
 .pr-v2 .pr-ai-review::after {
   position: absolute;
-  z-index: -1;
-  top: -90%;
-  left: -34%;
-  width: 32%;
-  height: 280%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 235, 0.52), transparent);
+  z-index: 0;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
   content: "";
   pointer-events: none;
-  transform: rotate(18deg);
-  animation: ai-review-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 .pr-v2 .pr-ai-review:hover {
   border-color: transparent;
-  background: linear-gradient(
-    112deg,
-    #ff8a2b 0%,
-    #ff584d 22%,
-    #ec4781 40%,
-    #ff7634 62%,
-    #ffbe45 82%,
-    #ff7634 100%
-  );
-  background-size: 320% 100%;
+  background: #f86d48;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
     inset 0 -1px 0 rgba(112, 27, 8, 0.14),
-    0 10px 28px rgba(231, 77, 29, 0.36);
-  filter: saturate(1.08);
-  transform: translateY(-2px) scale(1.025);
+    0 7px 18px rgba(202, 61, 24, 0.28);
+  transform: translateY(-1px);
+}
+.pr-v2 .pr-ai-review:hover::before,
+.pr-v2 .pr-ai-review:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(3.6);
+}
+.pr-v2 .pr-ai-review:hover::after,
+.pr-v2 .pr-ai-review:focus-visible::after {
+  opacity: 1;
 }
 .pr-v2 .pr-ai-review:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.965);
+  transition-duration: 90ms;
 }
 .pr-ai-review-icon {
   position: relative;
+  z-index: 1;
   display: grid;
   width: 18px;
   height: 18px;
@@ -5097,32 +5091,33 @@ mark.dm {
 }
 .pr-v2 .pr-ai-review svg {
   color: #fff8d8;
-  filter: drop-shadow(0 0 6px rgba(255, 242, 175, 0.84));
-  animation: ai-review-sparkle 1.55s ease-in-out infinite;
+  filter: drop-shadow(0 1px 3px rgba(113, 31, 10, 0.22));
+  transform-origin: center;
+  animation: ai-review-sparkle 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-icon::before,
 .pr-ai-review-icon::after {
   position: absolute;
   width: 3px;
   height: 3px;
-  border-radius: 1px;
-  background: #fff4ae;
-  box-shadow: 0 0 6px rgba(255, 238, 143, 0.95);
+  border-radius: 50%;
+  background: #fff8d8;
   content: "";
 }
 .pr-ai-review-icon::before {
   top: -2px;
   right: -3px;
-  animation: ai-review-particle-a 1.8s ease-in-out infinite;
+  animation: ai-review-particle-a 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-icon::after {
   bottom: -1px;
   left: -3px;
-  animation: ai-review-particle-b 1.8s 0.45s ease-in-out infinite;
+  animation: ai-review-particle-b 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-label {
   position: relative;
-  text-shadow: 0 1px 8px rgba(94, 20, 8, 0.28);
+  z-index: 1;
+  text-shadow: 0 1px 4px rgba(94, 20, 8, 0.2);
 }
 .pr-ai-review-dot {
   background: #ffe0ae;
@@ -5132,20 +5127,11 @@ mark.dm {
   animation: ai-review-dot 1.4s ease-in-out infinite;
 }
 .pr-v2 .pr-ai-review[data-running] {
-  animation-duration: 2.2s;
+  animation: ai-review-running 1.6s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 :root:is([data-theme="light"], [data-theme="clouds"]) .pr-v2 .pr-ai-review {
   border-color: transparent;
-  background: linear-gradient(
-    112deg,
-    #ff8b2c 0%,
-    #f5524d 22%,
-    #df4278 40%,
-    #ff7634 62%,
-    #ffb83e 82%,
-    #ff7634 100%
-  );
-  background-size: 320% 100%;
+  background: #f2633f;
   color: #fffaf4;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.42),
@@ -5157,71 +5143,59 @@ mark.dm {
   filter: drop-shadow(0 0 5px rgba(255, 244, 174, 0.8));
 }
 
-@keyframes ai-review-aurora {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-@keyframes ai-review-glow {
-  from {
-    opacity: 0.55;
-    transform: translateX(-4%) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(5%) scale(1.08);
-  }
-}
-@keyframes ai-review-shimmer {
-  0%,
-  35% {
-    left: -34%;
-    opacity: 0;
-  }
-  48% {
-    opacity: 1;
-  }
-  70%,
-  100% {
-    left: 112%;
-    opacity: 0;
-  }
-}
 @keyframes ai-review-sparkle {
   0%,
+  72%,
   100% {
-    filter: drop-shadow(0 0 4px rgba(255, 159, 86, 0.42));
-    transform: rotate(-5deg) scale(0.94);
+    transform: rotate(0) scale(1);
   }
-  50% {
-    filter: drop-shadow(0 0 9px rgba(255, 191, 105, 0.92));
-    transform: rotate(7deg) scale(1.12);
+  79% {
+    transform: rotate(-10deg) scale(0.82);
+  }
+  88% {
+    transform: rotate(8deg) scale(1.18);
+  }
+  94% {
+    transform: rotate(-2deg) scale(0.98);
   }
 }
 @keyframes ai-review-particle-a {
   0%,
+  74%,
   100% {
-    opacity: 0.2;
-    transform: translate(-3px, 3px) rotate(0deg) scale(0.5);
+    opacity: 0;
+    transform: translate(-2px, 2px) scale(0.35);
   }
-  50% {
+  86% {
     opacity: 1;
-    transform: translate(2px, -2px) rotate(90deg) scale(1);
+    transform: translate(1px, -1px) scale(1);
   }
 }
 @keyframes ai-review-particle-b {
   0%,
+  78%,
   100% {
-    opacity: 0.15;
-    transform: translate(3px, -3px) rotate(0deg) scale(0.45);
+    opacity: 0;
+    transform: translate(2px, -2px) scale(0.35);
+  }
+  90% {
+    opacity: 1;
+    transform: translate(-1px, 1px) scale(0.9);
+  }
+}
+@keyframes ai-review-running {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      inset 0 -1px 0 rgba(112, 27, 8, 0.18),
+      0 5px 14px rgba(182, 55, 22, 0.2);
   }
   50% {
-    opacity: 0.9;
-    transform: translate(-2px, 2px) rotate(-90deg) scale(0.9);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.38),
+      inset 0 -1px 0 rgba(112, 27, 8, 0.14),
+      0 7px 20px rgba(211, 65, 25, 0.32);
   }
 }
 @keyframes ai-review-dot {
