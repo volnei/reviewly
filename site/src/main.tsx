@@ -36,7 +36,7 @@ function Arrow() {
 }
 function ProductWindow({ image, label, className = "" }: { image: string; label: string; className?: string }) {
   return <figure className={`product-window ${className}`} data-reveal data-ui>
-    <div className="window-bar" aria-hidden="true"><span className="window-close" /><span className="window-minimize" /><span className="window-expand" /><small>Reviewly</small></div>
+    <div className="window-controls" aria-hidden="true"><span className="window-close" /><span className="window-minimize" /><span className="window-expand" /></div>
     <img src={asset(image)} alt={label} width="1440" height="900" loading={className.includes("hero") ? "eager" : "lazy"} />
   </figure>;
 }
