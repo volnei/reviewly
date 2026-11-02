@@ -33,7 +33,7 @@ Reviewly turns the work of reviewing a pull request into one coherent desktop fl
 
 - **One ordered inbox.** Review requests, your blocked PRs, merge-ready work and open threads are already separated.
 - **A reviewer-first PR view.** Start with the change map, checks and unresolved context, then move through files in a deliberate order.
-- **Private AI.** Use Claude, Codex, Gemini or an OpenAI-compatible endpoint you control. Reviewly does not operate a hosted AI service.
+- **Private AI.** Use Claude, Codex, Antigravity, Gemini or an OpenAI-compatible endpoint you control. Reviewly does not operate a hosted AI service.
 - **Native and local-first.** PR data and drafts are cached in SQLite. Credentials live in the operating system keychain.
 - **Optional Teams coordination.** Shared ownership, priority, SLA and one queue across a GitHub organization.
 
@@ -97,6 +97,7 @@ Reviewly supports three complementary workflows:
 | --- | --- |
 | Claude | Local `claude` CLI |
 | Codex | Local `codex` CLI |
+| Antigravity | Local `agy` CLI |
 | Gemini | Local `gemini` CLI |
 | OpenAI-compatible | Your chosen HTTP endpoint and model |
 

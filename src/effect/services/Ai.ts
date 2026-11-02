@@ -14,6 +14,7 @@ export class AiError extends Data.TaggedError("AiError")<{ readonly message: str
 const ALL_PROVIDERS = [
   ["claude", "Claude CLI"],
   ["codex", "Codex CLI"],
+  ["agy", "Antigravity CLI"],
   ["gemini", "Gemini CLI"],
   ["openai", "OpenAI-compatible endpoint"],
 ] as const;
@@ -25,11 +26,16 @@ export const PROVIDERS: ReadonlyArray<(typeof ALL_PROVIDERS)[number]> = APP_STOR
 
 /** The short name the UI says ("Reading with Claude…"). */
 export const providerName = (p: string): string =>
-  ({ claude: "Claude", codex: "Codex", gemini: "Gemini", openai: "your model" })[p] ?? p;
+  ({ claude: "Claude", codex: "Codex", agy: "Antigravity", gemini: "Gemini", openai: "your model" })[p] ?? p;
 
 export const MODEL_SUGGESTIONS: Record<Provider, ReadonlyArray<string>> = {
   claude: ["sonnet", "opus", "haiku", "claude-opus-5", "claude-sonnet-5", "claude-fable-5-1"],
   codex: ["gpt-5-codex", "gpt-5", "o3", "o4-mini"],
+  agy: [
+    "gemini-3.8-flash-high",
+    "gemini-3.8-flash-medium",
+    "gemini-3.8-flash-low",
+  ],
   gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
   openai: [],
 };
