@@ -12,7 +12,6 @@ import {
   type LucideIcon,
   RefreshCw,
   Settings2,
-  TrainFrontTunnel,
   Sparkles,
   UsersRound,
   Zap,
@@ -23,6 +22,7 @@ import { useCommands } from "@/app/commands";
 import { overlays } from "@/app/overlays";
 import { checkForUpdates } from "@/app/updater";
 import { openWhatsNew } from "@/app/whats-new";
+import { BulletTrain } from "@/components/icons/bullet-train";
 import {
   Command,
   CommandCollection,
@@ -56,7 +56,7 @@ interface Entry {
 const VIEWS: ReadonlyArray<{ to: string; label: string; icon: LucideIcon; key: string }> = [
   { to: "/", label: "Home", icon: House, key: "⌘1" },
   { to: "/inbox", label: "Inbox", icon: Inbox, key: "⌘2" },
-  { to: "/fast-lane", label: "Fast lane", icon: TrainFrontTunnel, key: "G F" },
+  { to: "/fast-lane", label: "Fast lane", icon: BulletTrain, key: "G F" },
   { to: "/prs", label: "Pull requests", icon: GitPullRequest, key: "⌘3" },
   { to: "/mentions", label: "Mentions", icon: AtSign, key: "⌘4" },
   { to: "/health", label: "Health", icon: HeartPulse, key: "⌘5" },

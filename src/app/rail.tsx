@@ -15,7 +15,6 @@ import {
   Pencil,
   ScanSearch,
   Settings2,
-  TrainFrontTunnel,
   Trash2,
   UsersRound,
 } from "lucide-react";
@@ -23,6 +22,7 @@ import { useState } from "react";
 
 import { useFastLaneItems } from "@/app/fast-lane-items";
 import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
+import { BulletTrain } from "@/components/icons/bullet-train";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -104,7 +104,7 @@ export function Rail() {
             to: "/fast-lane",
             label: "Fast lane",
             key: "G F",
-            icon: TrainFrontTunnel,
+            icon: BulletTrain,
             count: fastLane.items.length,
           },
         ]
