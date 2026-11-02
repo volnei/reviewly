@@ -5,7 +5,7 @@ import "./styles.css";
 
 const asset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const workflow = [
-  { name: "Triage", title: "Know what needs you.", body: "Review requests, failing checks, conflicts, and unresolved threads arrive in one queue, already ordered by what is blocking the team.", image: "screenshots/inbox.jpg" },
+  { name: "Triage", title: "Know what needs you.", body: "Review requests, failing checks, conflicts, and unresolved threads arrive in one queue, already ordered by what is blocking the team.", image: "screenshots/inbox.png" },
   { name: "Understand", title: "Read the change first.", body: "See the shape of a pull request, the files it touches, and the context behind it before the diff takes over.", image: "screenshots/pr-overview.jpg" },
   { name: "Coordinate", title: "Leave no review behind.", body: "Teams makes ownership, priority, and the next action visible without turning code review into another project-management ritual.", image: "screenshots/team-queue.jpg" },
 ] as const;
@@ -84,7 +84,7 @@ function Site() {
             <div className="hero-download"><a className="button button-primary" href={download.href}>{download.label} <Arrow /></a><a href={releasesUrl}>Other platforms</a></div>
           </div>
         </div>
-        <ProductWindow image="screenshots/inbox.jpg" label="Reviewly — Inbox" className="hero-window" />
+        <ProductWindow image="screenshots/inbox.png" label="Reviewly — Inbox" className="hero-window" />
       </section>
 
       <section className="manifesto" aria-labelledby="manifesto-title">
