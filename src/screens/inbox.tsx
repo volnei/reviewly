@@ -13,7 +13,12 @@ import { Inbox, type InboxData } from "@/effect/services/Inbox";
 import { prefsStore, tomorrowMorning, usePrefs } from "@/effect/services/Prefs";
 import type { Ranked } from "@/effect/services/Triage";
 import { FilterBar, applyFilter, isFiltering, useListFilter } from "@/features/list/filters";
-import { isFastLane } from "@/features/fast-lane";
+import {
+  isFastLane,
+  isFastLaneCandidate,
+  requiresFastLaneFiles,
+  type FastLaneFileFacts,
+} from "@/features/fast-lane";
 import { List, ListHead, Nothing, type Section } from "@/features/list/list";
 import { usePreread } from "@/features/list/preread";
 import { age } from "@/features/list/row";
@@ -208,7 +213,7 @@ function synced(at: number): string {
   return a === "now" ? "just now" : `${a} ago`;
 }
 
-function useFastLaneChangedPaths(
+function useFastLaneFileFacts(
   items: ReadonlyArray<Ranked>,
   policies: ReadonlyMap<string, import("@/effect/schema").FastLanePolicy>,
 ) {
@@ -217,11 +222,12 @@ function useFastLaneChangedPaths(
       items.filter((item) => {
         const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
         return (
-          policy?.blockedPaths.length &&
+          policy &&
+          requiresFastLaneFiles(policy) &&
           item.owner &&
           item.repoName &&
           item.number &&
-          isFastLane(item, { ...policy, blockedPaths: [] })
+          isFastLaneCandidate(item, policy)
         );
       }),
     [items, policies],
@@ -241,7 +247,15 @@ function useFastLaneChangedPaths(
           }),
         ).pipe(
           Effect.map(
-            (files) => [item.id, files.map((file) => file.filename)] as const,
+            (files) =>
+              [
+                item.id,
+                {
+                  paths: files.map((file) => file.filename),
+                  changedFiles: files.length,
+                  changedLines: files.reduce((sum, file) => sum + file.changes, 0),
+                } satisfies FastLaneFileFacts,
+              ] as const,
           ),
           Effect.orElseSucceed(() => [item.id, null] as const),
         ),
@@ -249,8 +263,8 @@ function useFastLaneChangedPaths(
     ).pipe(
       Effect.map(
         (entries) =>
-          new Map<string, ReadonlyArray<string> | null>(
-            entries as ReadonlyArray<readonly [string, ReadonlyArray<string> | null]>,
+          new Map<string, FastLaneFileFacts | null>(
+            entries as ReadonlyArray<readonly [string, FastLaneFileFacts | null]>,
           ),
       ),
     ),
@@ -312,16 +326,16 @@ export function InboxScreen() {
       ),
     [fastLanePolicies.data],
   );
-  const fastLanePaths = useFastLaneChangedPaths(
+  const fastLaneFiles = useFastLaneFileFacts(
     stackVisible ? [...stackVisible.turn, ...stackVisible.unsorted] : [],
     enabledFastLanePolicies,
   );
   const sections = useMemo(() => {
-    return toSections(stackVisible, enabledFastLanePolicies, fastLanePaths.data).map((s) => ({
+    return toSections(stackVisible, enabledFastLanePolicies, fastLaneFiles.data).map((s) => ({
       ...s,
       items: applyFilter(s.items, filter),
     }));
-  }, [stackVisible, filter, enabledFastLanePolicies, fastLanePaths.data]);
+  }, [stackVisible, filter, enabledFastLanePolicies, fastLaneFiles.data]);
 
   return (
     <div
@@ -397,7 +411,7 @@ export function InboxScreen() {
 function toSections(
   data: InboxData | undefined,
   policies: ReadonlyMap<string, import("@/effect/schema").FastLanePolicy>,
-  changedPaths?: ReadonlyMap<string, ReadonlyArray<string> | null>,
+  fileFacts?: ReadonlyMap<string, FastLaneFileFacts | null>,
 ): Section[] {
   if (!data) return [];
   const { turn, unsorted, later } = data;
@@ -405,7 +419,7 @@ function toSections(
   const fastLaneEnabled = policies.size > 0;
   const fastLane = active.filter((item) => {
     const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
-    return policy ? isFastLane(item, policy, changedPaths?.get(item.id)) : false;
+    return policy ? isFastLane(item, policy, fileFacts?.get(item.id)) : false;
   });
   const fastLaneIds = new Set(fastLane.map((item) => item.id));
   const waiting = later.filter((i) => i.verdict === "waiting").length;

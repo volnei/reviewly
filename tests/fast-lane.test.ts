@@ -16,8 +16,20 @@ const policy = {
   excludeConflicts: true,
   excludeChangesRequested: true,
   excludeOpenThreads: true,
+  trustedAuthors: [],
+  maxChangedFiles: null,
+  maxChangedLines: null,
+  allowedPaths: [],
   blockedPaths: [],
+  requiredLabels: [],
+  blockedLabels: [],
 } as const;
+
+const files = (paths: string[], changedLines = 20) => ({
+  paths,
+  changedFiles: paths.length,
+  changedLines,
+});
 
 const pr = (patch: Partial<Ranked> = {}): Ranked => ({
   id: "pr:owner/repo#42",
@@ -41,7 +53,7 @@ describe("Teams Fast lane", () => {
   test("accepts a clean dependency-bot update and explains the placement", () => {
     expect(isFastLane(pr(), policy)).toBe(true);
     expect(fastLaneReason(pr(), policy)).toBe(
-      "dependabot dependency update · team policy matched",
+      "dependabot · team policy matched",
     );
     expect(isFastLane(pr({ author: "renovate[bot]" }), policy)).toBe(true);
   });
@@ -75,9 +87,36 @@ describe("Teams Fast lane", () => {
 
   test("keeps PRs touching blocked paths out of Fast lane", () => {
     const guarded = { ...policy, blockedPaths: ["src/auth/**", "db/migrations/**", "**/*.sql"] };
-    expect(isFastLane(pr(), guarded, ["src/ui/button.tsx"])).toBe(true);
-    expect(isFastLane(pr(), guarded, ["src/auth/session.ts"])).toBe(false);
-    expect(isFastLane(pr(), guarded, ["db/schema.sql"])).toBe(false);
+    expect(isFastLane(pr(), guarded, files(["src/ui/button.tsx"]))).toBe(true);
+    expect(isFastLane(pr(), guarded, files(["src/auth/session.ts"]))).toBe(false);
+    expect(isFastLane(pr(), guarded, files(["db/schema.sql"]))).toBe(false);
+  });
+
+  test("supports trusted internal automation without assuming an ecosystem", () => {
+    const custom = { ...policy, trustedAuthors: ["release-bot"] };
+    expect(isFastLane(pr({ author: "release-bot" }), custom)).toBe(true);
+    expect(isFastLane(pr({ author: "unknown-bot" }), custom)).toBe(false);
+  });
+
+  test("enforces universal size, allowlist and label rules", () => {
+    const guarded = {
+      ...policy,
+      maxChangedFiles: 2,
+      maxChangedLines: 100,
+      allowedPaths: ["docs/**", "config/safe/**"],
+      requiredLabels: ["automation"],
+      blockedLabels: ["security"],
+    };
+    const candidate = pr({ labels: ["automation"] });
+    expect(isFastLane(candidate, guarded, files(["docs/readme.md"], 40))).toBe(true);
+    expect(isFastLane(candidate, guarded, files(["docs/a.md", "docs/b.md", "docs/c.md"]))).toBe(
+      false,
+    );
+    expect(isFastLane(candidate, guarded, files(["docs/readme.md"], 101))).toBe(false);
+    expect(isFastLane(candidate, guarded, files(["src/main.rs"]))).toBe(false);
+    expect(isFastLane(pr({ labels: ["automation", "security"] }), guarded, files(["docs/a.md"]))).toBe(
+      false,
+    );
   });
 
   test("fails closed when changed files cannot be verified", () => {

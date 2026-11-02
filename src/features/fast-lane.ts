@@ -1,9 +1,19 @@
 import type { FastLanePolicy } from "@/effect/schema";
 import type { Ranked } from "@/effect/services/Triage";
 
-const botName = (author: string): "dependabot" | "renovate" | null => {
-  const name = author.replace(/\[bot\]$/i, "").toLowerCase();
-  return name === "dependabot" || name === "renovate" ? name : null;
+export interface FastLaneFileFacts {
+  readonly paths: ReadonlyArray<string>;
+  readonly changedFiles: number;
+  readonly changedLines: number;
+}
+
+const normalized = (value: string): string => value.replace(/\[bot\]$/i, "").toLowerCase();
+
+const trustedAuthor = (author: string, policy: FastLanePolicy): boolean => {
+  const name = normalized(author);
+  if (name === "dependabot" && policy.includeDependabot) return true;
+  if (name === "renovate" && policy.includeRenovate) return true;
+  return policy.trustedAuthors.some((trusted) => normalized(trusted) === name);
 };
 
 /**
@@ -11,19 +21,18 @@ const botName = (author: string): "dependabot" | "renovate" | null => {
  * It only moves deterministic dependency-bot PRs with no visible blocker;
  * it never approves, merges, or changes the PR on GitHub.
  */
-export function fastLaneReason(item: Ranked, policy: FastLanePolicy): string | null {
-  if (!policy.enabled || item.kind !== "pr" || item.mine || !item.author) return null;
-  const bot = botName(item.author);
-  if (!bot) return null;
-  if (bot === "dependabot" && !policy.includeDependabot) return null;
-  if (bot === "renovate" && !policy.includeRenovate) return null;
-  if (policy.requireGreenCi && item.ci !== "success") return null;
-  if (policy.excludeDrafts && item.draft) return null;
-  if (policy.excludeConflicts && item.conflicting) return null;
-  if (policy.excludeChangesRequested && item.reviewDecision === "CHANGES_REQUESTED") return null;
-  if (policy.excludeOpenThreads && (item.unresolved ?? 0) > 0) return null;
-  if (policy.blockedPaths.length > 0) return null;
-  return `${bot} dependency update · team policy matched`;
+export function isFastLaneCandidate(item: Ranked, policy: FastLanePolicy): boolean {
+  if (!policy.enabled || item.kind !== "pr" || item.mine || !item.author) return false;
+  if (!trustedAuthor(item.author, policy)) return false;
+  if (policy.requireGreenCi && item.ci !== "success") return false;
+  if (policy.excludeDrafts && item.draft) return false;
+  if (policy.excludeConflicts && item.conflicting) return false;
+  if (policy.excludeChangesRequested && item.reviewDecision === "CHANGES_REQUESTED") return false;
+  if (policy.excludeOpenThreads && (item.unresolved ?? 0) > 0) return false;
+  const labels = new Set((item.labels ?? []).map((label) => label.toLowerCase()));
+  if (policy.requiredLabels.some((label) => !labels.has(label.toLowerCase()))) return false;
+  if (policy.blockedLabels.some((label) => labels.has(label.toLowerCase()))) return false;
+  return true;
 }
 
 const escapeRegex = (value: string): string => value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
@@ -52,16 +61,41 @@ export function matchesFastLanePath(path: string, pattern: string): boolean {
   return new RegExp(`^${source}$`).test(normalizedPath);
 }
 
-export function isFastLane(
+export const requiresFastLaneFiles = (policy: FastLanePolicy): boolean =>
+  policy.maxChangedFiles !== null ||
+  policy.maxChangedLines !== null ||
+  policy.allowedPaths.length > 0 ||
+  policy.blockedPaths.length > 0;
+
+export function fastLaneReason(
   item: Ranked,
   policy: FastLanePolicy,
-  changedPaths?: ReadonlyArray<string> | null,
-): boolean {
-  const basePolicy = policy.blockedPaths.length ? { ...policy, blockedPaths: [] } : policy;
-  if (fastLaneReason(item, basePolicy) === null) return false;
-  if (!policy.blockedPaths.length) return true;
-  if (!changedPaths) return false;
-  return !changedPaths.some((path) =>
-    policy.blockedPaths.some((pattern) => matchesFastLanePath(path, pattern)),
-  );
+  files?: FastLaneFileFacts | null,
+): string | null {
+  if (!isFastLaneCandidate(item, policy)) return null;
+  if (requiresFastLaneFiles(policy)) {
+    if (!files) return null;
+    if (policy.maxChangedFiles !== null && files.changedFiles > policy.maxChangedFiles) return null;
+    if (policy.maxChangedLines !== null && files.changedLines > policy.maxChangedLines) return null;
+    if (
+      policy.allowedPaths.length > 0 &&
+      files.paths.some(
+        (path) => !policy.allowedPaths.some((pattern) => matchesFastLanePath(path, pattern)),
+      )
+    )
+      return null;
+    if (
+      files.paths.some((path) =>
+        policy.blockedPaths.some((pattern) => matchesFastLanePath(path, pattern)),
+      )
+    )
+      return null;
+  }
+  return `${normalized(item.author ?? "automation")} · team policy matched`;
 }
+
+export const isFastLane = (
+  item: Ranked,
+  policy: FastLanePolicy,
+  files?: FastLaneFileFacts | null,
+): boolean => fastLaneReason(item, policy, files) !== null;

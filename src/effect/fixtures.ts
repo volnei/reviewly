@@ -773,7 +773,13 @@ let fixtureFastLanePolicy = {
   excludeConflicts: true,
   excludeChangesRequested: true,
   excludeOpenThreads: true,
+  trustedAuthors: ["github-actions"],
+  maxChangedFiles: 8,
+  maxChangedLines: 300,
+  allowedPaths: [],
   blockedPaths: ["src/auth/**", "db/migrations/**", "**/*.sql"],
+  requiredLabels: [],
+  blockedLabels: ["security", "breaking-change"],
 };
 const fixtureTeamPull = (
   id: string,

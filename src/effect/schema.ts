@@ -122,7 +122,13 @@ export const FastLanePolicy = S.Struct({
   excludeConflicts: S.Boolean,
   excludeChangesRequested: S.Boolean,
   excludeOpenThreads: S.Boolean,
+  trustedAuthors: S.Array(S.String),
+  maxChangedFiles: S.NullOr(S.Number),
+  maxChangedLines: S.NullOr(S.Number),
+  allowedPaths: S.Array(S.String),
   blockedPaths: S.Array(S.String),
+  requiredLabels: S.Array(S.String),
+  blockedLabels: S.Array(S.String),
 });
 export type FastLanePolicy = typeof FastLanePolicy.Type;
 

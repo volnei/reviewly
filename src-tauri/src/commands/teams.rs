@@ -100,7 +100,13 @@ pub struct FastLanePolicy {
     pub exclude_conflicts: bool,
     pub exclude_changes_requested: bool,
     pub exclude_open_threads: bool,
+    pub trusted_authors: Vec<String>,
+    pub max_changed_files: Option<u64>,
+    pub max_changed_lines: Option<u64>,
+    pub allowed_paths: Vec<String>,
     pub blocked_paths: Vec<String>,
+    pub required_labels: Vec<String>,
+    pub blocked_labels: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
