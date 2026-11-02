@@ -730,6 +730,71 @@ const reactions = new Map<
 >();
 let nextReaction = 9000;
 const num = (x: unknown) => Number(x);
+const fixtureMembers = [
+  { id: "fixture-sam", login: "sam", role: "owner" },
+  { id: "fixture-marina", login: "marina", role: "member" },
+  { id: "fixture-tiago", login: "tiago", role: "member" },
+  { id: "fixture-pedro", login: "pedro", role: "member" },
+];
+let fixtureQueue: Record<
+  string,
+  {
+    assigneeUserId: string | null;
+    priority: "normal" | "high" | "urgent";
+    nextAction: string;
+    slaDueAt: string | null;
+  }
+> = {
+  "fixture-pr-2184": {
+    assigneeUserId: null,
+    priority: "urgent",
+    nextAction: "ci",
+    slaDueAt: new Date(Date.now() + 70 * 60_000).toISOString(),
+  },
+  "fixture-pr-7761": {
+    assigneeUserId: "fixture-marina",
+    priority: "normal",
+    nextAction: "review",
+    slaDueAt: new Date(Date.now() + 19 * 36e5).toISOString(),
+  },
+  "fixture-pr-2103": {
+    assigneeUserId: "fixture-sam",
+    priority: "high",
+    nextAction: "conflict",
+    slaDueAt: new Date(Date.now() - 2 * 36e5).toISOString(),
+  },
+};
+const fixtureTeamPull = (
+  id: string,
+  repository: string,
+  number: number,
+  title: string,
+  authorLogin: string,
+  queue: (typeof fixtureQueue)[string],
+) => ({
+  id,
+  repository,
+  number,
+  title,
+  url: `https://github.com/${repository}/pull/${number}`,
+  authorLogin,
+  state: "open",
+  draft: false,
+  baseBranch: "main",
+  reviewDecision: null,
+  ciState: queue.nextAction === "ci" ? "failure" : "success",
+  mergeableState: queue.nextAction === "conflict" ? "dirty" : "clean",
+  createdAt: ago(day),
+  updatedAt: ago(3600_000),
+  syncedAt: ago(60_000),
+  claimedByUserId: queue.assigneeUserId,
+  claimedByLogin:
+    fixtureMembers.find((member) => member.id === queue.assigneeUserId)?.login ?? null,
+  claimedAt: queue.assigneeUserId ? ago(2 * 36e5) : null,
+  priority: queue.priority,
+  nextAction: queue.nextAction,
+  slaDueAt: queue.slaDueAt,
+});
 const commands: Record<string, Handler> = {
   teams_status: () => ({
     signed_in: true,
@@ -753,23 +818,57 @@ const commands: Record<string, Handler> = {
   teams_sign_out: () => ({}),
   teams_inbox: ({ organizationId }) => ({
     organizationId,
+    currentUserId: "fixture-sam",
+    members: fixtureMembers,
     pulls: [
-      {
-        repository: "volnei/reviewly",
-        number: 17,
-        authorLogin: "volnei",
-        state: "open",
-        draft: false,
-        baseBranch: "main",
-        reviewDecision: null,
-        ciState: "success",
-        mergeableState: "clean",
-        createdAt: ago(day),
-        updatedAt: ago(3600_000),
-        syncedAt: ago(60_000),
-      },
+      fixtureTeamPull(
+        "fixture-pr-2184",
+        "volnei/reviewly",
+        2184,
+        "Make webhook retries idempotent",
+        "marina",
+        fixtureQueue["fixture-pr-2184"],
+      ),
+      fixtureTeamPull(
+        "fixture-pr-7761",
+        "volnei/reviewly",
+        7761,
+        "Virtualise the settlements table",
+        "tiago",
+        fixtureQueue["fixture-pr-7761"],
+      ),
+      fixtureTeamPull(
+        "fixture-pr-2103",
+        "volnei/reviewly",
+        2103,
+        "Rewrite the webhook retry worker",
+        "pedro",
+        fixtureQueue["fixture-pr-2103"],
+      ),
     ],
   }),
+  teams_queue_update: ({ update }) => {
+    const value = update as {
+      pullRequestId: string;
+      assigneeUserId?: string | null;
+      priority?: "normal" | "high" | "urgent";
+      nextAction?: string | null;
+      slaDueAt?: string | null;
+    };
+    const current = fixtureQueue[value.pullRequestId];
+    if (!current) return {};
+    fixtureQueue = {
+      ...fixtureQueue,
+      [value.pullRequestId]: {
+        ...current,
+        ...(value.assigneeUserId !== undefined ? { assigneeUserId: value.assigneeUserId } : {}),
+        ...(value.priority ? { priority: value.priority } : {}),
+        ...(value.nextAction ? { nextAction: value.nextAction } : {}),
+        ...(value.slaDueAt !== undefined ? { slaDueAt: value.slaDueAt } : {}),
+      },
+    };
+    return {};
+  },
   teams_billing: ({ organizationId }) => ({
     organizationId,
     configured: true,

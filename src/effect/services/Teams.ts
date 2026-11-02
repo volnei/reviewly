@@ -38,6 +38,10 @@ export class Teams extends Context.Service<
     readonly inbox: (
       organizationId: string,
     ) => Effect.Effect<S.TeamsInbox, import("../errors").AppError>;
+    readonly updateQueue: (
+      organizationId: string,
+      update: S.TeamQueueUpdate,
+    ) => Effect.Effect<void, import("../errors").AppError>;
     readonly billing: (
       organizationId: string,
     ) => Effect.Effect<S.TeamBilling, import("../errors").AppError>;
@@ -86,6 +90,8 @@ export const TeamsLive = Layer.effect(
       );
     const inbox = (organizationId: string) =>
       tauri.invoke("teams_inbox", { organizationId }, S.TeamsInbox);
+    const updateQueue = (organizationId: string, update: S.TeamQueueUpdate) =>
+      tauri.invoke("teams_queue_update", { organizationId, update }, S.Unit).pipe(Effect.asVoid);
     const billing = (organizationId: string) =>
       tauri.invoke("teams_billing", { organizationId }, S.TeamBilling);
     const checkout = (organizationId: string) =>
@@ -98,6 +104,16 @@ export const TeamsLive = Layer.effect(
       ),
       Effect.asVoid,
     );
-    return { bootstrap, linkStart, linkPoll, inbox, billing, checkout, billingPortal, signOut };
+    return {
+      bootstrap,
+      linkStart,
+      linkPoll,
+      inbox,
+      updateQueue,
+      billing,
+      checkout,
+      billingPortal,
+      signOut,
+    };
   }),
 );

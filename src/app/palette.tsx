@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Settings2,
   Sparkles,
+  UsersRound,
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -38,8 +39,8 @@ import { useAuth } from "@/effect/services/Auth";
 import type { Verdict } from "@/effect/services/Prefs";
 import { applyView, savedViewPath, useSavedViews } from "@/features/list/filters";
 import { VerdictWord } from "@/features/list/row";
-import { parsePrRef } from "@/lib/pr-ref";
 import { APP_STORE } from "@/lib/edition";
+import { parsePrRef } from "@/lib/pr-ref";
 import { inboxQuery, useOpenItem } from "@/screens/inbox";
 
 interface Entry {
@@ -60,6 +61,7 @@ const VIEWS: ReadonlyArray<{ to: string; label: string; icon: LucideIcon; key: s
   { to: "/prs", label: "Pull requests", icon: GitPullRequest, key: "⌘3" },
   { to: "/mentions", label: "Mentions", icon: AtSign, key: "⌘4" },
   { to: "/health", label: "Health", icon: HeartPulse, key: "⌘5" },
+  { to: "/team", label: "Team queue", icon: UsersRound, key: "G Q" },
   { to: "/local", label: "Local repositories", icon: FolderGit2, key: "⌘6" },
   { to: "/history", label: "History", icon: History, key: "G Y" },
   { to: "/settings", label: "Settings", icon: Settings2, key: "⌘," },

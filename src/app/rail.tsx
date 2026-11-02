@@ -1,3 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  AtSign,
+  Bookmark,
+  Boxes,
+  FlaskConical,
+  FolderGit2,
+  GitPullRequest,
+  HeartPulse,
+  History,
+  Inbox,
+  type LucideIcon,
+  MoreHorizontal,
+  Pencil,
+  ScanSearch,
+  Settings2,
+  Trash2,
+  UsersRound,
+} from "lucide-react";
+import { useState } from "react";
+
 import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import {
   AlertDialog,
@@ -20,43 +42,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "@/components/ui/menu";
-import { hasBackend } from "@/effect/Tauri";
-import { APP_STORE } from "@/lib/edition";
 import { useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
+import { useTeams } from "@/effect/services/Teams";
+import { hasBackend } from "@/effect/Tauri";
 import {
-  type SavedView,
   applyView,
   deleteSavedView,
   renameSavedView,
+  type SavedView,
   savedViewPath,
   useSavedViews,
 } from "@/features/list/filters";
 import { useWorkspaceHealth } from "@/features/list/workspace";
 import { actionableIssueCount, useSpecWorkspaces } from "@/features/spec-lens/model";
+import { APP_STORE } from "@/lib/edition";
 import { countOpenPrs } from "@/lib/prs-db";
 import { problemCount } from "@/lib/turbo-health";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  AtSign,
-  Bookmark,
-  Boxes,
-  FlaskConical,
-  FolderGit2,
-  GitPullRequest,
-  HeartPulse,
-  History,
-  Inbox,
-  type LucideIcon,
-  MoreHorizontal,
-  Pencil,
-  ScanSearch,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import { useState } from "react";
 
 interface Item {
   to: string;
@@ -68,6 +71,7 @@ interface Item {
 
 export function Rail() {
   const auth = useAuth();
+  const teams = useTeams();
   const workspace = useWorkspace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -132,6 +136,15 @@ export function Rail() {
           </li>
         ))}
       </ul>
+      {teams.signedIn && teams.organizations.length ? (
+        <div className="mt-6">
+          <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
+          <NavItem
+            item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
+            active={active("/team")}
+          />
+        </div>
+      ) : null}
       <div className="mt-6">
         <p className="workspace-section-label mb-2 px-2 text-ink-3">Labs</p>
         {turboWorkspaces.length ? (

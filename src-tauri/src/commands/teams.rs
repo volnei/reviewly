@@ -49,8 +49,11 @@ pub struct DesktopLinkPoll {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamPull {
+    pub id: String,
     pub repository: String,
     pub number: u64,
+    pub title: Option<String>,
+    pub url: Option<String>,
     pub author_login: Option<String>,
     pub state: String,
     pub draft: bool,
@@ -61,12 +64,28 @@ pub struct TeamPull {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub synced_at: String,
+    pub claimed_by_user_id: Option<String>,
+    pub claimed_by_login: Option<String>,
+    pub claimed_at: Option<String>,
+    pub priority: String,
+    pub next_action: String,
+    pub sla_due_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMember {
+    pub id: String,
+    pub login: String,
+    pub role: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamsInbox {
     pub organization_id: String,
+    pub current_user_id: String,
+    pub members: Vec<TeamMember>,
     pub pulls: Vec<TeamPull>,
 }
 
@@ -232,6 +251,40 @@ pub async fn teams_inbox(organization_id: String) -> AppResult<TeamsInbox> {
         )));
     }
     Ok(response.json().await?)
+}
+
+#[tauri::command]
+pub async fn teams_queue_update(
+    organization_id: String,
+    update: serde_json::Value,
+) -> AppResult<()> {
+    let pull_request_id = update
+        .get("pullRequestId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| AppError::Other("Reviewly Teams queue update is missing its PR".into()))?;
+    let token = creds::load_teams_token()?.ok_or(AppError::NotSignedIn)?;
+    let response = client()?
+        .patch(format!(
+            "{}/api/organizations/{}/inbox/{}",
+            base_url(),
+            urlencoding::encode(&organization_id),
+            urlencoding::encode(pull_request_id)
+        ))
+        .bearer_auth(token)
+        .json(&update)
+        .send()
+        .await?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        creds::delete_teams_token()?;
+        return Err(AppError::Auth("Reviewly Teams session expired".into()));
+    }
+    if !response.status().is_success() {
+        return Err(AppError::Other(format!(
+            "Reviewly Teams queue returned {}",
+            response.status()
+        )));
+    }
+    Ok(())
 }
 
 async fn teams_request(

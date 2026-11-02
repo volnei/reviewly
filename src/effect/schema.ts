@@ -64,8 +64,11 @@ export const TeamsLinkPoll = S.Struct({
 export type TeamsLinkPoll = typeof TeamsLinkPoll.Type;
 
 export const TeamPull = S.Struct({
+  id: S.String,
   repository: S.String,
   number: S.Number,
+  title: S.NullOr(S.String),
+  url: S.NullOr(S.String),
   authorLogin: S.NullOr(S.String),
   state: S.String,
   draft: S.Boolean,
@@ -76,14 +79,39 @@ export const TeamPull = S.Struct({
   createdAt: S.NullOr(S.String),
   updatedAt: S.NullOr(S.String),
   syncedAt: S.String,
+  claimedByUserId: S.NullOr(S.String),
+  claimedByLogin: S.NullOr(S.String),
+  claimedAt: S.NullOr(S.String),
+  priority: S.Literals(["normal", "high", "urgent"]),
+  nextAction: S.Literals(["review", "author", "ci", "conflict", "approval", "merge"]),
+  slaDueAt: S.NullOr(S.String),
 });
 export type TeamPull = typeof TeamPull.Type;
 
 export const TeamsInbox = S.Struct({
   organizationId: S.String,
+  currentUserId: S.String,
+  members: S.Array(
+    S.Struct({
+      id: S.String,
+      login: S.String,
+      role: S.String,
+    }),
+  ),
   pulls: S.Array(TeamPull),
 });
 export type TeamsInbox = typeof TeamsInbox.Type;
+
+export const TeamQueueUpdate = S.Struct({
+  pullRequestId: S.String,
+  assigneeUserId: S.optional(S.NullOr(S.String)),
+  priority: S.optional(S.Literals(["normal", "high", "urgent"])),
+  nextAction: S.optional(
+    S.NullOr(S.Literals(["review", "author", "ci", "conflict", "approval", "merge"])),
+  ),
+  slaDueAt: S.optional(S.NullOr(S.String)),
+});
+export type TeamQueueUpdate = typeof TeamQueueUpdate.Type;
 
 export const TeamBilling = S.Struct({
   organizationId: S.String,

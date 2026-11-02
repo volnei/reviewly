@@ -17,8 +17,11 @@ const GROUPS: ReadonlyArray<{ title: string; keys: ReadonlyArray<[string, string
         : ["⌘1 – ⌘6", "Home, Inbox, Pull requests, Mentions, Health, Local"],
       ["⌘,", "settings"],
       APP_STORE
-        ? ["g then h i p m a s", "go to Home, Inbox, PRs, Mentions, heAlth, Settings"]
-        : ["g then h i p m a l s", "go to Home, Inbox, PRs, Mentions, heAlth, Local, Settings"],
+        ? ["g then h i p m a q s", "go to Home, Inbox, PRs, Mentions, heAlth, team Queue, Settings"]
+        : [
+            "g then h i p m a q l s",
+            "go to Home, Inbox, PRs, Mentions, heAlth, team Queue, Local, Settings",
+          ],
       ["⌘= ⌘- ⌘0", "zoom in, out, reset"],
       ["?", "these keys"],
     ],
@@ -77,7 +80,10 @@ const GROUPS: ReadonlyArray<{ title: string; keys: ReadonlyArray<[string, string
 export function KeysDialog({
   open,
   onOpenChange,
-}: { open: boolean; onOpenChange: (o: boolean) => void }) {
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-[620px] rounded-xl border-edge bg-popover">

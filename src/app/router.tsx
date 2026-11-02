@@ -1,7 +1,3 @@
-import { Shell } from "@/app/shell";
-import { prefsStore } from "@/effect/services/Prefs";
-import { APP_STORE } from "@/lib/edition";
-import { InboxScreen } from "@/screens/inbox";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -10,6 +6,11 @@ import {
   lazyRouteComponent,
   redirect,
 } from "@tanstack/react-router";
+
+import { Shell } from "@/app/shell";
+import { prefsStore } from "@/effect/services/Prefs";
+import { APP_STORE } from "@/lib/edition";
+import { InboxScreen } from "@/screens/inbox";
 
 const root = createRootRoute({ component: Shell });
 
@@ -32,6 +33,11 @@ const prs = createRoute({
   getParentRoute: () => root,
   path: "/prs",
   component: lazyRouteComponent(() => import("@/screens/prs"), "PrsScreen"),
+});
+const team = createRoute({
+  getParentRoute: () => root,
+  path: "/team",
+  component: lazyRouteComponent(() => import("@/screens/team"), "TeamScreen"),
 });
 const mentions = createRoute({
   getParentRoute: () => root,
@@ -121,6 +127,7 @@ const routeTree = root.addChildren([
   home,
   inbox,
   prs,
+  team,
   mentions,
   health,
   turbo,
@@ -146,9 +153,11 @@ export const router = createRouter({
     initialEntries: [
       isChatWindow
         ? window.location.pathname
-        : prefsStore.get().landing === "home"
-          ? "/"
-          : "/inbox",
+        : import.meta.env.DEV && window.location.pathname !== "/"
+          ? window.location.pathname
+          : prefsStore.get().landing === "home"
+            ? "/"
+            : "/inbox",
     ],
   }),
   defaultPreload: "intent",
@@ -163,10 +172,11 @@ declare module "@tanstack/react-router" {
 }
 
 export type ListView = "inbox" | "prs" | "mentions" | "health" | "local";
-export const VIEW_PATHS: Record<ListView | "home" | "history" | "settings", string> = {
+export const VIEW_PATHS: Record<ListView | "home" | "history" | "settings" | "team", string> = {
   home: "/",
   inbox: "/inbox",
   prs: "/prs",
+  team: "/team",
   mentions: "/mentions",
   health: "/health",
   local: "/local",
