@@ -83,6 +83,7 @@ export const Prefs = Schema.Struct({
     "nature",
     "nebula",
     "clouds",
+    "teams",
   ]),
   /** Webview zoom factor; 1 is the design size. */
   zoom: Schema.Number,

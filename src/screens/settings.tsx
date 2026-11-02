@@ -17,7 +17,11 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
-import { type TeamsBillingAccount, useTeamsBilling } from "@/app/teams-billing";
+import {
+  type TeamsBillingAccount,
+  useTeamsBilling,
+  useTeamsPlan,
+} from "@/app/teams-billing";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { checkForUpdates } from "@/app/updater";
@@ -126,6 +130,7 @@ export function SettingsScreen() {
   const qc = useQueryClient();
   const prefs = usePrefs();
   const auth = useAuth();
+  const teamsPlan = useTeamsPlan();
   const set = <K extends keyof Prefs>(key: K, value: Prefs[K]) =>
     prefsStore.update((p) => ({ ...p, [key]: value }));
 
@@ -263,6 +268,15 @@ export function SettingsScreen() {
                     { value: "nature", label: "Nature" },
                     { value: "nebula", label: "Nebula" },
                     { value: "clouds", label: "Clouds" },
+                    ...(teamsPlan === "teams"
+                      ? [
+                          {
+                            value: "teams" as const,
+                            label: "Obsidian · Teams",
+                            hint: "Exclusive to active Reviewly Teams workspaces.",
+                          },
+                        ]
+                      : []),
                   ]}
                 />
               </Field>

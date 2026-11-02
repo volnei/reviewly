@@ -879,6 +879,40 @@ td[data-sel] {
   --change-map-4: #c3a26f;
 }
 
+/* Obsidian is the paid workspace's quiet, high-contrast identity. It stays
+   deliberately neutral in the chrome; cool light only appears in focus,
+   assistant and data states. */
+:root[data-theme="teams"] {
+  color-scheme: dark;
+  --void: #06080b;
+  --rail: #0c1016;
+  --workspace: #d4dbe5;
+  --workspace-soft: #192230;
+  --desk: #090d13;
+  --page: #0d1219;
+  --card-surface: #131a24;
+  --raise: #1c2633;
+  --sink: #080c11;
+  --ink: #f3f6fa;
+  --ink-2: #bcc6d2;
+  --ink-3: #8d99a8;
+  --hair: rgba(221, 232, 246, 0.065);
+  --edge: rgba(221, 232, 246, 0.13);
+  --popover: #151d28;
+  --muted: #151d28;
+  --accent: #202b39;
+  --input: rgba(221, 232, 246, 0.15);
+  --ring: rgba(126, 162, 224, 0.56);
+  --ai-a: #91abe0;
+  --ai-b: #91abe0;
+  --ai-c: #91abe0;
+  --ai-face: #111a29;
+  --change-map-1: #91abe0;
+  --change-map-2: #78a7b8;
+  --change-map-3: #8fb39b;
+  --change-map-4: #b6a1ca;
+}
+
 :root[data-theme="clouds"] {
   color-scheme: light;
   --void: #dce7ed;
