@@ -11,8 +11,8 @@ import type { MouseEvent } from "react";
 
 /**
  * One bar across the whole window, in the screen's own colour, centred on the
- * traffic lights (tauri.conf puts them at 16/18, so the row is 42px and the
- * content starts after them). Press and drag anywhere that isn't a control to
+ * traffic lights (tauri.conf keeps their visual centre aligned with this
+ * 46px row, so content starts after them). Press and drag anywhere that isn't a control to
  * move the window; double-click to zoom, like any macOS title bar.
  */
 const INTERACTIVE =
