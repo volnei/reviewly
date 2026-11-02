@@ -5508,6 +5508,14 @@ mark.dm {
     linear-gradient(90deg, rgba(7, 5, 11, 0.98) 0%, rgba(7, 5, 11, 0.76) 34%, transparent 67%),
     linear-gradient(0deg, rgba(7, 5, 11, 0.34), transparent 58%);
 }
+:root[data-theme="teams"] .home-hero {
+  background: #06090e;
+}
+:root[data-theme="teams"] .home-hero::after {
+  background:
+    linear-gradient(90deg, rgba(5, 8, 13, 0.99) 0%, rgba(5, 8, 13, 0.77) 34%, transparent 66%),
+    linear-gradient(0deg, rgba(5, 8, 13, 0.38), transparent 58%);
+}
 .home-hero-art {
   position: absolute;
   z-index: -3;

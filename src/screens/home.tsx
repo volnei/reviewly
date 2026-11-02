@@ -85,6 +85,8 @@ export function HomeScreen() {
             ? "/images/home-nature.png"
             : appearance === "nebula"
               ? "/images/home-nebula.png"
+              : appearance === "teams"
+                ? "/images/home-teams-obsidian.png"
               : appearance === "clouds"
                 ? "/images/home-clouds.png"
                 : "/images/home-pixel-night-lowres.png";
