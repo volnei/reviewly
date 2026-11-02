@@ -6,6 +6,7 @@ import { GitHub, splitRepo } from "@/effect/services/GitHub";
 import { fromSummary } from "@/effect/services/Inbox";
 import { usePrefs } from "@/effect/services/Prefs";
 import { type Ranked, Triage, compareRanked } from "@/effect/services/Triage";
+import { type Store, persistedStore, useStore } from "@/effect/store";
 import {
   Chips,
   FilterBar,
@@ -18,12 +19,41 @@ import { List, ListHead, Nothing, type Section } from "@/features/list/list";
 import { useKeepScroll } from "@/features/list/scroll";
 import { useWithStacks } from "@/features/list/stacks";
 import { Effect } from "effect";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { RefreshButton, TitleSearch, useItemActions, useOpenItem } from "./inbox";
 import { PrPeek } from "./pr-peek";
 
 type Group = "none" | "repo" | "author" | "stack";
 type Sort = "priority" | "updated" | "updated-asc" | "created" | "created-asc" | "title";
+type Display = { group: Group; sort: Sort };
+const GROUPS: ReadonlyArray<Group> = ["none", "repo", "author", "stack"];
+const SORTS: ReadonlyArray<Sort> = [
+  "priority",
+  "updated",
+  "updated-asc",
+  "created",
+  "created-asc",
+  "title",
+];
+const DEFAULT_DISPLAY: Display = { group: "none", sort: "priority" };
+const decodeDisplay = (raw: unknown): Display => {
+  const r = raw as Partial<{ group: unknown; sort: unknown }> | null;
+  return {
+    group: GROUPS.includes(r?.group as Group) ? (r!.group as Group) : "none",
+    sort: SORTS.includes(r?.sort as Sort) ? (r!.sort as Sort) : "priority",
+  };
+};
+// One store per workspace, keyed like the list filter: `<owner/repo>` or `all`.
+const displayStores = new Map<string, Store<Display>>();
+const displayStoreFor = (workspace: string | null): Store<Display> => {
+  const key = `reviewly.v2.prs-display:${workspace ?? "all"}`;
+  let s = displayStores.get(key);
+  if (!s) {
+    s = persistedStore<Display>(key, DEFAULT_DISPLAY, decodeDisplay);
+    displayStores.set(key, s);
+  }
+  return s;
+};
 
 /**
  * Every pull request in the repositories you watch, from the local cache, with
@@ -46,8 +76,10 @@ export function PrsScreen() {
   const viewer = auth.viewer?.login ?? null;
   const watched = usePrefs((p) => p.watchedRepos);
   const inbox = useWorkspaceInbox();
-  const [group, setGroup] = useState<Group>("none");
-  const [sort, setSort] = useState<Sort>("priority");
+  const displayStore = displayStoreFor(workspace);
+  const { group, sort } = useStore(displayStore);
+  const setGroup = (group: Group) => displayStore.update((d) => ({ ...d, group }));
+  const setSort = (sort: Sort) => displayStore.update((d) => ({ ...d, sort }));
   const [filter, setFilter] = useListFilter("prs");
   const includeHistory = filter.statuses.has("merged") || filter.statuses.has("closed");
   const listState = includeHistory ? "all" : "open";

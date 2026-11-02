@@ -13,6 +13,7 @@ lerna-debug.log*
 # Build
 node_modules
 dist
+dist-site
 dist-ssr
 *.local
 *.tsbuildinfo
