@@ -36,13 +36,19 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .hero { min-height: 1080px; padding: 250px var(--margin) 0; overflow: hidden; }
 .hero-copy { max-width: 1380px; margin: 0 auto; }
 .hero h1 { max-width: 11.2ch; margin: 0; font-size: var(--display); font-weight: 500; line-height: .94; letter-spacing: -.062em; }
-.hero-support { display: grid; grid-template-columns: minmax(0, 520px) auto; gap: 40px; align-items: start; justify-content: space-between; margin-top: 50px; }
-.hero-support > p { margin: 0; color: var(--muted); font-size: clamp(18px, 1.5vw, 21px); line-height: 1.55; }
-.product-window { overflow: hidden; margin: 0; border-radius: 13px 13px 0 0; background: var(--surface-2); }
+.hero-support { display: grid; grid-template-columns: minmax(0, 620px) auto; gap: 40px; align-items: start; justify-content: space-between; margin-top: 50px; }
+.hero-support p { margin: 0; color: var(--ink); font-size: clamp(18px, 1.5vw, 21px); line-height: 1.55; }
+.hero-source { display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; color: var(--muted); font-size: 15px; }
+.hero-download { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.hero-download > a:last-child { color: var(--muted); font-size: 14px; }
+.product-window { overflow: hidden; margin: 0; border: 1px solid #34322f; /* taste-skill-ignore */ border-radius: 12px 12px 0 0; background: #1d1c1a; box-shadow: 0 32px 90px rgba(0,0,0,.32); /* taste-skill-ignore */ }
 .hero-window { width: min(1380px, 100%); margin: 92px auto 0; }
-.window-bar { position: relative; height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: #111316; }
-.window-bar > span { width: 8px; height: 8px; border-radius: 50%; background: #45484e; }
-.window-bar small { position: absolute; inset: 0; display: grid; place-items: center; color: #7d8087; font-size: 13px; }
+.window-bar { position: relative; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #252320; }
+.window-bar > span { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); /* taste-skill-ignore */ }
+.window-bar .window-close { background: #ff5f57; }
+.window-bar .window-minimize { background: #febc2e; }
+.window-bar .window-expand { background: #28c840; }
+.window-bar small { position: absolute; inset: 0; display: grid; place-items: center; color: #9b9790; font-size: 13px; }
 .product-window img { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: contain; }
 
 .manifesto, .showcase, .workflow, .teams, .install, .pricing, .faq { max-width: 1484px; margin: 0 auto; padding: 180px var(--margin); }
@@ -51,6 +57,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(28px, 5vw, 80px); margin-top: 130px; padding-top: 28px; }
 .principles h3 { margin: 28px 0 16px; font-size: 21px; font-weight: 500; letter-spacing: -.025em; }
 .principles p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
+.manifesto-detail { height: min(44vw, 560px); overflow: hidden; margin: 120px 0 0; border-radius: 12px; background: var(--surface-2); }
+.manifesto-detail img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 14%; }
 .showcase { padding-top: 130px; }
 .section-intro { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(280px,.65fr); gap: 9vw; align-items: end; margin-bottom: 90px; }
 .section-intro h2 { max-width: 13ch; }
@@ -58,15 +66,11 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .showcase .product-window { border-radius: 13px; }
 
 .workflow { max-width: none; padding-inline: max(var(--margin), calc((100vw - 1380px) / 2)); background: var(--surface); }
-.workflow-shell { display: grid; grid-template-columns: minmax(280px,360px) minmax(0,1fr); gap: clamp(52px,7vw,110px); align-items: center; }
-.workflow-nav { display: flex; flex-direction: column; }
-.workflow-nav button { min-height: 82px; display: grid; grid-template-columns: 100px 1fr; gap: 10px; align-items: center; border: 0; border-radius: 8px; padding: 0 14px; background: transparent; color: var(--muted-2); text-align: left; cursor: pointer; }
-.workflow-nav button[aria-selected="true"] { background: var(--surface-3); color: var(--ink); }
-.workflow-nav button strong { font-size: 16px; font-weight: 500; }
-.workflow-nav button small { color: inherit; font-size: 14px; }
-.workflow-nav > p { margin: 30px 0 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
-.workflow-image { overflow: hidden; margin: 0; border-radius: 12px; background: #111316; }
-.workflow-image img { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: contain; animation: image-in 420ms ease both; }
+.workflow-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(36px, 6vw, 90px); }
+.workflow-item { padding-top: 26px; }
+.workflow-name { display: block; margin: 0 0 46px; color: var(--muted); font-size: 16px; font-weight: 500; }
+.workflow-title { margin: 0 0 16px; color: var(--ink); font-size: 18px; font-weight: 500; letter-spacing: -.015em; }
+.workflow-body { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
 
 .teams { position: relative; max-width: none; padding-inline: max(var(--margin), calc((100vw - 1380px) / 2)); overflow: hidden; }
 .teams::before { content: ""; position: absolute; width: 760px; height: 760px; right: -280px; bottom: -320px; border-radius: 50%; background: rgba(113,118,136,.09); filter: blur(90px); pointer-events: none; }
@@ -88,17 +92,25 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .direct-download { color: var(--muted); }
 .direct-download a { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 500; }
 
-.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 10vw; }
-.pricing-body { display: grid; grid-template-columns: 150px 1fr; gap: 52px; }
-.plan-list { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
-.plan-list button { min-height: 46px; border: 0; border-radius: 7px; padding: 0 14px; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
-.plan-list button[aria-selected="true"] { background: var(--surface-3); color: var(--ink); }
-.price-stage { min-height: 280px; display: flex; flex-direction: column; align-items: flex-start; }
-.price { font-size: clamp(58px,6vw,92px); line-height: .9; letter-spacing: -.065em; font-variant-numeric: tabular-nums; }
-.price small { display: block; margin-top: 18px; color: var(--muted); font-size: 15px; letter-spacing: 0; }
-.price-stage p { max-width: 38ch; margin: 30px 0; color: var(--muted); font-size: 17px; line-height: 1.6; }
+.pricing { display: block; }
+.pricing-heading { display: grid; grid-template-columns: 1fr minmax(280px, .7fr); gap: 9vw; align-items: end; }
+.pricing-heading > p { margin: 0 0 4px; color: var(--ink); font-size: 18px; line-height: 1.6; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 90px; }
+.plan { min-height: 620px; display: flex; flex-direction: column; align-items: flex-start; padding: clamp(30px,4vw,58px); border-radius: 12px; background: var(--surface-2); }
+.plan h3 { margin: 0 0 42px; font-size: 22px; font-weight: 500; }
+.plan-price { margin: 0; font-size: clamp(62px,7vw,100px); line-height: .85; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
+.plan-price small { display: block; margin-top: 22px; color: var(--muted); font-size: 15px; letter-spacing: 0; }
+.plan > p { max-width: 42ch; margin: 50px 0 28px; color: var(--muted); font-size: 17px; line-height: 1.6; }
+.plan ul { display: grid; gap: 12px; margin: 0 0 42px; padding: 0; color: var(--ink); list-style: none; font-size: 15px; }
+.plan li::before { content: "•"; margin-right: 12px; color: var(--muted); }
+.plan .button { margin-top: auto; }
+.teams-plan { background: var(--ink); color: var(--bg); }
+.teams-plan > p, .teams-plan .plan-price small { color: #5e6167; }
+.teams-plan ul { color: #202226; }
+.teams-plan li::before { color: #777a80; }
+.teams-plan .button-primary { background: var(--bg); color: var(--ink); }
 
-.faq { display: grid; grid-template-columns: .75fr 1.25fr; gap: 9vw; background: var(--surface); }
+.faq { display: grid; grid-template-columns: .75fr 1.25fr; gap: 9vw; padding-bottom: 100px; background: var(--surface); }
 .faq-list { display: flex; flex-direction: column; }
 .faq details { margin-bottom: 4px; padding-inline: 18px; border-radius: 8px; background: var(--surface-2); }
 .faq summary { min-height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 24px; cursor: pointer; list-style: none; font-size: 18px; }
@@ -109,12 +121,12 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .faq details[open] summary span::after { transform: rotate(0); }
 .faq details p { max-width: 58ch; margin: 0; padding: 0 44px 30px 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
 
-.closing { min-height: 760px; display: grid; place-items: center; padding: 150px var(--margin); background: var(--surface-2); text-align: center; }
+.closing { min-height: 500px; display: grid; place-items: center; padding: 80px var(--margin); background: var(--surface-2); text-align: center; }
 .closing-copy { display: flex; flex-direction: column; align-items: center; }
-.closing-copy .logo { margin-bottom: 24px; }
 .closing-copy .logo { margin-bottom: 30px; }
 .closing h2 { max-width: 10ch; font-size: clamp(58px,7vw,108px); }
-.closing .button { margin-top: 50px; }
+.closing-copy > p { margin: 28px 0 0; color: var(--muted); font-size: 18px; }
+.closing .button { margin-top: 38px; }
 footer { min-height: 220px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 32px; padding: 70px var(--margin) 32px; color: var(--muted); font-size: 13px; }
 footer > div { display: flex; gap: 26px; }
 footer > span { text-align: right; }
@@ -129,14 +141,9 @@ footer a:hover { color: var(--ink); }
   .hero { min-height: auto; padding-top: 190px; }
   .hero-support { grid-template-columns: 1fr; }
   .manifesto, .showcase, .workflow, .teams, .install, .pricing, .faq { padding-block: 120px; }
-  .section-intro, .install, .pricing, .faq { grid-template-columns: 1fr; gap: 60px; }
+  .section-intro, .install, .faq { grid-template-columns: 1fr; gap: 60px; }
   .principles { gap: 32px; }
-  .workflow-shell { grid-template-columns: 1fr; }
-  .workflow-nav { display: grid; grid-template-columns: repeat(3,1fr); }
-  .workflow-nav button { grid-template-columns: 1fr; align-content: center; gap: 5px; padding: 14px; }
-  .workflow-nav button small { display: none; }
-  .workflow-nav > p { grid-column: 1 / -1; }
-  .pricing-body { max-width: 680px; }
+  .pricing-heading { grid-template-columns: 1fr; gap: 34px; }
 }
 @media (max-width: 620px) {
   :root { --margin: 18px; --display: 54px; --heading: 42px; }
@@ -155,20 +162,19 @@ footer a:hover { color: var(--ink); }
   .section-intro { gap: 30px; margin-bottom: 52px; }
   .showcase .product-window, .teams-window { width: calc(100% + 20px); margin-left: -10px; border-radius: 9px; }
   .workflow { padding-inline: var(--margin); }
-  .workflow-shell { gap: 44px; }
-  .workflow-nav button { min-height: 76px; padding: 10px; }
-  .workflow-image { width: calc(100% + 20px); margin-left: -10px; }
+  .workflow-list { grid-template-columns: 1fr; gap: 52px; }
+  .workflow-name { margin-bottom: 22px; }
   .teams-copy { margin-bottom: 52px; }
   .install { gap: 44px; }
   .brew-command, .direct-download { min-height: 146px; align-items: flex-start; flex-direction: column; }
   .brew-command code { white-space: normal; overflow-wrap: anywhere; }
-  .pricing { gap: 54px; }
-  .pricing-body { grid-template-columns: 1fr; gap: 42px; }
-  .plan-list { flex-direction: row; }
-  .plan-list button { flex: 1; text-align: center; }
+  .plans { grid-template-columns: 1fr; margin-top: 54px; }
+  .plan { min-height: 560px; }
   .faq { gap: 52px; }
   .faq summary { min-height: 74px; font-size: 17px; }
-  .closing { min-height: 620px; padding-block: 110px; }
+  .manifesto-detail { width: calc(100% + 20px); height: 360px; margin: 72px 0 0 -10px; }
+  .faq { padding-bottom: 72px; }
+  .closing { min-height: 460px; padding-block: 72px; }
   .closing h2 { font-size: 56px; }
   footer { min-height: 260px; grid-template-columns: 1fr; align-content: end; gap: 18px; }
   footer > span { text-align: left; }
