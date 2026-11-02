@@ -5,7 +5,7 @@ import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { run } from "@/effect/runtime";
@@ -57,6 +57,57 @@ function PolicyList({
         onChange={(event) => onChange(event.target.value.split("\n"))}
         className="mt-3 [&_textarea]:min-h-24 [&_textarea]:font-mono [&_textarea]:text-[12px] [&_textarea]:leading-5"
       />
+    </div>
+  );
+}
+
+function LimitSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  disabled: boolean;
+  onChange: (value: number | null) => void;
+}) {
+  const unlimited = max + step;
+  const sliderValue = value === null ? unlimited : Math.min(Math.max(value, min), max);
+  const display = value === null ? "No limit" : `${value.toLocaleString()} ${unit}`;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12px] font-medium text-ink">{label}</p>
+        <span className="tnum rounded-md bg-raise px-2 py-1 text-[11px] font-medium text-ink-2">
+          {display}
+        </span>
+      </div>
+      <Slider
+        className="mt-3"
+        value={sliderValue}
+        min={min}
+        max={unlimited}
+        step={step}
+        disabled={disabled}
+        ariaLabel={label}
+        ariaValueText={(current) =>
+          current === unlimited ? "No limit" : `${current} ${unit}`
+        }
+        onValueChange={(next) => onChange(next === unlimited ? null : next)}
+      />
+      <div className="tnum mt-1 flex justify-between text-[10.5px] text-ink-3">
+        <span>{min.toLocaleString()}</span>
+        <span>No limit</span>
+      </div>
     </div>
   );
 }
@@ -202,28 +253,30 @@ function WorkspacePolicy({
               Change limits
             </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              {([
-                ["maxChangedFiles", "Maximum changed files", "No limit"],
-                ["maxChangedLines", "Maximum changed lines", "No limit"],
-              ] as const).map(([key, label, placeholder]) => (
-                <label key={key} className="block text-[12px] font-medium text-ink">
-                  {label}
-                  <Input
-                    className="mt-2"
-                    type="number"
-                    min={1}
-                    value={draft[key] ?? ""}
-                    placeholder={placeholder}
-                    disabled={!canEdit || saving}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        [key]: event.target.value ? Number(event.target.value) : null,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
+              <LimitSlider
+                label="Maximum changed files"
+                value={draft.maxChangedFiles}
+                min={1}
+                max={100}
+                step={1}
+                unit="files"
+                disabled={!canEdit || saving}
+                onChange={(maxChangedFiles) =>
+                  setDraft((current) => ({ ...current, maxChangedFiles }))
+                }
+              />
+              <LimitSlider
+                label="Maximum changed lines"
+                value={draft.maxChangedLines}
+                min={50}
+                max={5000}
+                step={50}
+                unit="lines"
+                disabled={!canEdit || saving}
+                onChange={(maxChangedLines) =>
+                  setDraft((current) => ({ ...current, maxChangedLines }))
+                }
+              />
             </div>
           </section>
 
