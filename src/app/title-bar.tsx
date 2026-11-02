@@ -1,4 +1,5 @@
 import { useOnline } from "@/app/online";
+import { useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlotValue } from "@/app/title-slot";
 import { WorkspacePicker } from "@/app/workspace-picker";
 import { isNative } from "@/effect/Tauri";
@@ -22,6 +23,7 @@ export function TitleBar() {
   const online = useOnline();
   const navigate = useNavigate();
   const activities = useAiActivity();
+  const teamsPlan = useTeamsPlan();
   const currentActivity =
     [...activities].reverse().find((activity) => activity.returnTo) ??
     activities.at(-1);
@@ -49,6 +51,19 @@ export function TitleBar() {
       <span className="titlebar-brand mr-1 text-[12px] font-medium text-ink-2">
         Reviewly
       </span>
+      {teamsPlan ? (
+        <span
+          className="titlebar-plan mr-1 text-[11px] text-ink-3"
+          title={
+            teamsPlan === "teams"
+              ? "Teams plan — shared review queues are active"
+              : "Hobby plan — local Reviewly is free"
+          }
+          aria-label={`Reviewly ${teamsPlan === "teams" ? "Teams" : "Hobby"} plan`}
+        >
+          {teamsPlan === "teams" ? "Teams" : "Hobby"}
+        </span>
+      ) : null}
       <WorkspacePicker />
       <div className="ml-3 flex min-w-0 flex-1 items-center gap-2 pr-3">
         {node}

@@ -2495,6 +2495,10 @@ mark.dm {
 .app-titlebar button {
   flex-shrink: 0;
 }
+.titlebar-plan {
+  padding-left: 6px;
+  border-left: 1px solid var(--hair);
+}
 .home-metric,
 .home-panel {
   border-radius: 9px;

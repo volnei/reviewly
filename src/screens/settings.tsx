@@ -17,6 +17,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
+import { type TeamsBillingAccount, useTeamsBilling } from "@/app/teams-billing";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { checkForUpdates } from "@/app/updater";
@@ -45,9 +46,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { AppError } from "@/effect/errors";
 import { run, useEffectQuery } from "@/effect/runtime";
-import type { TeamBilling, TeamOrganization, TeamsInbox } from "@/effect/schema";
+import type { TeamBilling, TeamsInbox } from "@/effect/schema";
 import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS } from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
@@ -800,7 +800,7 @@ function About() {
 }
 
 type TeamsWorkspace = {
-  readonly organization: TeamOrganization;
+  readonly organization: TeamsBillingAccount["organization"];
   readonly billing: TeamBilling;
   readonly inbox: TeamsInbox | null;
 };
@@ -826,32 +826,37 @@ function TeamsSettings() {
   const teams = useTeams();
   const [connecting, setConnecting] = useState(false);
   const [billingAction, setBillingAction] = useState<string | null>(null);
-  const workspaces = useEffectQuery(
-    ["teams", "workspaces", teams.organizations.map((organization) => organization.id).join(",")],
+  const billingAccounts = useTeamsBilling();
+  const paidAccounts = billingAccounts.data?.filter((account) => account.billing.access) ?? [];
+  const inboxes = useEffectQuery(
+    ["teams", "inboxes", paidAccounts.map((account) => account.organization.id).join(",")],
     Effect.flatMap(Teams, (service) =>
       Effect.forEach(
-        teams.organizations,
-        (organization): Effect.Effect<TeamsWorkspace, AppError> =>
+        paidAccounts,
+        ({ organization }) =>
           service
-            .billing(organization.id)
-            .pipe(
-              Effect.flatMap((billing) =>
-                billing.access
-                  ? service
-                      .inbox(organization.id)
-                      .pipe(
-                        Effect.map((inbox): TeamsWorkspace => ({ organization, billing, inbox })),
-                      )
-                  : Effect.succeed<TeamsWorkspace>({ organization, billing, inbox: null }),
-              ),
-            ),
+            .inbox(organization.id)
+            .pipe(Effect.map((inbox) => ({ organizationId: organization.id, inbox }))),
         { concurrency: 3 },
       ),
     ),
-    { enabled: teams.signedIn && teams.organizations.length > 0 },
+    { enabled: paidAccounts.length > 0 },
   );
+  const inboxByOrganization = new Map(
+    inboxes.data?.map(({ organizationId, inbox }) => [organizationId, inbox] as const) ?? [],
+  );
+  const workspaces: ReadonlyArray<TeamsWorkspace> | undefined = billingAccounts.data?.map(
+    ({ organization, billing }) => ({
+      organization,
+      billing,
+      inbox: billing.access ? (inboxByOrganization.get(organization.id) ?? null) : null,
+    }),
+  );
+  const sharedQueuesPending =
+    billingAccounts.isPending || (paidAccounts.length > 0 && inboxes.isPending);
+  const sharedQueuesError = billingAccounts.isError || inboxes.isError;
 
-  const openBilling = async (workspace: TeamsWorkspace) => {
+  const openBilling = async (workspace: TeamsBillingAccount) => {
     if (billingAction) return;
     const { organization, billing } = workspace;
     setBillingAction(organization.id);
@@ -954,18 +959,18 @@ function TeamsSettings() {
           title="Plan and billing"
           blurb="Reviewly Teams is $8 per member each month. Billing is managed securely by Stripe."
         >
-          {workspaces.isPending ? (
+          {billingAccounts.isPending ? (
             <p className="teams-inline-state">Loading billing…</p>
-          ) : workspaces.isError ? (
+          ) : billingAccounts.isError ? (
             <div className="teams-inline-error">
               <p>Couldn’t load billing.</p>
-              <Button variant="ghost" size="sm" onClick={() => void workspaces.refetch()}>
+              <Button variant="ghost" size="sm" onClick={() => void billingAccounts.refetch()}>
                 Retry
               </Button>
             </div>
-          ) : workspaces.data?.length ? (
+          ) : billingAccounts.data?.length ? (
             <div className="teams-billing-list">
-              {workspaces.data.map((workspace) => {
+              {billingAccounts.data.map((workspace) => {
                 const { organization, billing } = workspace;
                 const total = (billing.memberCount * billing.price.unitAmount) / 100;
                 const busy = billingAction === organization.id;
@@ -1029,18 +1034,25 @@ function TeamsSettings() {
           title="Shared queues"
           blurb="A live read-only snapshot from the repositories selected in the GitHub App."
         >
-          {workspaces.isPending ? (
+          {sharedQueuesPending ? (
             <p className="teams-inline-state">Loading shared queues…</p>
-          ) : workspaces.isError ? (
+          ) : sharedQueuesError ? (
             <div className="teams-inline-error">
               <p>Couldn’t load the shared queues.</p>
-              <Button variant="ghost" size="sm" onClick={() => void workspaces.refetch()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void billingAccounts.refetch();
+                  if (paidAccounts.length > 0) void inboxes.refetch();
+                }}
+              >
                 Retry
               </Button>
             </div>
-          ) : workspaces.data?.length ? (
+          ) : workspaces?.length ? (
             <div className="teams-org-list">
-              {workspaces.data.map(({ organization, billing, inbox }) => {
+              {workspaces.map(({ organization, billing, inbox }) => {
                 if (!inbox) {
                   return (
                     <div className="teams-org-row" key={organization.id}>
