@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 const SERVICE: &str = "dev.volnei.reviewly";
 const ACCOUNT: &str = "github";
+const TEAMS_ACCOUNT: &str = "reviewly-teams";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredCredentials {
@@ -37,6 +38,30 @@ fn dev_token() -> Option<String> {
 
 fn entry() -> AppResult<Entry> {
     Entry::new(SERVICE, ACCOUNT).map_err(AppError::from)
+}
+
+fn teams_entry() -> AppResult<Entry> {
+    Entry::new(SERVICE, TEAMS_ACCOUNT).map_err(AppError::from)
+}
+
+pub fn save_teams_token(token: &str) -> AppResult<()> {
+    teams_entry()?.set_password(token)?;
+    Ok(())
+}
+
+pub fn load_teams_token() -> AppResult<Option<String>> {
+    match teams_entry()?.get_password() {
+        Ok(token) => Ok(Some(token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub fn delete_teams_token() -> AppResult<()> {
+    match teams_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub fn save_token(host: &str, token: &str) -> AppResult<()> {

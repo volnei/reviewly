@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -50,6 +51,7 @@ import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
 import { type Prefs, prefsStore, usePrefs } from "@/effect/services/Prefs";
+import { Teams, useTeams } from "@/effect/services/Teams";
 import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
 import { isDemo, setDemo } from "@/lib/demo";
@@ -99,6 +101,12 @@ const CATEGORIES = [
     label: "Account",
     description: "Your GitHub connection and activity.",
     icon: UserRound,
+  },
+  {
+    id: "teams",
+    label: "Teams",
+    description: "Shared review queues for your GitHub organizations.",
+    icon: UsersRound,
   },
   {
     id: "about",
@@ -708,6 +716,21 @@ export function SettingsScreen() {
             </p>
           </div>
         </TabsPanel>
+        <TabsPanel value="teams" keepMounted className="settings-panel">
+          <div className="settings-page">
+            <header className="settings-page-header">
+              <div className="settings-page-icon">
+                <UsersRound size={18} />
+              </div>
+              <div>
+                <p>Workspace</p>
+                <h1>Reviewly Teams</h1>
+                <span>Shared review queues, synchronized by the GitHub App.</span>
+              </div>
+            </header>
+            <TeamsSettings />
+          </div>
+        </TabsPanel>
         <TabsPanel value="about" keepMounted className="settings-panel">
           <div className="settings-page">
             <header className="settings-page-header">
@@ -771,6 +794,162 @@ function About() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function TeamsSettings() {
+  const teams = useTeams();
+  const [connecting, setConnecting] = useState(false);
+  const inboxes = useEffectQuery(
+    ["teams", "inboxes", teams.organizations.map((organization) => organization.id).join(",")],
+    Effect.flatMap(Teams, (service) =>
+      Effect.forEach(
+        teams.organizations,
+        (organization) =>
+          service.inbox(organization.id).pipe(Effect.map((inbox) => ({ organization, inbox }))),
+        { concurrency: 3 },
+      ),
+    ),
+    { enabled: teams.signedIn && teams.organizations.length > 0 },
+  );
+
+  const connect = async () => {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      const link = await run(Effect.flatMap(Teams, (service) => service.linkStart));
+      safeOpenUrl(link.authorize_url);
+      const deadline = Date.now() + link.expires_in * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, link.interval * 1000));
+        const answer = await run(
+          Effect.flatMap(Teams, (service) => service.linkPoll(link.link_id, link.device_code)),
+        );
+        if (answer.status === "authorized") {
+          toast.done("Reviewly Teams connected");
+          return;
+        }
+      }
+      throw new Error("The sign-in window expired. Try again.");
+    } catch (error) {
+      toast.fail("Couldn’t connect Reviewly Teams", error);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <>
+      <Section
+        title="Teams connection"
+        blurb="Your GitHub credential stays on this Mac. Teams receives a separate, revocable Reviewly session."
+      >
+        {teams.loading ? (
+          <div className="teams-connection-state" aria-live="polite">
+            <span className="teams-status-dot" />
+            <div>
+              <p>Checking the connection…</p>
+              <span>Your local GitHub workflow remains available.</span>
+            </div>
+          </div>
+        ) : teams.signedIn ? (
+          <div className="teams-connection-state">
+            <span className="teams-status-dot is-connected" />
+            <div className="min-w-0 flex-1">
+              <p>Connected</p>
+              <span>
+                {teams.organizations.length
+                  ? `${teams.organizations.length} GitHub ${teams.organizations.length === 1 ? "account" : "accounts"} available`
+                  : "Install the GitHub App on an account to create its shared queue."}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                run(Effect.flatMap(Teams, (service) => service.signOut)).catch((error) =>
+                  toast.fail("Couldn’t disconnect Teams", error),
+                )
+              }
+            >
+              Disconnect
+            </Button>
+          </div>
+        ) : (
+          <div className="teams-connect-prompt">
+            <div>
+              <p>Bring your team’s review queue into Reviewly.</p>
+              <span>
+                Sign in in your browser, then return here. The desktop app never receives your
+                GitHub OAuth token.
+              </span>
+            </div>
+            <Button size="sm" disabled={connecting} onClick={() => void connect()}>
+              {connecting ? "Waiting for GitHub…" : "Connect Teams"}
+            </Button>
+          </div>
+        )}
+      </Section>
+
+      {teams.signedIn ? (
+        <Section
+          title="Shared queues"
+          blurb="A live read-only snapshot from the repositories selected in the GitHub App."
+        >
+          {inboxes.isPending ? (
+            <p className="teams-inline-state">Loading shared queues…</p>
+          ) : inboxes.isError ? (
+            <div className="teams-inline-error">
+              <p>Couldn’t load the shared queues.</p>
+              <Button variant="ghost" size="sm" onClick={() => void inboxes.refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : inboxes.data?.length ? (
+            <div className="teams-org-list">
+              {inboxes.data.map(({ organization, inbox }) => {
+                const open = inbox.pulls.filter((pull) => pull.state === "open").length;
+                const needsAttention = inbox.pulls.filter(
+                  (pull) =>
+                    pull.state === "open" &&
+                    (pull.ciState === "failure" ||
+                      pull.reviewDecision === "CHANGES_REQUESTED" ||
+                      pull.mergeableState === "dirty"),
+                ).length;
+                return (
+                  <div className="teams-org-row" key={organization.id}>
+                    <div className="teams-org-mark" aria-hidden>
+                      {organization.login.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p>{organization.display_name ?? organization.login}</p>
+                      <span>
+                        @{organization.login} · {organization.role}
+                      </span>
+                    </div>
+                    <div className="teams-org-counts">
+                      <strong>{open}</strong>
+                      <span>{open === 1 ? "open PR" : "open PRs"}</span>
+                    </div>
+                    <div
+                      className={cn("teams-org-counts", needsAttention > 0 && "needs-attention")}
+                    >
+                      <strong>{needsAttention}</strong>
+                      <span>need attention</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="teams-inline-state">
+              No GitHub account is connected yet. Install the Reviewly Teams GitHub App, then sign
+              in again to attach it.
+            </p>
+          )}
+        </Section>
+      ) : null}
+    </>
   );
 }
 

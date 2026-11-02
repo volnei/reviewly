@@ -34,6 +34,57 @@ export const DeviceStart = S.Struct({
 });
 export type DeviceStart = typeof DeviceStart.Type;
 
+export const TeamOrganization = S.Struct({
+  id: S.String,
+  login: S.String,
+  display_name: S.NullOr(S.String),
+  role: S.String,
+});
+export type TeamOrganization = typeof TeamOrganization.Type;
+
+export const TeamsStatus = S.Struct({
+  signed_in: S.Boolean,
+  organizations: S.Array(TeamOrganization),
+});
+export type TeamsStatus = typeof TeamsStatus.Type;
+
+export const TeamsLinkStart = S.Struct({
+  link_id: S.String,
+  device_code: S.String,
+  authorize_url: S.String,
+  expires_in: S.Number,
+  interval: S.Number,
+});
+export type TeamsLinkStart = typeof TeamsLinkStart.Type;
+
+export const TeamsLinkPoll = S.Struct({
+  status: S.String,
+  organizations: S.Array(TeamOrganization),
+});
+export type TeamsLinkPoll = typeof TeamsLinkPoll.Type;
+
+export const TeamPull = S.Struct({
+  repository: S.String,
+  number: S.Number,
+  authorLogin: S.NullOr(S.String),
+  state: S.String,
+  draft: S.Boolean,
+  baseBranch: S.NullOr(S.String),
+  reviewDecision: S.NullOr(S.String),
+  ciState: S.NullOr(S.String),
+  mergeableState: S.NullOr(S.String),
+  createdAt: S.NullOr(S.String),
+  updatedAt: S.NullOr(S.String),
+  syncedAt: S.String,
+});
+export type TeamPull = typeof TeamPull.Type;
+
+export const TeamsInbox = S.Struct({
+  organizationId: S.String,
+  pulls: S.Array(TeamPull),
+});
+export type TeamsInbox = typeof TeamsInbox.Type;
+
 export const UserRef = S.Struct({
   login: S.String,
   avatar_url: S.String,

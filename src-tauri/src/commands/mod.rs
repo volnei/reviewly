@@ -12,3 +12,4 @@ pub mod pulls;
 pub mod reviews;
 pub mod search;
 pub mod stacks;
+pub mod teams;

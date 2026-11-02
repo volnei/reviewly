@@ -1,6 +1,6 @@
-import { type QueryKey, type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { type QueryKey, useQuery, type UseQueryOptions } from "@tanstack/react-query";
 import { type Effect, Layer, ManagedRuntime } from "effect";
-import { type Tauri, TauriLive, hasBackend } from "./Tauri";
+
 import { TauriFixtures } from "./fixtures";
 import { type Ai, AiLive } from "./services/Ai";
 import { type AppSettings, AppSettingsLive } from "./services/AppSettings";
@@ -9,7 +9,9 @@ import { type Git, GitLive } from "./services/Git";
 import { type GitHub, GitHubLive } from "./services/GitHub";
 import { type Inbox, InboxLive } from "./services/Inbox";
 import { PrefsLive, type PrefsService } from "./services/Prefs";
+import { Teams, TeamsLive } from "./services/Teams";
 import { type Triage, TriageRules } from "./services/Triage";
+import { hasBackend, type Tauri, TauriLive } from "./Tauri";
 
 /**
  * The application layer. Inside the Tauri shell the Rust side answers; in a
@@ -23,6 +25,7 @@ const AppLayer = Layer.mergeAll(
   PrefsLive,
   TriageRules,
   AuthLive.pipe(Layer.provide(TauriLayer)),
+  TeamsLive.pipe(Layer.provide(TauriLayer)),
   GitHubLive.pipe(Layer.provide(TauriLayer)),
   GitLive.pipe(Layer.provide(TauriLayer)),
   AppSettingsLive.pipe(Layer.provide(TauriLayer)),
@@ -35,15 +38,7 @@ const AppLayer = Layer.mergeAll(
 );
 
 export type AppServices =
-  | Tauri
-  | PrefsService
-  | Triage
-  | Auth
-  | GitHub
-  | Git
-  | AppSettings
-  | Inbox
-  | Ai;
+  Tauri | PrefsService | Triage | Auth | Teams | GitHub | Git | AppSettings | Inbox | Ai;
 
 export const runtime = ManagedRuntime.make(AppLayer);
 

@@ -731,6 +731,45 @@ const reactions = new Map<
 let nextReaction = 9000;
 const num = (x: unknown) => Number(x);
 const commands: Record<string, Handler> = {
+  teams_status: () => ({
+    signed_in: true,
+    organizations: [
+      { id: "fixture-volnei", login: "volnei", display_name: "volnei", role: "owner" },
+    ],
+  }),
+  teams_link_start: () => ({
+    link_id: "fixture-link",
+    device_code: "fixture-device-code-with-enough-entropy",
+    authorize_url: "https://reviewly-teams.vercel.app/api/auth/github/start",
+    expires_in: 600,
+    interval: 2,
+  }),
+  teams_link_poll: () => ({
+    status: "authorized",
+    organizations: [
+      { id: "fixture-volnei", login: "volnei", display_name: "volnei", role: "owner" },
+    ],
+  }),
+  teams_sign_out: () => ({}),
+  teams_inbox: ({ organizationId }) => ({
+    organizationId,
+    pulls: [
+      {
+        repository: "volnei/reviewly",
+        number: 17,
+        authorLogin: "volnei",
+        state: "open",
+        draft: false,
+        baseBranch: "main",
+        reviewDecision: null,
+        ciState: "success",
+        mergeableState: "clean",
+        createdAt: ago(day),
+        updatedAt: ago(3600_000),
+        syncedAt: ago(60_000),
+      },
+    ],
+  }),
   gh_compare: () => [
     {
       sha: "cmp1",

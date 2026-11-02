@@ -25,11 +25,12 @@ import { DependabotDone, Viewer } from "@/effect/schema";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, authStore, useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
+import { Teams } from "@/effect/services/Teams";
 import { Tauri } from "@/effect/Tauri";
-import { APP_STORE } from "@/lib/edition";
 import { clearHomeCache } from "@/features/home/cache";
 import { clearInboxCache } from "@/features/inbox/cache";
 import { recordFix } from "@/features/list/fixes";
+import { APP_STORE } from "@/lib/edition";
 import { toLocalId } from "@/lib/local-id";
 import { syncPrs } from "@/lib/pr-sync";
 import { safeOpenUrl } from "@/lib/ui";
@@ -160,6 +161,7 @@ function useAuthBootstrap() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     void run(Effect.flatMap(Auth, (a) => a.bootstrap));
+    void run(Effect.flatMap(Teams, (teams) => teams.bootstrap));
   }, []);
   useEffect(() => {
     if (auth.loading) return;

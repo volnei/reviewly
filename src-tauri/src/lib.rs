@@ -310,6 +310,12 @@ pub fn run() {
             commands::auth::auth_gh_available,
             commands::auth::auth_use_gh_cli,
             commands::auth::auth_use_token,
+            // Reviewly Teams
+            commands::teams::teams_status,
+            commands::teams::teams_link_start,
+            commands::teams::teams_link_poll,
+            commands::teams::teams_sign_out,
+            commands::teams::teams_inbox,
             // search
             commands::search::gh_review_requested,
             commands::search::gh_created,

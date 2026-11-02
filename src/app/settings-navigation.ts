@@ -8,6 +8,7 @@ const categories = [
   "assistant",
   "notifications",
   "account",
+  "teams",
   "about",
 ] as const;
 export type SettingsCategory = (typeof categories)[number];
