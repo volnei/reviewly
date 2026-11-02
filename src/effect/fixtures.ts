@@ -770,6 +770,20 @@ const commands: Record<string, Handler> = {
       },
     ],
   }),
+  teams_billing: ({ organizationId }) => ({
+    organizationId,
+    configured: true,
+    status: "active",
+    access: true,
+    canManage: true,
+    price: { currency: "usd", unitAmount: 800, interval: "month" },
+    memberCount: 4,
+    seatCount: 4,
+    currentPeriodEnd: new Date(Date.now() + 24 * day).toISOString(),
+    cancelAtPeriodEnd: false,
+  }),
+  teams_checkout: () => ({ url: "https://checkout.stripe.com/test" }),
+  teams_billing_portal: () => ({ url: "https://billing.stripe.com/test" }),
   gh_compare: () => [
     {
       sha: "cmp1",

@@ -70,6 +70,34 @@ pub struct TeamsInbox {
     pub pulls: Vec<TeamPull>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamBillingPrice {
+    pub currency: String,
+    pub unit_amount: u64,
+    pub interval: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamBilling {
+    pub organization_id: String,
+    pub configured: bool,
+    pub status: String,
+    pub access: bool,
+    pub can_manage: bool,
+    pub price: TeamBillingPrice,
+    pub member_count: u64,
+    pub seat_count: u64,
+    pub current_period_end: Option<String>,
+    pub cancel_at_period_end: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeamsBillingUrl {
+    pub url: String,
+}
+
 fn base_url() -> String {
     #[cfg(debug_assertions)]
     if let Ok(value) = std::env::var("REVIEWLY_TEAMS_URL") {
@@ -204,4 +232,64 @@ pub async fn teams_inbox(organization_id: String) -> AppResult<TeamsInbox> {
         )));
     }
     Ok(response.json().await?)
+}
+
+async fn teams_request(
+    organization_id: &str,
+    suffix: &str,
+    method: reqwest::Method,
+) -> AppResult<reqwest::Response> {
+    let token = creds::load_teams_token()?.ok_or(AppError::NotSignedIn)?;
+    let response = client()?
+        .request(
+            method,
+            format!(
+                "{}/api/organizations/{}/billing{}",
+                base_url(),
+                urlencoding::encode(organization_id),
+                suffix
+            ),
+        )
+        .bearer_auth(token)
+        .send()
+        .await?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        creds::delete_teams_token()?;
+        return Err(AppError::Auth("Reviewly Teams session expired".into()));
+    }
+    if !response.status().is_success() {
+        return Err(AppError::Other(format!(
+            "Reviewly Teams billing returned {}",
+            response.status()
+        )));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn teams_billing(organization_id: String) -> AppResult<TeamBilling> {
+    Ok(teams_request(&organization_id, "", reqwest::Method::GET)
+        .await?
+        .json()
+        .await?)
+}
+
+#[tauri::command]
+pub async fn teams_checkout(organization_id: String) -> AppResult<TeamsBillingUrl> {
+    Ok(
+        teams_request(&organization_id, "/checkout", reqwest::Method::POST)
+            .await?
+            .json()
+            .await?,
+    )
+}
+
+#[tauri::command]
+pub async fn teams_billing_portal(organization_id: String) -> AppResult<TeamsBillingUrl> {
+    Ok(
+        teams_request(&organization_id, "/portal", reqwest::Method::POST)
+            .await?
+            .json()
+            .await?,
+    )
 }

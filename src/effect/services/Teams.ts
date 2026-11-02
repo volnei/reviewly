@@ -38,6 +38,15 @@ export class Teams extends Context.Service<
     readonly inbox: (
       organizationId: string,
     ) => Effect.Effect<S.TeamsInbox, import("../errors").AppError>;
+    readonly billing: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamBilling, import("../errors").AppError>;
+    readonly checkout: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamsBillingUrl, import("../errors").AppError>;
+    readonly billingPortal: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamsBillingUrl, import("../errors").AppError>;
     readonly signOut: Effect.Effect<void, import("../errors").AppError>;
   }
 >()("reviewly/Teams") {}
@@ -77,12 +86,18 @@ export const TeamsLive = Layer.effect(
       );
     const inbox = (organizationId: string) =>
       tauri.invoke("teams_inbox", { organizationId }, S.TeamsInbox);
+    const billing = (organizationId: string) =>
+      tauri.invoke("teams_billing", { organizationId }, S.TeamBilling);
+    const checkout = (organizationId: string) =>
+      tauri.invoke("teams_checkout", { organizationId }, S.TeamsBillingUrl);
+    const billingPortal = (organizationId: string) =>
+      tauri.invoke("teams_billing_portal", { organizationId }, S.TeamsBillingUrl);
     const signOut = tauri.invoke("teams_sign_out", {}, S.Unit).pipe(
       Effect.tap(() =>
         Effect.sync(() => teamsStore.set({ loading: false, signedIn: false, organizations: [] })),
       ),
       Effect.asVoid,
     );
-    return { bootstrap, linkStart, linkPoll, inbox, signOut };
+    return { bootstrap, linkStart, linkPoll, inbox, billing, checkout, billingPortal, signOut };
   }),
 );

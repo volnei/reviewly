@@ -3489,6 +3489,51 @@ mark.dm {
 .teams-org-list {
   display: grid;
 }
+.teams-billing-list {
+  display: grid;
+}
+.teams-billing-row {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  gap: 18px;
+}
+.teams-billing-row + .teams-billing-row {
+  border-top: 1px solid var(--hair);
+}
+.teams-billing-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.teams-billing-title p {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+.teams-billing-title > span {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.teams-billing-title > span.is-active {
+  color: var(--add);
+}
+.teams-billing-row > div:first-child > span,
+.teams-billing-price span {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.teams-billing-price {
+  display: grid;
+  min-width: 78px;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+}
+.teams-billing-price strong {
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 500;
+}
 .teams-org-row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) 78px 96px;
@@ -3599,6 +3644,14 @@ mark.dm {
   }
   .teams-connect-prompt [data-slot="button"] {
     width: 100%;
+  }
+  .teams-billing-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding-block: 12px;
+  }
+  .teams-billing-row > div:first-child {
+    min-width: calc(100% - 100px);
   }
   .settings-card-body {
     padding-inline: 16px;

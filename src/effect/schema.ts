@@ -85,6 +85,27 @@ export const TeamsInbox = S.Struct({
 });
 export type TeamsInbox = typeof TeamsInbox.Type;
 
+export const TeamBilling = S.Struct({
+  organizationId: S.String,
+  configured: S.Boolean,
+  status: S.String,
+  access: S.Boolean,
+  canManage: S.Boolean,
+  price: S.Struct({
+    currency: S.String,
+    unitAmount: S.Number,
+    interval: S.String,
+  }),
+  memberCount: S.Number,
+  seatCount: S.Number,
+  currentPeriodEnd: S.NullOr(S.String),
+  cancelAtPeriodEnd: S.Boolean,
+});
+export type TeamBilling = typeof TeamBilling.Type;
+
+export const TeamsBillingUrl = S.Struct({ url: S.String });
+export type TeamsBillingUrl = typeof TeamsBillingUrl.Type;
+
 export const UserRef = S.Struct({
   login: S.String,
   avatar_url: S.String,

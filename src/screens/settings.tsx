@@ -45,7 +45,9 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import type { AppError } from "@/effect/errors";
 import { run, useEffectQuery } from "@/effect/runtime";
+import type { TeamBilling, TeamOrganization, TeamsInbox } from "@/effect/schema";
 import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS } from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
@@ -797,21 +799,77 @@ function About() {
   );
 }
 
+type TeamsWorkspace = {
+  readonly organization: TeamOrganization;
+  readonly billing: TeamBilling;
+  readonly inbox: TeamsInbox | null;
+};
+
+function billingStatusLabel(billing: TeamBilling): string {
+  if (!billing.configured) return "Unavailable";
+  if (billing.cancelAtPeriodEnd) return "Cancels at period end";
+  switch (billing.status) {
+    case "active":
+      return "Active";
+    case "trialing":
+      return "Trial";
+    case "past_due":
+      return "Payment due";
+    case "canceled":
+      return "Canceled";
+    default:
+      return "Not subscribed";
+  }
+}
+
 function TeamsSettings() {
   const teams = useTeams();
   const [connecting, setConnecting] = useState(false);
-  const inboxes = useEffectQuery(
-    ["teams", "inboxes", teams.organizations.map((organization) => organization.id).join(",")],
+  const [billingAction, setBillingAction] = useState<string | null>(null);
+  const workspaces = useEffectQuery(
+    ["teams", "workspaces", teams.organizations.map((organization) => organization.id).join(",")],
     Effect.flatMap(Teams, (service) =>
       Effect.forEach(
         teams.organizations,
-        (organization) =>
-          service.inbox(organization.id).pipe(Effect.map((inbox) => ({ organization, inbox }))),
+        (organization): Effect.Effect<TeamsWorkspace, AppError> =>
+          service
+            .billing(organization.id)
+            .pipe(
+              Effect.flatMap((billing) =>
+                billing.access
+                  ? service
+                      .inbox(organization.id)
+                      .pipe(
+                        Effect.map((inbox): TeamsWorkspace => ({ organization, billing, inbox })),
+                      )
+                  : Effect.succeed<TeamsWorkspace>({ organization, billing, inbox: null }),
+              ),
+            ),
         { concurrency: 3 },
       ),
     ),
     { enabled: teams.signedIn && teams.organizations.length > 0 },
   );
+
+  const openBilling = async (workspace: TeamsWorkspace) => {
+    if (billingAction) return;
+    const { organization, billing } = workspace;
+    setBillingAction(organization.id);
+    try {
+      const answer = await run(
+        Effect.flatMap(Teams, (service) =>
+          billing.access
+            ? service.billingPortal(organization.id)
+            : service.checkout(organization.id),
+        ),
+      );
+      safeOpenUrl(answer.url);
+    } catch (error) {
+      toast.fail("Couldn’t open billing", error);
+    } finally {
+      setBillingAction(null);
+    }
+  };
 
   const connect = async () => {
     if (connecting) return;
@@ -893,21 +951,113 @@ function TeamsSettings() {
 
       {teams.signedIn ? (
         <Section
-          title="Shared queues"
-          blurb="A live read-only snapshot from the repositories selected in the GitHub App."
+          title="Plan and billing"
+          blurb="Reviewly Teams is $8 per member each month. Billing is managed securely by Stripe."
         >
-          {inboxes.isPending ? (
-            <p className="teams-inline-state">Loading shared queues…</p>
-          ) : inboxes.isError ? (
+          {workspaces.isPending ? (
+            <p className="teams-inline-state">Loading billing…</p>
+          ) : workspaces.isError ? (
             <div className="teams-inline-error">
-              <p>Couldn’t load the shared queues.</p>
-              <Button variant="ghost" size="sm" onClick={() => void inboxes.refetch()}>
+              <p>Couldn’t load billing.</p>
+              <Button variant="ghost" size="sm" onClick={() => void workspaces.refetch()}>
                 Retry
               </Button>
             </div>
-          ) : inboxes.data?.length ? (
+          ) : workspaces.data?.length ? (
+            <div className="teams-billing-list">
+              {workspaces.data.map((workspace) => {
+                const { organization, billing } = workspace;
+                const total = (billing.memberCount * billing.price.unitAmount) / 100;
+                const busy = billingAction === organization.id;
+                return (
+                  <div className="teams-billing-row" key={organization.id}>
+                    <div className="min-w-0 flex-1">
+                      <div className="teams-billing-title">
+                        <p>{organization.display_name ?? organization.login}</p>
+                        <span className={cn(billing.access && "is-active")}>
+                          {billingStatusLabel(billing)}
+                        </span>
+                      </div>
+                      <span>
+                        {billing.memberCount} {billing.memberCount === 1 ? "member" : "members"} · $
+                        {total.toFixed(0)} / month
+                      </span>
+                    </div>
+                    <div
+                      className="teams-billing-price"
+                      aria-label="Eight dollars per user monthly"
+                    >
+                      <strong>$8</strong>
+                      <span>user / month</span>
+                    </div>
+                    {APP_STORE ? (
+                      <span className="teams-inline-state">
+                        {billing.access
+                          ? "Managed by your organization"
+                          : "Organization plan required"}
+                      </span>
+                    ) : billing.canManage ? (
+                      <Button
+                        variant={billing.access ? "outline" : "default"}
+                        size="sm"
+                        disabled={!billing.configured || busy}
+                        onClick={() => void openBilling(workspace)}
+                      >
+                        {!billing.configured
+                          ? "Payments unavailable"
+                          : busy
+                            ? "Opening…"
+                            : billing.access
+                              ? "Manage billing"
+                              : "Subscribe"}
+                      </Button>
+                    ) : (
+                      <span className="teams-inline-state">Admin only</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="teams-inline-state">Connect a GitHub organization to start a plan.</p>
+          )}
+        </Section>
+      ) : null}
+
+      {teams.signedIn ? (
+        <Section
+          title="Shared queues"
+          blurb="A live read-only snapshot from the repositories selected in the GitHub App."
+        >
+          {workspaces.isPending ? (
+            <p className="teams-inline-state">Loading shared queues…</p>
+          ) : workspaces.isError ? (
+            <div className="teams-inline-error">
+              <p>Couldn’t load the shared queues.</p>
+              <Button variant="ghost" size="sm" onClick={() => void workspaces.refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : workspaces.data?.length ? (
             <div className="teams-org-list">
-              {inboxes.data.map(({ organization, inbox }) => {
+              {workspaces.data.map(({ organization, billing, inbox }) => {
+                if (!inbox) {
+                  return (
+                    <div className="teams-org-row" key={organization.id}>
+                      <div className="teams-org-mark" aria-hidden>
+                        {organization.login.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p>{organization.display_name ?? organization.login}</p>
+                        <span>@{organization.login} · subscription required</span>
+                      </div>
+                      <div className="teams-org-counts">
+                        <strong>—</strong>
+                        <span>{billingStatusLabel(billing)}</span>
+                      </div>
+                    </div>
+                  );
+                }
                 const open = inbox.pulls.filter((pull) => pull.state === "open").length;
                 const needsAttention = inbox.pulls.filter(
                   (pull) =>
