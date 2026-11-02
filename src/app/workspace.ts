@@ -11,6 +11,9 @@ export const workspaceStore = persistedStore<string | null>("reviewly.v2.workspa
 );
 export const useWorkspace = () => useStore(workspaceStore);
 
+export const matchesWorkspace = (workspace: string | null, repository: string): boolean =>
+  !workspace || repository.toLowerCase() === workspace.toLowerCase();
+
 export function parseRepository(input: string): string | null {
   const slug = input
     .trim()

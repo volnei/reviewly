@@ -153,6 +153,23 @@ export type TeamBilling = typeof TeamBilling.Type;
 export const TeamsBillingUrl = S.Struct({ url: S.String });
 export type TeamsBillingUrl = typeof TeamsBillingUrl.Type;
 
+export const TeamIntegration = S.Struct({
+  provider: S.Literals(["gitlab", "slack"]),
+  configured: S.Boolean,
+  connection: S.NullOr(
+    S.Struct({
+      status: S.String,
+      displayName: S.NullOr(S.String),
+      externalId: S.String,
+      updatedAt: S.String,
+    }),
+  ),
+});
+export type TeamIntegration = typeof TeamIntegration.Type;
+
+export const TeamIntegrations = S.Struct({ integrations: S.Array(TeamIntegration) });
+export type TeamIntegrations = typeof TeamIntegrations.Type;
+
 export const UserRef = S.Struct({
   login: S.String,
   avatar_url: S.String,

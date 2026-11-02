@@ -3481,6 +3481,113 @@ mark.dm {
   font-size: 12px;
   font-weight: 400;
 }
+.team-gate,
+.team-gate-loading {
+  padding: clamp(28px, 5vw, 64px);
+}
+.team-gate-header {
+  max-width: 720px;
+}
+.team-gate-header > p {
+  margin-bottom: 10px;
+  color: var(--workspace);
+  font-size: 11px;
+  font-weight: 500;
+}
+.team-gate-header h1 {
+  max-width: 620px;
+  color: var(--ink);
+  font-size: clamp(28px, 2.6vw, 32px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+.team-gate-header > span {
+  display: block;
+  max-width: 650px;
+  margin-top: 15px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.team-gate-surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  width: min(100%, 920px);
+  margin-top: 36px;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  background: var(--page);
+}
+.team-gate-capabilities {
+  padding: 8px 28px;
+}
+.team-gate-capability {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 13px;
+  align-items: start;
+  padding: 20px 0;
+}
+.team-gate-capability + .team-gate-capability {
+  border-top: 1px solid var(--hair);
+}
+.team-gate-capability > svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--ink-3);
+}
+.team-gate-capability h2 {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.team-gate-capability p {
+  max-width: 470px;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.team-gate-plan {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px;
+  border-left: 1px solid var(--hair);
+  background: color-mix(in srgb, var(--raise) 28%, var(--page));
+}
+.team-gate-plan > div > p {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+.team-gate-price {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.team-gate-price strong {
+  color: var(--ink);
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+}
+.team-gate-price span,
+.team-gate-plan > span {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.team-gate-plan [data-slot="button"] {
+  width: 100%;
+}
 .teams-connection-state,
 .teams-connect-prompt {
   display: flex;
@@ -3617,6 +3724,58 @@ mark.dm {
   justify-content: space-between;
   gap: 12px;
 }
+.teams-integration-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  border-bottom: 1px solid var(--hair);
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.teams-integration-scope [data-slot="select-trigger"] {
+  min-width: 180px;
+}
+.teams-integration-list {
+  display: grid;
+}
+.teams-integration-row {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 13px;
+}
+.teams-integration-row + .teams-integration-row {
+  border-top: 1px solid var(--hair);
+}
+.teams-integration-row > svg {
+  flex: none;
+  color: var(--ink-3);
+}
+.teams-integration-row > div > span {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.teams-integration-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.teams-integration-title p {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+.teams-integration-title span {
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.teams-integration-title span.is-connected {
+  color: var(--add);
+}
 @media (max-width: 1150px) {
   .settings-navigation {
     width: 172px;
@@ -3669,7 +3828,29 @@ mark.dm {
     gap: 12px;
   }
 }
+@media (max-width: 820px) {
+  .team-gate-surface {
+    grid-template-columns: 1fr;
+  }
+  .team-gate-plan {
+    border-top: 1px solid var(--hair);
+    border-left: 0;
+  }
+}
 @media (max-width: 600px) {
+  .team-gate,
+  .team-gate-loading {
+    padding: 24px 18px 36px;
+  }
+  .team-gate-header h1 {
+    font-size: 28px;
+  }
+  .team-gate-surface {
+    margin-top: 28px;
+  }
+  .team-gate-capabilities {
+    padding-inline: 20px;
+  }
   .settings-page {
     padding: 22px 16px 36px;
   }
@@ -3687,6 +3868,17 @@ mark.dm {
     align-items: flex-start;
     flex-wrap: wrap;
     padding-block: 12px;
+  }
+  .teams-integration-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding-block: 14px;
+  }
+  .teams-integration-row > div {
+    min-width: calc(100% - 34px);
+  }
+  .teams-integration-row [data-slot="button"] {
+    width: 100%;
   }
   .teams-billing-row > div:first-child {
     min-width: calc(100% - 100px);
@@ -4598,6 +4790,7 @@ mark.dm {
   .workspace-saved,
   .workspace-nav-label,
   .workspace-nav-count,
+  .workspace-team-setup-arrow,
   .workspace-user > div {
     display: none;
   }
@@ -4605,6 +4798,12 @@ mark.dm {
     justify-content: center;
     gap: 0;
     min-height: 34px;
+    padding-inline: 0;
+  }
+  .workspace-team-setup,
+  .workspace-team-pending {
+    justify-content: center;
+    gap: 0;
     padding-inline: 0;
   }
   .workspace-sidebar > ul,
@@ -4645,6 +4844,75 @@ mark.dm {
   }
   .settings-page-header {
     margin-bottom: 20px;
+  }
+}
+
+/* Settings becomes a compact category strip before the side navigation can
+   force the active panel below the fold. Keep this last: the product-wide
+   settings tokens above intentionally describe the spacious layout. */
+@media (max-width: 1050px) {
+  .settings-v2 {
+    flex-direction: column;
+  }
+  .settings-navigation {
+    width: 100%;
+    flex: 0 0 auto;
+    padding: 9px 12px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .settings-nav-heading,
+  .settings-nav-note {
+    display: none;
+  }
+  .settings-navigation .settings-nav-list {
+    width: 100%;
+    flex-flow: row wrap;
+    justify-content: flex-start;
+    gap: 4px;
+  }
+  .settings-navigation .settings-nav-list .settings-nav-item {
+    width: auto;
+    min-height: 30px;
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+  .settings-panels {
+    min-height: 0;
+    height: auto;
+  }
+  .settings-page {
+    padding-top: 24px;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-navigation {
+    padding: 7px 8px;
+  }
+  .settings-navigation .settings-nav-list {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .settings-navigation .settings-nav-list::-webkit-scrollbar {
+    display: none;
+  }
+  .settings-navigation .settings-nav-list .settings-nav-item {
+    width: 30px;
+    min-width: 30px;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+  .settings-navigation .settings-nav-item > span {
+    display: none;
+  }
+  .settings-page {
+    padding-top: 20px;
   }
 }
 

@@ -74,11 +74,12 @@ button { font: inherit; }
 .tray-head[data-appearance="clouds"] { --tray-action: #d9e9f0; --tray-action-ink: #25323a; }
 
 .tray-brand { display: flex; min-width: 0; align-items: center; gap: 10px; }
-.tray-brand img {
+.tray-brand svg {
   box-sizing: content-box;
   width: 27px;
   height: 27px;
   padding: 4px;
+  color: #171717;
   background: rgb(255 255 255 / 88%);
   border-radius: 9px;
 }

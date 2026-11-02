@@ -1,7 +1,4 @@
 <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <!-- macOS template image: black artwork on transparency. The system supplies
-       the correct foreground colour for light, dark and highlighted states. -->
-  <path d="M13 18L29.7 9C31.1 8.3 32.9 8.3 34.3 9L51 18L34.3 27C32.9 27.7 31.1 27.7 29.7 27L13 18Z" fill="#000000"/>
-  <path d="M13 29L29.7 38C31.1 38.7 32.9 38.7 34.3 38L51 29" fill="none" stroke="#000000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M13 40L29.7 49C31.1 49.7 32.9 49.7 34.3 49L51 40" fill="none" stroke="#000000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- macOS template image: black artwork on transparency. -->
+  <path fill="#000000" d="M15.02 57.02V25.88A18.9 18.9 0 0 1 49.22 14.77L39.78 21.63A7.23 7.23 0 0 0 26.7 25.88V57.02H15.02Z"/>
 </svg>

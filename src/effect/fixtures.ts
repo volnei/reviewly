@@ -822,7 +822,7 @@ const commands: Record<string, Handler> = {
   teams_link_start: () => ({
     link_id: "fixture-link",
     device_code: "fixture-device-code-with-enough-entropy",
-    authorize_url: "https://reviewly-teams.vercel.app/api/auth/github/start",
+    authorize_url: "https://getreviewly.dev/api/auth/github/start",
     expires_in: 600,
     interval: 2,
   }),
@@ -905,6 +905,28 @@ const commands: Record<string, Handler> = {
   }),
   teams_checkout: () => ({ url: "https://checkout.stripe.com/test" }),
   teams_billing_portal: () => ({ url: "https://billing.stripe.com/test" }),
+  teams_integrations: () => ({
+    integrations: [
+      {
+        provider: "gitlab",
+        configured: true,
+        connection: null,
+      },
+      {
+        provider: "slack",
+        configured: true,
+        connection: {
+          status: "active",
+          displayName: "Reviewly",
+          externalId: "T01REVIEWLY",
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    ],
+  }),
+  teams_integration_start: ({ provider }) => ({
+    url: `https://getreviewly.dev/api/integrations/${String(provider)}/start`,
+  }),
   gh_compare: () => [
     {
       sha: "cmp1",

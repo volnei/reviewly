@@ -58,6 +58,13 @@ export class Teams extends Context.Service<
     readonly billingPortal: (
       organizationId: string,
     ) => Effect.Effect<S.TeamsBillingUrl, import("../errors").AppError>;
+    readonly integrations: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamIntegrations, import("../errors").AppError>;
+    readonly integrationStart: (
+      organizationId: string,
+      provider: "gitlab" | "slack",
+    ) => Effect.Effect<S.TeamsBillingUrl, import("../errors").AppError>;
     readonly signOut: Effect.Effect<void, import("../errors").AppError>;
   }
 >()("reviewly/Teams") {}
@@ -113,6 +120,14 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_checkout", { organizationId }, S.TeamsBillingUrl);
     const billingPortal = (organizationId: string) =>
       tauri.invoke("teams_billing_portal", { organizationId }, S.TeamsBillingUrl);
+    const integrations = (organizationId: string) =>
+      tauri.invoke("teams_integrations", { organizationId }, S.TeamIntegrations);
+    const integrationStart = (organizationId: string, provider: "gitlab" | "slack") =>
+      tauri.invoke(
+        "teams_integration_start",
+        { organizationId, provider },
+        S.TeamsBillingUrl,
+      );
     const signOut = tauri.invoke("teams_sign_out", {}, S.Unit).pipe(
       Effect.tap(() =>
         Effect.sync(() => teamsStore.set({ loading: false, signedIn: false, organizations: [] })),
@@ -130,6 +145,8 @@ export const TeamsLive = Layer.effect(
       billing,
       checkout,
       billingPortal,
+      integrations,
+      integrationStart,
       signOut,
     };
   }),

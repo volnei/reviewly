@@ -5,6 +5,7 @@ import { WorkspacePicker } from "@/app/workspace-picker";
 import { isNative } from "@/effect/Tauri";
 import { useAiActivity } from "@/features/pr/ai";
 import { cn } from "@/lib/utils";
+import { ReviewlyMark } from "@/components/reviewly-mark";
 import { useNavigate } from "@tanstack/react-router";
 import { CloudOff, LoaderCircle } from "lucide-react";
 import type { MouseEvent } from "react";
@@ -48,7 +49,8 @@ export function TitleBar() {
         mac ? "pl-[84px]" : "pl-3",
       )}
     >
-      <span className="titlebar-brand mr-1 text-[12px] font-medium text-ink-2">
+      <span className="titlebar-brand mr-1 flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
+        <ReviewlyMark className="size-3.5 text-ink" />
         Reviewly
       </span>
       {teamsPlan ? (

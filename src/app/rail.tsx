@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  ArrowRight,
   AtSign,
   Bookmark,
   Boxes,
@@ -20,9 +21,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { settingsCategoryStore } from "@/app/settings-navigation";
 import { useFastLaneItems } from "@/app/fast-lane-items";
-import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
+import { useTeamsPlan } from "@/app/teams-billing";
+import { matchesWorkspace, useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import { BulletTrain } from "@/components/icons/bullet-train";
+import { ReviewlyMark } from "@/components/reviewly-mark";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -46,7 +50,6 @@ import { Input } from "@/components/ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "@/components/ui/menu";
 import { useAuth } from "@/effect/services/Auth";
 import { usePrefs } from "@/effect/services/Prefs";
-import { useTeams } from "@/effect/services/Teams";
 import { hasBackend } from "@/effect/Tauri";
 import {
   applyView,
@@ -73,7 +76,7 @@ interface Item {
 
 export function Rail() {
   const auth = useAuth();
-  const teams = useTeams();
+  const teamsPlan = useTeamsPlan();
   const workspace = useWorkspace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -91,14 +94,23 @@ export function Rail() {
   const views = useSavedViews();
   const turboWorkspaces = useWorkspaceHealth();
   const specWorkspaces = useSpecWorkspaces();
-  const turboProblems = turboWorkspaces.reduce((total, repo) => total + problemCount(repo), 0);
-  const specProblems = specWorkspaces.reduce(
+  const scopedTurboWorkspaces = turboWorkspaces.filter((item) =>
+    matchesWorkspace(workspace, `${item.owner}/${item.repo}`),
+  );
+  const scopedSpecWorkspaces = specWorkspaces.filter((item) =>
+    matchesWorkspace(workspace, `${item.owner}/${item.repo}`),
+  );
+  const turboProblems = scopedTurboWorkspaces.reduce(
+    (total, repo) => total + problemCount(repo),
+    0,
+  );
+  const specProblems = scopedSpecWorkspaces.reduce(
     (total, workspace) => total + actionableIssueCount(workspace),
     0,
   );
   const items: Item[] = [
     { to: "/inbox", label: "Inbox", key: "⌘2", icon: Inbox, count: counts?.inbox },
-    ...(teams.signedIn && teams.organizations.length
+    ...(teamsPlan === "teams"
       ? [
           {
             to: "/fast-lane",
@@ -133,7 +145,7 @@ export function Rail() {
         title="Home (⌘1)"
       >
         <span className="workspace-brand-mark">
-          <img src="/reviewly-mark.svg" alt="" className="size-5" draggable={false} />
+          <ReviewlyMark className="size-5" />
         </span>
         <span className="workspace-brand-name">Reviewly</span>
       </Link>
@@ -150,18 +162,43 @@ export function Rail() {
           </li>
         ))}
       </ul>
-      {teams.signedIn && teams.organizations.length ? (
-        <div className="mt-6">
-          <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
+      <div className="mt-6">
+        <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
+        {teamsPlan === "teams" ? (
           <NavItem
             item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
             active={active("/team")}
           />
-        </div>
-      ) : null}
+        ) : teamsPlan === "hobby" ? (
+          <Link
+            to="/settings"
+            aria-label="Set up Reviewly Teams"
+            title="Set up your team"
+            onClick={() => settingsCategoryStore.set("teams")}
+            className="workspace-team-setup flex min-h-9 items-center gap-2.5 rounded-md border border-hair px-2.5 text-[12px] font-medium text-ink transition-colors hover:bg-raise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+          >
+            <UsersRound className="size-4 shrink-0 text-workspace" strokeWidth={1.75} />
+            <span className="workspace-nav-label flex-1 truncate">Set up your team</span>
+            <ArrowRight
+              className="workspace-team-setup-arrow size-3.5 shrink-0 text-ink-3"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+          </Link>
+        ) : (
+          <div
+            className="workspace-team-pending flex min-h-9 items-center gap-2.5 px-2.5 text-ink-3"
+            role="status"
+            aria-label="Checking Teams plan"
+          >
+            <UsersRound className="size-4 shrink-0" strokeWidth={1.75} />
+            <span className="workspace-nav-label h-2.5 w-20 rounded-sm bg-raise" aria-hidden />
+          </div>
+        )}
+      </div>
       <div className="mt-6">
         <p className="workspace-section-label mb-2 px-2 text-ink-3">Labs</p>
-        {turboWorkspaces.length ? (
+        {scopedTurboWorkspaces.length ? (
           <NavItem
             item={{
               to: "/turbo",
@@ -173,7 +210,7 @@ export function Rail() {
             active={active("/turbo")}
           />
         ) : null}
-        {specWorkspaces.length ? (
+        {scopedSpecWorkspaces.length ? (
           <NavItem
             item={{
               to: "/spec-lens",

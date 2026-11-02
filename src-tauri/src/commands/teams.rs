@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::creds;
 use crate::error::{AppError, AppResult};
 
-const PRODUCTION_URL: &str = "https://reviewly-teams.vercel.app";
+const PRODUCTION_URL: &str = "https://getreviewly.dev";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,6 +135,28 @@ pub struct TeamBilling {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TeamsBillingUrl {
     pub url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamIntegrationConnection {
+    pub status: String,
+    pub display_name: Option<String>,
+    pub external_id: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamIntegration {
+    pub provider: String,
+    pub configured: bool,
+    pub connection: Option<TeamIntegrationConnection>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeamIntegrations {
+    pub integrations: Vec<TeamIntegration>,
 }
 
 fn base_url() -> String {
@@ -362,6 +384,35 @@ pub async fn teams_fast_lane_policy_update(
         "fast-lane",
         reqwest::Method::PATCH,
         Some(serde_json::to_value(policy)?),
+    )
+    .await?
+    .json()
+    .await?)
+}
+
+#[tauri::command]
+pub async fn teams_integrations(organization_id: String) -> AppResult<TeamIntegrations> {
+    Ok(
+        teams_api_request(&organization_id, "integrations", reqwest::Method::GET, None)
+            .await?
+            .json()
+            .await?,
+    )
+}
+
+#[tauri::command]
+pub async fn teams_integration_start(
+    organization_id: String,
+    provider: String,
+) -> AppResult<TeamsBillingUrl> {
+    if provider != "gitlab" && provider != "slack" {
+        return Err(AppError::Other("Unknown Reviewly integration".into()));
+    }
+    Ok(teams_api_request(
+        &organization_id,
+        &format!("integrations/{provider}/start"),
+        reqwest::Method::POST,
+        None,
     )
     .await?
     .json()

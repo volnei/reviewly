@@ -1,315 +1,198 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Reviewly" width="128" />
+  <a href="https://getreviewly.dev/">
+    <img src="assets/logo.png" alt="Reviewly" width="112" />
+  </a>
 </p>
 
 <h1 align="center">Reviewly</h1>
 
 <p align="center">
-  <b>A fast, local-first desktop app for reviewing GitHub pull requests — with AI that runs on your own machine.</b>
+  <strong>Pull requests. Focused.</strong><br />
+  A fast, local-first desktop workspace for reviewing GitHub pull requests with private AI and optional team coordination.
 </p>
 
 <p align="center">
-  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/v/release/volnei/reviewly?label=release&color=8b5cf6" alt="Latest release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/volnei/reviewly?color=8b5cf6" alt="License" /></a>
-  <a href="https://github.com/volnei/reviewly/stargazers"><img src="https://img.shields.io/github/stars/volnei/reviewly?color=8b5cf6" alt="Stars" /></a>
-  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/downloads/volnei/reviewly/total?color=8b5cf6&label=downloads" alt="Downloads" /></a>
-  <img src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-1e1e1e" alt="Platforms" />
-  <a href="https://buymeacoffee.com/volnei"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-ffdd00?logoColor=black" alt="Buy Me a Coffee" /></a>
+  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/v/release/volnei/reviewly?label=release&color=ff8a53" alt="Latest release" /></a>
+  <a href="https://github.com/volnei/reviewly/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/volnei/reviewly/ci.yml?branch=main&label=build" alt="Build status" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/volnei/reviewly?color=ff8a53" alt="GPL-3.0 license" /></a>
+  <a href="https://github.com/volnei/reviewly/stargazers"><img src="https://img.shields.io/github/stars/volnei/reviewly?color=ff8a53" alt="GitHub stars" /></a>
+  <a href="https://github.com/volnei/reviewly/releases"><img src="https://img.shields.io/github/downloads/volnei/reviewly/total?color=ff8a53&label=downloads" alt="Downloads" /></a>
 </p>
 
-Reviewly is a native desktop console (macOS, Windows, Linux) that turns PR review from a dozen browser tabs into one focused workspace. It pulls the PRs that need _you_, lays out the diff the way a reviewer actually reads it, lets a local AI walk you through the change, and posts your review back to GitHub — without sending your code to any server but the one you choose.
+<p align="center">
+  <a href="https://getreviewly.dev/"><strong>Website</strong></a>
+  ·
+  <a href="https://github.com/volnei/reviewly/releases"><strong>Download</strong></a>
+  ·
+  <a href="https://github.com/volnei/reviewly/issues"><strong>Issues</strong></a>
+</p>
 
-Built with **Tauri 2** (Rust + React). Free and open source under the [GPL-3.0](LICENSE).
+![Reviewly pull request overview](docs/screenshots/pr-overview.jpg)
 
-> **Local-first by design.** Your GitHub token lives in the OS keychain. AI review runs through _your_ local CLI (Claude, Codex, Gemini) or _your_ own OpenAI-compatible endpoint — only the PR diff is ever sent, and there is no Reviewly server in the middle.
+Reviewly turns the work of reviewing a pull request into one coherent desktop flow. It finds what needs you, explains the shape of the change, keeps the diff and its discussion together, and sends the final review back to GitHub.
 
----
+- **One ordered inbox.** Review requests, your blocked PRs, merge-ready work and open threads are already separated.
+- **A reviewer-first PR view.** Start with the change map, checks and unresolved context, then move through files in a deliberate order.
+- **Private AI.** Use Claude, Codex, Gemini or an OpenAI-compatible endpoint you control. Reviewly does not operate a hosted AI service.
+- **Native and local-first.** PR data and drafts are cached in SQLite. Credentials live in the operating system keychain.
+- **Optional Teams coordination.** Shared ownership, priority, SLA and one queue across a GitHub organization.
 
-## Table of contents
-
-- [Why Reviewly](#why-reviewly)
-- [Features](#features)
-  - [The review inbox](#the-review-inbox)
-  - [Pull request list & search](#pull-request-list--search)
-  - [Reading the diff](#reading-the-diff)
-  - [Writing your review](#writing-your-review)
-  - [AI review](#ai-review)
-  - [Checks & CI](#checks--ci)
-  - [Dependabot](#dependabot)
-  - [Local repository integration](#local-repository-integration)
-  - [Notifications](#notifications)
-  - [Desktop niceties](#desktop-niceties)
-- [How it works](#how-it-works)
-- [Install](#install)
-- [Setting up AI review](#setting-up-ai-review)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Privacy & security](#privacy--security)
-- [Build from source](#build-from-source)
-- [Tech stack](#tech-stack)
-- [Support](#support)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
-## Why Reviewly
-
-Reviewing pull requests in the browser means juggling tabs, losing your place in long diffs, copy-pasting code into a chat window, and re-checking the same "needs my review" filter all day. Reviewly fixes that:
-
-- **One inbox for the work that's yours.** Review-requests, your own PRs, what's ready to merge, what's blocked — grouped and always fresh.
-- **A diff built for reviewers.** Unified or split, syntax-highlighted, with expandable context, per-file "viewed" tracking, and inline comments that batch into a single review.
-- **AI that's actually private.** A guided tour of the change or a back-and-forth chat, powered by the AI CLI you already have installed or any endpoint you point it at. Your diff never touches a Reviewly backend.
-- **Native, fast, offline-friendly.** PRs are cached locally in SQLite, so the list is instant and survives a flaky connection. A background poller keeps it current and pings you when a new review lands.
-
----
-
-## Features
-
-### The review inbox
-
-The **Dashboard** (`⌘1`) is the home screen — everything that needs your attention, grouped:
-
-- **Needs your review** — PRs that requested you, oldest first, with an "aging" badge once they pass a week.
-- **Needs your attention** — your open PRs with requested changes or failing CI.
-- **Ready to merge** — your approved PRs.
-- **Awaiting review** — your PRs still waiting on reviewers.
-- **Drafts** — your work in progress.
-
-Sections are collapsible, refresh automatically, and show how long ago they synced. Each row carries the title, author, repo/number, approval state, and a live CI status dot.
-
-### Pull request list & search
-
-The **Pull Requests** page (`⌘2`) is the full, filterable list:
-
-- **Filter** by state (open / draft / merged / closed), repository, labels (include → exclude → off), or CI status.
-- **Group** by repository or author; **sort** by updated, created, or title.
-- **Search** with `/` — matches title, author, or PR number. Active filters show as removable chips.
-- **Virtualized** rendering handles thousands of PRs without lag.
-- **Keyboard-driven:** `j` / `k` to move, `Enter` to open. Your scroll position is remembered per view.
-
-When you've picked repositories to watch, the list is served straight from the **local SQLite cache** — instant and available offline — and kept fresh by the background poller. Otherwise it falls back to GitHub search.
-
-### Reading the diff
-
-The **PR detail** view organizes a pull request into four tabs — **Files**, **Conversation**, **Commits**, and **Checks** — with a file-tree sidebar on the Files tab.
-
-The diff viewer is the centerpiece:
-
-- **Unified or split** view, toggled with `⌘B` — including inside layered review, which is a mode _on top of_ your layout, not a replacement for it.
-- **Syntax highlighting** per language (Prism).
-- **Expand context** — unfold the unchanged lines between hunks to see the full surrounding file.
-- **Hide whitespace-only** changes and **wrap long lines** on demand.
-- **Viewed-files tracking** — mark files reviewed as you go (auto-marks when you scroll to the end); the sidebar shows "N of M reviewed", keyed to the current head commit so a force-push resets it.
-
-The **file-tree sidebar** decorates each file with its git status, the `+`/`−` change counts, a change-frequency heatmap, and **CODEOWNERS** hints when a local clone is available.
-
-### Writing your review
-
-Reviewly batches your feedback into a single GitHub review, just like the web UI — but faster:
-
-- **Inline comments** — select one or more lines in the diff to open a composer. Comments are saved to a **per-PR draft** that survives navigation, refresh, and app restarts.
-- **Review submit** — choose **Comment**, **Approve**, or **Request changes**; write a summary in Markdown; review your pending inline comments (jump to any of them) and submit with `⌘↵`. Reviewly remembers your last verdict and confirms the review actually landed on GitHub before clearing the draft.
-- **Threads, replies, reactions** — read and reply to existing review threads, resolve/unresolve them, and add emoji reactions.
-- **Labels & title** — apply labels inline; edit the PR title in place if you're the author.
-- An **unsaved-draft guard** warns you before you navigate away with pending comments.
-
-### AI review
-
-Reviewly drives an AI you control — a local CLI or your own endpoint — to help you understand a change. Three modes:
-
-**Layered review.** For the PR that touches 60 files. Instead of one alphabetical wall of diff, the change is cut into a handful of coherent layers — schema, then the types written against it, then the logic, the API surface, the UI, and the tests — and you read them **one at a time, in dependency order**. The whole review loop narrows to the layer you're on: the file tree, `[` / `]`, and `n` all stay inside it, and `n` hands you off to the next layer when the current one is done. Each layer carries a short briefing (what it changes, why it's read here, 1–3 things to check) and a risk chip, and progress comes straight from your viewed-files marks, so the stepper always matches what you've actually read. Two ways to split: **Plan with AI** for semantic layers, or **Split by structure** — instant, offline, no CLI needed. Plans are saved per-PR and reconciled against the diff on every open, so files pushed later resurface instead of quietly falling out of the review.
-
-**Guided tour.** One click and the AI reads the whole PR and walks you through it in a sensible order: the core change first, then what depends on it. Each step is one of _orientation_, _worth a comment_, _question_, or _praise_, and can jump you to the relevant file/line or pre-fill a suggested inline comment. The tour is generated in the background (so it survives navigation), saved per-PR, and knows to offer a regenerate when the PR's head commit changes.
-
-**Ask AI.** A floating chat panel for a back-and-forth about the PR. Responses **stream token-by-token**. Conversations are kept per-PR, and if you have the repo cloned locally the AI runs _inside the clone_ so it can read the real files, not just the diff. The AI's replies can propose actions — add a review comment, apply a label, request a reviewer — that you apply with one click.
-
-**Providers** (configure in Settings):
-
-| Provider              | How it runs                     | Needs                                                               |
-| --------------------- | ------------------------------- | ------------------------------------------------------------------- |
-| **Claude**            | the `claude` CLI on your `PATH` | [Claude Code](https://claude.com/claude-code) installed & signed in |
-| **Codex**             | the `codex` CLI on your `PATH`  | OpenAI Codex CLI installed                                          |
-| **Gemini**            | the `gemini` CLI on your `PATH` | Gemini CLI installed                                                |
-| **OpenAI-compatible** | an HTTP endpoint you provide    | base URL + model (+ optional API key)                               |
-
-The OpenAI-compatible option works with OpenAI, Ollama, LM Studio, OpenRouter, and anything else that speaks the same API. A **custom instructions** field in Settings is prepended to every prompt, so you can encode your team's review standards once.
-
-### Checks & CI
-
-The **Checks** tab shows every check run on the PR's head commit — GitHub Actions and third-party status checks alike — with status, timing, and expandable failure annotations (file, line, message). The tab color is **required-aware**: optional failures won't turn it red.
-
-Each check has a **Re-run** button that picks the narrowest possible scope — re-running just that Actions job (or, when the job can't be pinned down, only the failed jobs of that run), never the whole suite.
-
-### Dependabot
-
-The **Dependabot** page lists security alerts for a repo, sorted by severity, with dismiss/reopen actions and clear messaging when the feature is disabled or your token lacks access.
-
-### Local repository integration
-
-Point Reviewly at your local clones and it adds a layer of git intelligence:
-
-- **Repo browser** — a file tree decorated with git status, staged/unstaged markers, change counts, a churn heatmap, and CODEOWNERS; plus a syntax-highlighted file viewer, a **Changes** (branch-vs-base) view, and a **History** (recent commits with per-commit diffs) view.
-- **Quick-open** any file with `⌘P`.
-- **Branch switcher** and worktree list.
-- **Check out a PR** into the clone in one action.
-- **Open a new PR** straight from the app.
-
-When a PR's repo is cloned, **Ask AI** runs in that working directory automatically.
-
-### Notifications
-
-The **Notifications** page (`⌘3`) mirrors your GitHub notifications — All, Reviews & comments, or Mentions — with `j`/`k`/`Enter` navigation, `e` to mark read, "Mark all read", and an undo toast.
-
-### Desktop niceties
-
-- **Menu-bar tray** showing your pending-review count; click to bring the app forward.
-- **Command palette** (`⌘K`) — jump to any loaded PR, paste a PR URL (full or `owner/repo#123`) to open it, navigate anywhere, or check for updates.
-- **Pinboard** — pin PRs, commits, or files to a bar for quick return.
-- **Clipboard sniff** — copy a GitHub PR link anywhere and Reviewly offers to open it.
-- **Native window vibrancy** on macOS and **Mica** on Windows 11.
-- **Auto-update** — silent check on launch, one-click "Restart & install".
-- **OS notifications** when a new review request arrives.
-
----
-
-## How it works
-
-Reviewly is a **Tauri 2** application: a Rust core with a React front end, shipping as a single native binary per platform.
-
-```
-┌──────────────────────── Desktop window (WebView) ────────────────────────┐
-│  React 18 · TanStack Router/Query · Zustand · Tailwind v4                 │
-│  diff viewer · review composer · AI chat & guided tour · command palette  │
-└───────────────▲───────────────────────────────────────────▲──────────────┘
-                │ Tauri commands (invoke)          events ────┘ (pr:new, ai:chunk, …)
-┌───────────────┴──────────────────────────────────────────────────────────┐
-│  Rust core                                                                │
-│   • reqwest → GitHub REST + GraphQL                                        │
-│   • keyring → OAuth token in the OS keychain                              │
-│   • tauri-plugin-sql (SQLite) → PR cache, review drafts, settings         │
-│   • background poller (60 s) → tray count, new-PR notifications, sync      │
-│   • AI bridge → spawns your local CLI or calls your HTTP endpoint,         │
-│                 streaming output back over a Tauri Channel                 │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-- **Data flow.** The front end calls typed Rust commands; the Rust core talks to GitHub and persists to a local SQLite database. PRs you've chosen to watch are cached so the list is instant and offline-capable.
-- **Staying fresh.** A Rust poller runs every 60 seconds: it updates the tray count, fires an OS notification for newly-requested reviews, and nudges the front end to reconcile. The UI also syncs on launch, on window focus, and on a periodic tick.
-- **AI bridge.** When you ask for a tour or a chat turn, the core builds a prompt from the PR diff (and conversation, and your custom instructions) and either spawns your chosen CLI or calls your endpoint, streaming the output back token-by-token. Nothing is sent anywhere except the backend you configured.
-- **Auth.** Sign-in uses GitHub's **OAuth Device Flow**; the token is stored in the platform keychain (Keychain / Credential Manager / Secret Service), never on disk in plaintext.
-
----
+Built with **Tauri 2, Rust, React and TypeScript**. Hobby mode is free and open source under the [GPL-3.0](LICENSE).
 
 ## Install
 
-On macOS, install with [Homebrew](https://brew.sh):
+### Homebrew
 
 ```sh
 brew install --cask volnei/tap/reviewly
 ```
 
-Or download the latest installer for your platform from the [**Releases**](https://github.com/volnei/reviewly/releases) page:
+### Direct download
 
-- **macOS** — `Reviewly-<version>-macos.dmg` (Apple Silicon + Intel, signed & notarized)
-- **Windows** — `Reviewly-<version>-windows-setup.exe` or `.msi`
-- **Linux** — `.AppImage`, `.deb`, or `.rpm`
+Download the latest installer from [GitHub Releases](https://github.com/volnei/reviewly/releases):
 
-On first launch, Reviewly walks you through a short setup: connect your GitHub account (a device code you approve in the browser), pick the repositories to watch, and you're in. The app updates itself from then on.
+| Platform | Packages |
+| --- | --- |
+| macOS | Universal DMG, signed and notarized |
+| Windows | NSIS installer and MSI |
+| Linux | AppImage, DEB and RPM |
 
-### GitHub Enterprise Server
+Reviewly walks through GitHub sign-in and repository selection on first launch. Updates are delivered from signed GitHub releases inside the app.
 
-Choose **Enterprise Server** on the connection screen and enter your company hostname, such as `github.company.com`. Reviewly derives the server's REST (`/api/v3`) and GraphQL (`/api/graphql`) endpoints automatically and trusts certificates installed in the operating system.
+## The review workspace
 
-You can connect with either:
+### Know what needs you
 
-- an existing GitHub CLI login (`gh auth login --hostname github.company.com`); or
-- a personal access token with repository, user, notification and workflow access appropriate to the features you use.
+![Reviewly inbox](docs/screenshots/inbox.png)
 
-The hostname and token stay together in the OS keychain. Switching between GitHub.com and an Enterprise server clears the previous server's local PR mirror so data from two installations is never mixed.
+The inbox is built around attention, not chronology. It separates requested reviews, your PRs that need action, work ready to merge and items waiting on someone else. Search and filters operate on the local SQLite mirror, so large accounts remain fast.
 
-> No account, no subscription, no telemetry. Reviewly is free and open source.
+### Understand before reading every line
 
-## Setting up AI review
+The PR overview puts the evidence first:
 
-AI features are optional — Reviewly is a great review client without them. To turn them on, open **Settings → AI review** and pick a provider:
+- a map of the areas changed and their relative size;
+- the suggested reading order;
+- required checks and unresolved review threads;
+- previous activity and saved review context;
+- a path into the complete diff, conversation, commits and checks.
 
-- **Already have an AI CLI?** Select **Claude**, **Codex**, or **Gemini** — Reviewly detects whether the binary is on your `PATH` and signed in. (For Claude, install [Claude Code](https://claude.com/claude-code) and run `claude` once to log in.)
-- **Prefer your own endpoint?** Choose **OpenAI-compatible** and enter a base URL, model, and optional API key — point it at OpenAI, a local Ollama/LM Studio server, OpenRouter, or anything that speaks the OpenAI API.
+Inside the diff you can switch between unified and split layouts, expand context, hide whitespace-only changes, wrap long lines and track viewed files against the current head commit.
 
-Add **custom review instructions** in the same panel to bake your team's standards into every tour and chat.
+### Review without losing your place
 
-## Keyboard shortcuts
+Reviewly keeps inline comments in a per-PR draft that survives navigation and restarts. Read and reply to threads, resolve conversations, add reactions, edit labels and submit one GitHub review as **Comment**, **Approve** or **Request changes**.
 
-Press `?` anywhere for the in-app cheatsheet. (`⌘` is `Ctrl` on Windows/Linux.)
+Keyboard navigation is available across lists and the review workspace. Press `?` in the app for the complete shortcut sheet.
 
-| Key                              | Action                                                                |
-| -------------------------------- | --------------------------------------------------------------------- |
-| `⌘K`                             | Command palette                                                       |
-| `⌘B`                             | Toggle unified ↔ split diff                                           |
-| `⌘1` … `⌘5`                      | Dashboard · PRs · Repos · Notifications · Dependabot                  |
-| `⌘,`                             | Settings                                                              |
-| `⌘=` / `⌘-` / `⌘0`               | Zoom in / out / reset                                                 |
-| `?`                              | Keyboard shortcuts cheatsheet                                         |
-| `g` then `d`/`r`/`l`/`n`/`a`/`s` | Go to Dashboard / PRs / Repos / Notifications / Dependabot / Settings |
-| `/`                              | Focus the filter (lists)                                              |
-| `j` / `k`                        | Move cursor down / up (lists)                                         |
-| `Enter`                          | Open the highlighted item                                             |
-| `e`                              | Mark notification read                                                |
-| `⌘↵`                             | Submit review / comment                                               |
-| `⌘P`                             | Quick-open a file (repo view)                                         |
+### Let AI help without choosing your AI for you
 
-## Privacy & security
+Reviewly supports three complementary workflows:
 
-- **Your token stays local.** The GitHub OAuth token is held in the OS keychain, not in a config file. The OAuth client ID is public (as GitHub intends) — there is no client secret.
-- **Your code stays yours.** Reviewly has no backend. The only outbound calls are to **GitHub** (to do your review) and to **the AI backend you explicitly configure** (which receives only the PR diff and conversation, never your whole repo). If you use a local CLI or local model, nothing leaves your machine at all.
-- **No telemetry.** Reviewly doesn't phone home, track usage, or collect analytics.
+- **Change briefing** maps the PR into coherent areas and highlights what deserves attention.
+- **Guided review** walks through the change in a sensible order, with direct jumps to relevant files and lines.
+- **Ask AI** keeps a per-PR conversation and can work inside a local clone when one is connected.
+
+| Provider | Execution model |
+| --- | --- |
+| Claude | Local `claude` CLI |
+| Codex | Local `codex` CLI |
+| Gemini | Local `gemini` CLI |
+| OpenAI-compatible | Your chosen HTTP endpoint and model |
+
+Custom review instructions can encode project conventions once and apply them to every briefing and conversation.
+
+## Hobby and Teams
+
+![Reviewly Teams shared review queue](docs/screenshots/team-queue.jpg)
+
+| | Hobby | Teams |
+| --- | --- | --- |
+| Price | Free | **US$8 per user / month** |
+| Native review workspace | Included | Included |
+| Local PR cache and drafts | Included | Included |
+| Private AI providers | Included | Included |
+| GitHub Enterprise Server | Included | Included |
+| Shared review ownership | — | Included |
+| Team priority and SLA | — | Included |
+| Organization review queue | — | Included |
+
+Hobby works without a Reviewly account. Teams signs in separately and uses the Reviewly Teams service only for organization membership, billing and review-coordination metadata. Source code and diffs remain between the desktop app, GitHub and the AI provider you choose.
+
+## GitHub Enterprise Server
+
+Choose **Enterprise Server** during connection and enter the company hostname, such as `github.company.com`. Reviewly derives the REST and GraphQL endpoints automatically.
+
+Authenticate with either:
+
+- an existing GitHub CLI session created with `gh auth login --hostname github.company.com`; or
+- a personal access token with the repository, user, notification and workflow access needed by the features you use.
+
+The hostname and credential are stored together in the OS keychain. Switching hosts clears the previous server's local PR mirror so data from separate installations is never mixed.
+
+## Privacy and security
+
+- **Credentials stay in the OS keychain.** GitHub, Teams and optional AI credentials are not written to plaintext configuration files.
+- **No Reviewly telemetry.** The desktop app does not collect product analytics or behavioral events.
+- **No hosted Reviewly AI.** AI requests go only to the CLI or endpoint selected in Settings.
+- **Local work stays local.** A local CLI can read the connected clone; Reviewly does not upload that clone to its own service.
+- **Teams is metadata-only.** The optional Teams backend stores coordination and billing data, not repository source or diffs.
+
+## How it works
+
+```text
+┌──────────────────────────── Reviewly desktop ────────────────────────────┐
+│ React · TanStack Router/Query · local SQLite views · review workspace   │
+└───────────────────┬───────────────────────────────┬──────────────────────┘
+                    │ typed Tauri commands           │ optional Teams session
+┌───────────────────▼───────────────────┐   ┌────────▼─────────────────────┐
+│ Rust core                             │   │ Reviewly Teams API           │
+│ GitHub REST + GraphQL · keychain      │   │ ownership · priority · SLA   │
+│ git · local AI CLIs · updater         │   │ billing · organization sync  │
+└───────────────┬───────────────────────┘   └────────┬─────────────────────┘
+                │                                     │
+        ┌───────▼────────┐                    ┌────────▼────────┐
+        │ GitHub / GHES  │                    │ GitHub App      │
+        └────────────────┘                    └─────────────────┘
+```
+
+The Rust core is the only layer that talks to GitHub and the operating system. The React interface calls typed commands and renders local state. A background worker reconciles selected repositories, updates the dock and tray count, and sends native notifications for new review requests.
 
 ## Build from source
 
-**Prerequisites**
+### Requirements
 
-1. **Bun** ≥ 1.3 — `curl -fsSL https://bun.sh/install | bash`
-2. **Rust** (stable) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-3. Platform toolchain for Tauri: Xcode Command Line Tools (macOS), the [Tauri Linux deps](https://tauri.app/start/prerequisites/) (Linux), or the MSVC build tools (Windows).
+1. [Bun](https://bun.sh) 1.3 or newer
+2. Rust stable
+3. The [Tauri platform prerequisites](https://tauri.app/start/prerequisites/) for your operating system
 
-**Run**
-
-```bash
+```sh
+git clone https://github.com/volnei/reviewly.git
+cd reviewly
 bun install
-bun run tauri dev       # launch the desktop app with hot reload
+bun run tauri dev
 ```
 
-**Other scripts**
+Useful commands:
 
-```bash
-bun run typecheck       # tsc --noEmit
-bun run lint            # biome check
-bun run build           # build the front end only (Vite)
-bun run tauri build     # produce installers in src-tauri/target/release/bundle
+```sh
+bun run typecheck       # TypeScript
+bun lint                # Bun's official linter
+bun fmt                 # Bun's formatter
+bun run build           # desktop webview bundle
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-The GitHub OAuth client ID ships in [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml) (`REVIEWLY_GITHUB_CLIENT_ID`) — it's public, so the app builds and signs in out of the box. To use your own OAuth app instead, register one with **Device Flow enabled** and the `repo`, `read:user`, `notifications`, and `workflow` scopes, then replace the value there.
+The public GitHub OAuth client ID is configured in [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml). Forks can replace it with their own OAuth app with Device Flow enabled.
 
-**Releases.** Pushing a `vX.Y.Z` tag runs the [release workflow](.github/workflows/release.yml), which builds, signs, and notarizes installers for all three platforms and drafts a GitHub Release. macOS code-signing/notarization and the updater signing key are read from repository secrets, so forks build unsigned until those are configured.
+## Product site
 
-## Tech stack
-
-**Front end** — React 18, TypeScript, [TanStack Router](https://tanstack.com/router) & [Query](https://tanstack.com/query), [Zustand](https://github.com/pmndrs/zustand) (persisted to SQLite), Tailwind CSS v4, Base UI components, Prism syntax highlighting, TanStack Virtual, Sonner, Vite.
-
-**Desktop shell** — [Tauri 2](https://tauri.app): SQL (SQLite), global-shortcut, notification, clipboard-manager, dialog, opener, process, os, updater, and window-state plugins, plus `window-vibrancy` for the macOS/Windows backdrop.
-
-**Rust core** — Tokio, reqwest (GitHub REST + GraphQL over rustls), serde, chrono, the `keyring` crate for the OS keychain, and `tracing` for logs.
-
-**Tooling** — [Bun](https://bun.sh) for installs/scripts, [Biome](https://biomejs.dev) for lint/format.
-
-## Support
-
-Reviewly is free and open source, and built in the open. If it saves you time on reviews, consider [**buying me a coffee** ☕](https://buymeacoffee.com/volnei) — it keeps Reviewly free, maintained, and with no ads or paywalls. A ⭐ on the repo helps too, and so does telling another reviewer about it.
+The product site and Reviewly Teams service deploy together on Vercel at [getreviewly.dev](https://getreviewly.dev/). Its source lives in the separate [`volnei/reviewly-teams`](https://github.com/volnei/reviewly-teams) repository.
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a PR, please run `bun run typecheck`, `bun run lint`, and (for Rust changes) `cargo check` in `src-tauri/`. The CI workflow runs the same checks on every push.
+Issues and pull requests are welcome. Before opening a PR, run the relevant checks from the commands above. Changes to Rust should include `cargo check`; changes to the app should include typechecking and linting.
 
 ## License
 
-Reviewly is free software, licensed under the **[GNU General Public License v3.0 or later](LICENSE)**. You're free to use, study, share, and modify it; derivative works must remain under the GPL.
+Reviewly Hobby is licensed under the [GNU General Public License v3.0 or later](LICENSE). You may use, study, share and modify it; derivative works must remain under the GPL.

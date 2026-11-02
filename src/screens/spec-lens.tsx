@@ -1,5 +1,6 @@
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
+import { matchesWorkspace, useWorkspace } from "@/app/workspace";
 import { Button } from "@/components/ui/button";
 import { runtime } from "@/effect/runtime";
 import { Ai } from "@/effect/services/Ai";
@@ -37,7 +38,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Effect } from "effect";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const STAGES: ReadonlyArray<{ key: SpecStage; label: string }> = [
   { key: "proposal", label: "Proposal" },
@@ -53,7 +54,15 @@ export function SpecLensScreen() {
     "desk",
   );
   const paths = usePrefs((prefs) => prefs.localRepos);
-  const workspaces = useSpecWorkspaces();
+  const selectedWorkspace = useWorkspace();
+  const allWorkspaces = useSpecWorkspaces();
+  const workspaces = useMemo(
+    () =>
+      allWorkspaces.filter((item) =>
+        matchesWorkspace(selectedWorkspace, `${item.owner}/${item.repo}`),
+      ),
+    [allWorkspaces, selectedWorkspace],
+  );
   const queryClient = useQueryClient();
   const [workspacePath, setWorkspacePath] = useState("");
   const workspace =
@@ -112,7 +121,9 @@ export function SpecLensScreen() {
         <Nothing
           detail={
             paths.length
-              ? "None of your local repositories contains an openspec/ directory yet. This Lab appears automatically when Reviewly detects one."
+              ? selectedWorkspace
+                ? `${selectedWorkspace} does not have a detected openspec/ workspace. Select All repositories to inspect other local projects.`
+                : "None of your local repositories contains an openspec/ directory yet. This Lab appears automatically when Reviewly detects one."
               : "Add a local repository first. Reviewly enables this Lab automatically when it finds openspec/."
           }
         >

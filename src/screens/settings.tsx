@@ -5,7 +5,9 @@ import {
   Check,
   FolderGit2,
   GitPullRequest,
+  GitFork,
   Info,
+  MessageSquareText,
   Palette,
   Settings2,
   SlidersHorizontal,
@@ -112,7 +114,7 @@ const CATEGORIES = [
   {
     id: "teams",
     label: "Teams",
-    description: "Shared review queues for your GitHub organizations.",
+    description: "Shared review queues across your code hosting workspaces.",
     icon: UsersRound,
   },
   {
@@ -152,7 +154,13 @@ export function SettingsScreen() {
           className="settings-nav-list"
         >
           {CATEGORIES.map(({ id, label, icon: Icon }) => (
-            <TabsTab key={id} value={id} className="settings-nav-item">
+            <TabsTab
+              key={id}
+              value={id}
+              aria-label={label}
+              title={label}
+              className="settings-nav-item"
+            >
               <Icon size={15} aria-hidden />
               <span>{label}</span>
             </TabsTab>
@@ -742,7 +750,7 @@ export function SettingsScreen() {
               <div>
                 <p>Workspace</p>
                 <h1>Reviewly Teams</h1>
-                <span>Shared review queues, synchronized by the GitHub App.</span>
+                <span>Shared review queues across every connected source provider.</span>
               </div>
             </header>
             <TeamsSettings />
@@ -841,6 +849,10 @@ function TeamsSettings() {
   const teams = useTeams();
   const [connecting, setConnecting] = useState(false);
   const [billingAction, setBillingAction] = useState<string | null>(null);
+  const [integrationAction, setIntegrationAction] = useState<string | null>(null);
+  const [integrationOrganizationId, setIntegrationOrganizationId] = useState(
+    teams.organizations[0]?.id ?? "",
+  );
   const billingAccounts = useTeamsBilling();
   const paidAccounts = billingAccounts.data?.filter((account) => account.billing.access) ?? [];
   const inboxes = useEffectQuery(
@@ -870,6 +882,21 @@ function TeamsSettings() {
   const sharedQueuesPending =
     billingAccounts.isPending || (paidAccounts.length > 0 && inboxes.isPending);
   const sharedQueuesError = billingAccounts.isError || inboxes.isError;
+  useEffect(() => {
+    if (!teams.organizations.some((organization) => organization.id === integrationOrganizationId)) {
+      setIntegrationOrganizationId(teams.organizations[0]?.id ?? "");
+    }
+  }, [integrationOrganizationId, teams.organizations]);
+  const integrations = useEffectQuery(
+    ["teams", "integrations", integrationOrganizationId],
+    Effect.flatMap(Teams, (service) => service.integrations(integrationOrganizationId)),
+    { enabled: teams.signedIn && !!integrationOrganizationId, staleTime: 10_000 },
+  );
+  useEffect(() => {
+    const refresh = () => void integrations.refetch();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [integrations.refetch]);
 
   const openBilling = async (workspace: TeamsBillingAccount) => {
     if (billingAction) return;
@@ -913,6 +940,23 @@ function TeamsSettings() {
       toast.fail("Couldn’t connect Reviewly Teams", error);
     } finally {
       setConnecting(false);
+    }
+  };
+
+  const connectIntegration = async (provider: "gitlab" | "slack") => {
+    if (!integrationOrganizationId || integrationAction) return;
+    setIntegrationAction(provider);
+    try {
+      const answer = await run(
+        Effect.flatMap(Teams, (service) =>
+          service.integrationStart(integrationOrganizationId, provider),
+        ),
+      );
+      safeOpenUrl(answer.url);
+    } catch (error) {
+      toast.fail(`Couldn’t connect ${provider === "gitlab" ? "GitLab" : "Slack"}`, error);
+    } finally {
+      setIntegrationAction(null);
     }
   };
 
@@ -968,6 +1012,67 @@ function TeamsSettings() {
           </div>
         )}
       </Section>
+
+      {teams.signedIn ? (
+        <Section
+          title="Integrations"
+          blurb="Connect the places where code changes happen and where reviewers coordinate."
+        >
+          {teams.organizations.length > 1 ? (
+            <div className="teams-integration-scope">
+              <span>Workspace</span>
+              <Select
+                value={integrationOrganizationId}
+                onValueChange={(value) => value && setIntegrationOrganizationId(value)}
+              >
+                <SelectTrigger aria-label="Integration workspace">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  {teams.organizations.map((organization) => (
+                    <SelectItem key={organization.id} value={organization.id}>
+                      {organization.display_name ?? organization.login}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            </div>
+          ) : null}
+          {integrations.isPending ? (
+            <p className="teams-inline-state">Loading integrations…</p>
+          ) : integrations.isError ? (
+            <div className="teams-inline-error">
+              <p>Couldn’t load integrations.</p>
+              <Button variant="ghost" size="sm" onClick={() => void integrations.refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="teams-integration-list">
+              <IntegrationRow
+                icon={GitFork}
+                name="GitLab"
+                description="Merge requests, discussions and approvals from GitLab.com."
+                integration={integrations.data?.integrations.find(
+                  (integration) => integration.provider === "gitlab",
+                )}
+                busy={integrationAction === "gitlab"}
+                onConnect={() => void connectIntegration("gitlab")}
+              />
+              <IntegrationRow
+                icon={MessageSquareText}
+                name="Slack"
+                description="Assignments, reminders and review actions in your team workspace."
+                integration={integrations.data?.integrations.find(
+                  (integration) => integration.provider === "slack",
+                )}
+                busy={integrationAction === "slack"}
+                onConnect={() => void connectIntegration("slack")}
+              />
+            </div>
+          )}
+        </Section>
+      ) : null}
 
       {teams.signedIn ? (
         <Section
@@ -1129,6 +1234,52 @@ function TeamsSettings() {
 
       {teams.signedIn ? <FastLaneSettings /> : null}
     </>
+  );
+}
+
+function IntegrationRow({
+  icon: Icon,
+  name,
+  description,
+  integration,
+  busy,
+  onConnect,
+}: {
+  icon: typeof GitFork;
+  name: string;
+  description: string;
+  integration: import("@/effect/schema").TeamIntegration | undefined;
+  busy: boolean;
+  onConnect: () => void;
+}) {
+  const connected = integration?.connection?.status === "active";
+  return (
+    <div className="teams-integration-row">
+      <Icon size={17} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="teams-integration-title">
+          <p>{name}</p>
+          <span className={cn(connected && "is-connected")}>
+            {connected ? "Connected" : "Not connected"}
+          </span>
+        </div>
+        <span>
+          {connected
+            ? integration.connection?.displayName ?? description
+            : integration?.configured === false
+              ? "The server credentials still need to be configured."
+              : description}
+        </span>
+      </div>
+      <Button
+        variant={connected ? "ghost" : "outline"}
+        size="sm"
+        disabled={busy || integration?.configured === false}
+        onClick={onConnect}
+      >
+        {busy ? "Opening…" : connected ? "Reconnect" : `Connect ${name}`}
+      </Button>
+    </div>
   );
 }
 

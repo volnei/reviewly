@@ -1,5 +1,6 @@
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
+import { matchesWorkspace, useWorkspace } from "@/app/workspace";
 import { Button } from "@/components/ui/button";
 import { useEffectQuery } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
@@ -43,7 +44,15 @@ const CODEOWNERS_PATHS = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"]
 export function TurboScreen() {
   useTitleSlot(<span className="text-[13px] text-ink-2">Labs / Living architecture</span>, "desk");
   const paths = usePrefs((p) => p.localRepos);
-  const workspaces = useWorkspaceHealth();
+  const selectedWorkspace = useWorkspace();
+  const allWorkspaces = useWorkspaceHealth();
+  const workspaces = useMemo(
+    () =>
+      allWorkspaces.filter((item) =>
+        matchesWorkspace(selectedWorkspace, `${item.owner}/${item.repo}`),
+      ),
+    [allWorkspaces, selectedWorkspace],
+  );
   const qc = useQueryClient();
   const [selectedPath, setSelectedPath] = useState("");
   const workspace = workspaces.find((item) => item.path === selectedPath) ?? workspaces[0] ?? null;
@@ -103,7 +112,9 @@ export function TurboScreen() {
         <Nothing
           detail={
             paths.length
-              ? "None of your local repositories contains a turbo.json yet. This Lab appears automatically when Reviewly detects one."
+              ? selectedWorkspace
+                ? `${selectedWorkspace} does not have a detected turbo.json workspace. Select All repositories to inspect other local projects.`
+                : "None of your local repositories contains a turbo.json yet. This Lab appears automatically when Reviewly detects one."
               : "Add a local repository first. Reviewly enables this Lab automatically when it finds turbo.json."
           }
         >

@@ -24,6 +24,7 @@ dist-ssr
 .idea
 .claude/
 .taste-skill/
+stripe-*.png
 .DS_Store
 *.suo
 *.ntvs*

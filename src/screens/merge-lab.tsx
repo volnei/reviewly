@@ -1,5 +1,6 @@
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
+import { matchesWorkspace, useWorkspace } from "@/app/workspace";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { run, useEffectQuery } from "@/effect/runtime";
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { Effect } from "effect";
 import { ArrowRight, FlaskConical, GitMerge, LoaderCircle, RotateCcw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type RunState = "idle" | "fetching" | "analyzing" | "complete";
 
@@ -52,7 +53,12 @@ const candidateOf = (item: Ranked): MergeCandidate | null =>
 export function MergeLabScreen() {
   useTitleSlot(<span className="text-[13px] text-ink-2">Labs / Merge Lab</span>, "desk");
   const auth = useAuth();
+  const workspace = useWorkspace();
   const watched = usePrefs((prefs) => prefs.watchedRepos);
+  const scopedWatched = useMemo(
+    () => watched.filter((repo) => matchesWorkspace(workspace, repo)),
+    [watched, workspace],
+  );
   const localPaths = usePrefs((prefs) => prefs.localRepos);
   const workspaces = useWorkspaceHealth();
   const navigate = useNavigate();
@@ -79,12 +85,12 @@ export function MergeLabScreen() {
     { enabled: localPaths.length > 0, staleTime: 60_000 },
   );
   const cached = useEffectQuery(
-    ["merge-lab", watched, auth.viewer?.login],
+    ["merge-lab", scopedWatched, auth.viewer?.login],
     Effect.gen(function* () {
       const gh = yield* GitHub;
       const triage = yield* Triage;
       const lists = yield* Effect.forEach(
-        watched,
+        scopedWatched,
         (full) => {
           const repo = splitRepo(full);
           return repo
@@ -97,7 +103,7 @@ export function MergeLabScreen() {
         lists.flat().map((pull) => fromSummary(pull, auth.viewer?.login ?? null)),
       );
     }),
-    { enabled: watched.length > 0, staleTime: 60_000 },
+    { enabled: scopedWatched.length > 0, staleTime: 60_000 },
   );
   const candidates = useMemo(
     () =>
@@ -116,6 +122,14 @@ export function MergeLabScreen() {
       .filter((workspace) => `${workspace.owner}/${workspace.repo}` === chosenRepo)
       .map((workspace) => ({ path: workspace.path, slug: chosenRepo }))[0] ??
     null;
+
+  useEffect(() => {
+    setSelected(new Set());
+    setSimulation(null);
+    setProof(null);
+    setRunState("idle");
+    setEditingSet(true);
+  }, [workspace]);
 
   const toggle = (id: string) => {
     setSimulation(null);

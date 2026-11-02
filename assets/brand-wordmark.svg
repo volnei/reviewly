@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title">
+  <title id="title">Reviewly</title>
+  <rect width="1200" height="300" fill="none"/>
+  <g transform="translate(42 28) scale(1.17)">
+    <path fill="#111111" d="M28.5 194V82A68 68 0 0 1 151.513 42.031L117.534 66.717A26 26 0 0 0 70.5 82V194H28.5Z"/>
+  </g>
+  <text x="270" y="204" fill="#111111" font-family="Cal Sans, Cal Sans Text, Inter, Helvetica Neue, Arial, sans-serif" font-size="152" font-weight="650" letter-spacing="-6">Reviewly</text>
+</svg>

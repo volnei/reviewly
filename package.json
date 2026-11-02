@@ -7,9 +7,6 @@
   "packageManager": "bun@1.4.4-canary.1+794200868",
   "scripts": {
     "dev": "vite",
-    "site:dev": "vite --config vite.site.config.ts",
-    "site:build": "vite build --config vite.site.config.ts",
-    "site:preview": "vite preview --config vite.site.config.ts",
     "build": "tsc -b && vite build",
     "build:appstore": "VITE_REVIEWLY_EDITION=appstore tsc -b && VITE_REVIEWLY_EDITION=appstore vite build",
     "tauri:appstore": "scripts/appstore-pkg.sh",

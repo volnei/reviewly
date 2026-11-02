@@ -5,15 +5,27 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleDot,
+  Clock3,
   GitMerge,
   RefreshCw,
+  ShieldCheck,
   UserRoundCheck,
+  UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { settingsCategoryStore } from "@/app/settings-navigation";
+import { useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { run, useEffectQuery } from "@/effect/runtime";
 import type { TeamPull, TeamQueueUpdate, TeamsInbox } from "@/effect/schema";
 import { Teams, useTeams } from "@/effect/services/Teams";
@@ -61,6 +73,7 @@ function slaLabel(iso: string | null): { label: string; tone: string } {
 
 export function TeamScreen() {
   const teams = useTeams();
+  const teamsPlan = useTeamsPlan();
   const [organizationId, setOrganizationId] = useState(teams.organizations[0]?.id ?? "");
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [pending, setPending] = useState<string | null>(null);
@@ -77,7 +90,7 @@ export function TeamScreen() {
   const queue = useEffectQuery(
     queryKey,
     Effect.flatMap(Teams, (service) => service.inbox(organizationId)),
-    { enabled: !!organizationId, staleTime: 15_000 },
+    { enabled: teamsPlan === "teams" && !!organizationId, staleTime: 15_000 },
   );
 
   useTitleSlot(
@@ -164,16 +177,73 @@ export function TeamScreen() {
       ? `${counts.atRisk} ${counts.atRisk === 1 ? "review is" : "reviews are"} close to or past SLA.`
       : "Every open review has an owner.";
 
-  if (!teams.loading && !teams.signedIn) {
+  if (teamsPlan === null) {
     return (
-      <div className="h-full overflow-y-auto bg-desk p-8">
-        <h1 className="text-[24px] font-semibold text-ink">Team queue</h1>
-        <p className="mt-2 max-w-xl text-[14px] text-ink-2">
-          Connect Reviewly Teams to share review ownership, priority and SLAs.
-        </p>
-        <Button className="mt-5" size="sm" render={<Link to="/settings" />}>
-          Connect Teams
-        </Button>
+      <div className="team-gate-loading h-full bg-desk p-8 text-ink" role="status">
+        <span className="sr-only">Checking your Teams plan</span>
+        <div className="h-3 w-24 rounded-sm bg-raise" />
+        <div className="mt-4 h-7 w-72 max-w-full rounded-sm bg-raise" />
+        <div className="mt-3 h-3 w-[420px] max-w-full rounded-sm bg-raise" />
+        <div className="mt-10 h-44 max-w-[860px] rounded-lg border border-hair bg-page" />
+      </div>
+    );
+  }
+
+  if (teamsPlan === "hobby") {
+    return (
+      <div className="team-gate h-full overflow-y-auto bg-desk text-ink scrollbar-thin">
+        <header className="team-gate-header">
+          <p>Reviewly Teams</p>
+          <h1>One queue. Clear ownership.</h1>
+          <span>
+            Coordinate reviews across your GitHub organization without moving source code or diffs
+            to another workspace.
+          </span>
+        </header>
+
+        <div className="team-gate-surface">
+          <section className="team-gate-capabilities" aria-label="Teams capabilities">
+            <TeamGateCapability
+              icon={UsersRound}
+              title="A shared review queue"
+              detail="See every open review, who owns it and what needs to happen next."
+            />
+            <TeamGateCapability
+              icon={Clock3}
+              title="Priorities and SLAs"
+              detail="Surface work at risk before a review quietly becomes a blocker."
+            />
+            <TeamGateCapability
+              icon={ShieldCheck}
+              title="Metadata only"
+              detail="Repository source and diffs stay in GitHub and on each reviewer’s Mac."
+            />
+          </section>
+
+          <aside className="team-gate-plan" aria-label="Reviewly Teams plan">
+            <div>
+              <p>Teams plan</p>
+              <div className="team-gate-price">
+                <strong>$8</strong>
+                <span>
+                  per member
+                  <br />
+                  each month
+                </span>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                settingsCategoryStore.set("teams");
+                void navigate({ to: "/settings" });
+              }}
+            >
+              Set up your team
+            </Button>
+            <span>Connect a GitHub organization, then subscribe securely with Stripe.</span>
+          </aside>
+        </div>
       </div>
     );
   }
@@ -186,20 +256,33 @@ export function TeamScreen() {
           <p className="mt-1 text-[13px] text-ink-2">{finding}</p>
         </div>
         {teams.organizations.length > 1 ? (
-          <label className="flex items-center gap-2 text-[12px] text-ink-3">
-            Workspace
-            <select
+          <div className="flex items-center gap-2 text-[12px] text-ink-3">
+            <span>Workspace</span>
+            <Select
               value={organizationId}
-              onChange={(event) => setOrganizationId(event.target.value)}
-              className="h-8 rounded-md border border-edge bg-page px-2.5 text-[12px] text-ink outline-none focus:border-ink-3"
+              onValueChange={(value) => value !== null && setOrganizationId(value)}
             >
-              {teams.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.display_name ?? organization.login}
-                </option>
-              ))}
-            </select>
-          </label>
+              <SelectTrigger
+                aria-label="Workspace"
+                size="sm"
+                className="min-w-0 border-0 bg-transparent px-2 text-ink shadow-none hover:bg-raise/55 dark:bg-transparent"
+              >
+                <SelectValue>
+                  {teams.organizations.find((organization) => organization.id === organizationId)
+                    ?.display_name ??
+                    teams.organizations.find((organization) => organization.id === organizationId)
+                      ?.login}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup alignItemWithTrigger={false}>
+                {teams.organizations.map((organization) => (
+                  <SelectItem key={organization.id} value={organization.id}>
+                    {organization.display_name ?? organization.login}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
         ) : (
           <span className="text-[12px] text-ink-3">
             {teams.organizations[0]?.display_name ?? teams.organizations[0]?.login}
@@ -300,6 +383,26 @@ export function TeamScreen() {
   );
 }
 
+function TeamGateCapability({
+  icon: Icon,
+  title,
+  detail,
+}: {
+  icon: typeof UsersRound;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="team-gate-capability">
+      <Icon aria-hidden strokeWidth={1.6} />
+      <div>
+        <h2>{title}</h2>
+        <p>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function Metric({
   label,
   value,
@@ -374,23 +477,31 @@ function QueueRow({
       </button>
 
       {pull.claimedByUserId && (mine || canTransfer) ? (
-        <select
-          aria-label={`Owner of pull request ${pull.number}`}
+        <Select
           disabled={pending}
           value={pull.claimedByUserId}
-          onChange={(event) => onUpdate({ assigneeUserId: event.target.value || null })}
-          className="h-7 min-w-0 rounded-md border border-edge bg-sink px-2 text-[11.5px] text-ink outline-none disabled:opacity-50"
+          onValueChange={(value) => onUpdate({ assigneeUserId: value || null })}
         >
-          <option value="">Unassigned</option>
-          {(canTransfer
-            ? data.members
-            : data.members.filter((member) => member.id === data.currentUserId)
-          ).map((member) => (
-            <option key={member.id} value={member.id}>
-              {member.login}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            aria-label={`Owner of pull request ${pull.number}`}
+            size="sm"
+            className="min-w-0 border-0 bg-transparent px-1.5 text-ink-2 shadow-none hover:bg-raise/55 dark:bg-transparent"
+          >
+            <UserRoundCheck className="size-3.5 text-ink-3" strokeWidth={1.75} />
+            <SelectValue>{pull.claimedByLogin ?? me?.login ?? "Owner"}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup alignItemWithTrigger={false}>
+            <SelectItem value="">Unassigned</SelectItem>
+            {(canTransfer
+              ? data.members
+              : data.members.filter((member) => member.id === data.currentUserId)
+            ).map((member) => (
+              <SelectItem key={member.id} value={member.id}>
+                {member.login}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       ) : pull.claimedByLogin ? (
         <span className="truncate text-ink-2">{pull.claimedByLogin}</span>
       ) : (
@@ -405,7 +516,7 @@ function QueueRow({
         </button>
       )}
 
-      <label className="relative flex items-center">
+      <div className="relative flex min-w-0 items-center">
         <StatusIcon
           className={cn(
             "pointer-events-none absolute left-2 size-3.5",
@@ -417,44 +528,64 @@ function QueueRow({
           )}
           strokeWidth={1.75}
         />
-        <select
-          aria-label={`Next action for pull request ${pull.number}`}
+        <Select
           disabled={pending}
           value={pull.nextAction}
-          onChange={(event) =>
-            onUpdate({ nextAction: event.target.value as TeamPull["nextAction"] })
+          onValueChange={(value) =>
+            value !== null && onUpdate({ nextAction: value as TeamPull["nextAction"] })
           }
-          className="h-7 w-full appearance-none rounded-md bg-transparent pl-7 pr-1 text-[11.5px] text-ink-2 outline-none hover:bg-raise/45 disabled:opacity-50"
         >
-          {NEXT_ACTIONS.map((action) => (
-            <option key={action.value} value={action.value}>
-              {action.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          <SelectTrigger
+            aria-label={`Next action for pull request ${pull.number}`}
+            size="sm"
+            className="min-w-0 border-0 bg-transparent pl-7 pr-1 text-ink-2 shadow-none hover:bg-raise/55 dark:bg-transparent"
+          >
+            <SelectValue>
+              {NEXT_ACTIONS.find((action) => action.value === pull.nextAction)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup alignItemWithTrigger={false}>
+            {NEXT_ACTIONS.map((action) => (
+              <SelectItem key={action.value} value={action.value}>
+                {action.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      </div>
 
       <div className="col-span-2 flex min-w-0 items-center justify-between gap-1 border-t border-hair pt-2 sm:col-span-1 sm:border-t-0 sm:pt-0 xl:contents">
-        <select
-          aria-label={`Priority of pull request ${pull.number}`}
+        <Select
           disabled={pending}
           value={pull.priority}
-          onChange={(event) => onUpdate({ priority: event.target.value as TeamPull["priority"] })}
-          className={cn(
-            "h-7 min-w-0 rounded-md bg-transparent px-1 text-[11.5px] outline-none hover:bg-raise/45 disabled:opacity-50",
-            pull.priority === "urgent"
-              ? "text-del"
-              : pull.priority === "high"
-                ? "text-amber"
-                : "text-ink-2",
-          )}
+          onValueChange={(value) =>
+            value !== null && onUpdate({ priority: value as TeamPull["priority"] })
+          }
         >
-          {PRIORITIES.map((priority) => (
-            <option key={priority.value} value={priority.value}>
-              {priority.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            aria-label={`Priority of pull request ${pull.number}`}
+            size="sm"
+            className={cn(
+              "min-w-0 border-0 bg-transparent px-1.5 shadow-none hover:bg-raise/55 dark:bg-transparent",
+              pull.priority === "urgent"
+                ? "text-del"
+                : pull.priority === "high"
+                  ? "text-amber"
+                  : "text-ink-2",
+            )}
+          >
+            <SelectValue>
+              {PRIORITIES.find((priority) => priority.value === pull.priority)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup alignItemWithTrigger={false}>
+            {PRIORITIES.map((priority) => (
+              <SelectItem key={priority.value} value={priority.value}>
+                {priority.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
 
         <span className={cn("tnum shrink-0 text-right text-[11.5px]", sla.tone)}>{sla.label}</span>
       </div>

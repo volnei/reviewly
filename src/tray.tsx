@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { usePrefs } from "@/effect/services/Prefs";
+import { ReviewlyMark } from "@/components/reviewly-mark";
 import {
   AtSign,
   GitPullRequest,
@@ -58,7 +59,7 @@ function TrayPanel() {
       <header className="tray-head" data-appearance={appearance}>
         <img className="tray-head-art" src={artwork} alt="" draggable={false} />
         <div className="tray-brand">
-          <img src="/reviewly-mark.svg" alt="" draggable={false} />
+          <ReviewlyMark />
           <div>
             <strong>Reviewly</strong>
             <span>{inbox > 0 ? `${inbox} waiting for you` : "Inbox clear"}</span>
