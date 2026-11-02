@@ -5039,24 +5039,25 @@ mark.dm {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.17);
   content: "";
   pointer-events: none;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.15);
-  transition:
-    opacity 200ms cubic-bezier(0.2, 0, 0, 1),
-    transform 520ms cubic-bezier(0.2, 0, 0, 1);
+  transform: translate(-50%, -50%) scale(0.2);
+  animation: ai-review-material-ripple 2.8s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-v2 .pr-ai-review::after {
   position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.08);
+  z-index: 2;
+  top: 5px;
+  left: 27px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fff8d8;
   content: "";
   pointer-events: none;
   opacity: 0;
-  transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
+  animation: ai-review-material-orbit 2.8s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-v2 .pr-ai-review:hover {
   border-color: transparent;
@@ -5066,15 +5067,6 @@ mark.dm {
     inset 0 -1px 0 rgba(112, 27, 8, 0.14),
     0 7px 18px rgba(202, 61, 24, 0.28);
   transform: translateY(-1px);
-}
-.pr-v2 .pr-ai-review:hover::before,
-.pr-v2 .pr-ai-review:focus-visible::before {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(3.6);
-}
-.pr-v2 .pr-ai-review:hover::after,
-.pr-v2 .pr-ai-review:focus-visible::after {
-  opacity: 1;
 }
 .pr-v2 .pr-ai-review:active {
   transform: translateY(0) scale(0.965);
@@ -5093,7 +5085,7 @@ mark.dm {
   color: #fff8d8;
   filter: drop-shadow(0 1px 3px rgba(113, 31, 10, 0.22));
   transform-origin: center;
-  animation: ai-review-sparkle 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
+  animation: ai-review-sparkle 2.8s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-icon::before,
 .pr-ai-review-icon::after {
@@ -5107,12 +5099,12 @@ mark.dm {
 .pr-ai-review-icon::before {
   top: -2px;
   right: -3px;
-  animation: ai-review-particle-a 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
+  animation: ai-review-particle-a 2.8s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-icon::after {
   bottom: -1px;
   left: -3px;
-  animation: ai-review-particle-b 4.6s cubic-bezier(0.2, 0, 0, 1) infinite;
+  animation: ai-review-particle-b 2.8s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 .pr-ai-review-label {
   position: relative;
@@ -5145,42 +5137,83 @@ mark.dm {
 
 @keyframes ai-review-sparkle {
   0%,
-  72%,
   100% {
     transform: rotate(0) scale(1);
   }
-  79% {
-    transform: rotate(-10deg) scale(0.82);
+  18% {
+    transform: rotate(-18deg) scale(0.72);
   }
-  88% {
-    transform: rotate(8deg) scale(1.18);
+  38% {
+    transform: rotate(12deg) scale(1.28);
   }
-  94% {
+  52% {
     transform: rotate(-2deg) scale(0.98);
   }
 }
 @keyframes ai-review-particle-a {
   0%,
-  74%,
   100% {
     opacity: 0;
     transform: translate(-2px, 2px) scale(0.35);
   }
-  86% {
+  34% {
     opacity: 1;
-    transform: translate(1px, -1px) scale(1);
+    transform: translate(3px, -3px) scale(1.1);
+  }
+  54% {
+    opacity: 0;
+    transform: translate(5px, -5px) scale(0.45);
   }
 }
 @keyframes ai-review-particle-b {
   0%,
-  78%,
   100% {
     opacity: 0;
     transform: translate(2px, -2px) scale(0.35);
   }
-  90% {
+  42% {
     opacity: 1;
-    transform: translate(-1px, 1px) scale(0.9);
+    transform: translate(-3px, 3px) scale(1);
+  }
+  62% {
+    opacity: 0;
+    transform: translate(-5px, 5px) scale(0.4);
+  }
+}
+@keyframes ai-review-material-ripple {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  12% {
+    opacity: 1;
+  }
+  58% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(12);
+  }
+}
+@keyframes ai-review-material-orbit {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.4);
+  }
+  24% {
+    opacity: 1;
+    transform: translate(8px, -2px) scale(1);
+  }
+  48% {
+    opacity: 0;
+    transform: translate(32px, 9px) scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(32px, 9px) scale(0.3);
   }
 }
 @keyframes ai-review-running {
