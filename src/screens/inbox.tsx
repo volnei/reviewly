@@ -1,4 +1,5 @@
 import { overlays } from "@/app/overlays";
+import { useFastLanePolicies } from "@/app/fast-lane";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
@@ -12,6 +13,7 @@ import { Inbox, type InboxData } from "@/effect/services/Inbox";
 import { prefsStore, tomorrowMorning, usePrefs } from "@/effect/services/Prefs";
 import type { Ranked } from "@/effect/services/Triage";
 import { FilterBar, applyFilter, isFiltering, useListFilter } from "@/features/list/filters";
+import { isFastLane } from "@/features/fast-lane";
 import { List, ListHead, Nothing, type Section } from "@/features/list/list";
 import { usePreread } from "@/features/list/preread";
 import { age } from "@/features/list/row";
@@ -208,6 +210,7 @@ function synced(at: number): string {
 
 export function InboxScreen() {
   const workspace = useWorkspace();
+  const fastLanePolicies = useFastLanePolicies();
   const root = useRef<HTMLDivElement>(null);
   useTitleSlot(
     <>
@@ -251,11 +254,16 @@ export function InboxScreen() {
     [inbox.data, all],
   );
   const sections = useMemo(() => {
-    return toSections(stackVisible).map((s) => ({
+    const enabled = new Map(
+      (fastLanePolicies.data ?? [])
+        .filter(({ policy }) => policy.enabled)
+        .map(({ organization, policy }) => [organization.login.toLowerCase(), policy] as const),
+    );
+    return toSections(stackVisible, enabled).map((s) => ({
       ...s,
       items: applyFilter(s.items, filter),
     }));
-  }, [stackVisible, filter]);
+  }, [stackVisible, filter, fastLanePolicies.data]);
 
   return (
     <div
@@ -328,14 +336,27 @@ export function InboxScreen() {
   );
 }
 
-function toSections(data: InboxData | undefined): Section[] {
+function toSections(
+  data: InboxData | undefined,
+  policies: ReadonlyMap<string, import("@/effect/schema").FastLanePolicy>,
+): Section[] {
   if (!data) return [];
   const { turn, unsorted, later } = data;
   const active = [...turn, ...unsorted];
+  const fastLaneEnabled = policies.size > 0;
+  const fastLane = active.filter((item) => {
+    const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+    return policy ? isFastLane(item, policy) : false;
+  });
+  const fastLaneIds = new Set(fastLane.map((item) => item.id));
   const waiting = later.filter((i) => i.verdict === "waiting").length;
   const snoozed = later.length - waiting;
   const groups = [
-    { key: "review", title: "Review requested", items: active.filter((i) => !i.mine) },
+    {
+      key: "review",
+      title: "Review requested",
+      items: active.filter((i) => !i.mine && !fastLaneIds.has(i.id)),
+    },
     {
       key: "attention",
       title: "Your PRs need attention",
@@ -348,8 +369,8 @@ function toSections(data: InboxData | undefined): Section[] {
     },
   ];
   return [
-    ...groups.map(
-      ({ key, title, items }): Section => ({
+    ...groups.flatMap(({ key, title, items }, index): Section[] => [
+      {
         key,
         items,
         head: (
@@ -358,8 +379,24 @@ function toSections(data: InboxData | undefined): Section[] {
             <span className="tnum text-[12px] text-ink-3">{items.length}</span>
           </p>
         ),
-      }),
-    ),
+      },
+      ...(index === 0 && fastLaneEnabled
+        ? [
+            {
+              key: "fast-lane",
+              items: fastLane,
+              folded: (
+                <>
+                  Fast lane <span className="tnum text-ink-3">{fastLane.length}</span>
+                  <span className="text-ink-3">
+                    Routine dependency updates with green checks
+                  </span>
+                </>
+              ),
+            } satisfies Section,
+          ]
+        : []),
+    ]),
     {
       key: "later",
       items: later,

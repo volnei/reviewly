@@ -113,6 +113,18 @@ export const TeamQueueUpdate = S.Struct({
 });
 export type TeamQueueUpdate = typeof TeamQueueUpdate.Type;
 
+export const FastLanePolicy = S.Struct({
+  enabled: S.Boolean,
+  includeDependabot: S.Boolean,
+  includeRenovate: S.Boolean,
+  requireGreenCi: S.Boolean,
+  excludeDrafts: S.Boolean,
+  excludeConflicts: S.Boolean,
+  excludeChangesRequested: S.Boolean,
+  excludeOpenThreads: S.Boolean,
+});
+export type FastLanePolicy = typeof FastLanePolicy.Type;
+
 export const TeamBilling = S.Struct({
   organizationId: S.String,
   configured: S.Boolean,

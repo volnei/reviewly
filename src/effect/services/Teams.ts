@@ -42,6 +42,13 @@ export class Teams extends Context.Service<
       organizationId: string,
       update: S.TeamQueueUpdate,
     ) => Effect.Effect<void, import("../errors").AppError>;
+    readonly fastLanePolicy: (
+      organizationId: string,
+    ) => Effect.Effect<S.FastLanePolicy, import("../errors").AppError>;
+    readonly updateFastLanePolicy: (
+      organizationId: string,
+      policy: S.FastLanePolicy,
+    ) => Effect.Effect<S.FastLanePolicy, import("../errors").AppError>;
     readonly billing: (
       organizationId: string,
     ) => Effect.Effect<S.TeamBilling, import("../errors").AppError>;
@@ -92,6 +99,14 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_inbox", { organizationId }, S.TeamsInbox);
     const updateQueue = (organizationId: string, update: S.TeamQueueUpdate) =>
       tauri.invoke("teams_queue_update", { organizationId, update }, S.Unit).pipe(Effect.asVoid);
+    const fastLanePolicy = (organizationId: string) =>
+      tauri.invoke("teams_fast_lane_policy", { organizationId }, S.FastLanePolicy);
+    const updateFastLanePolicy = (organizationId: string, policy: S.FastLanePolicy) =>
+      tauri.invoke(
+        "teams_fast_lane_policy_update",
+        { organizationId, policy },
+        S.FastLanePolicy,
+      );
     const billing = (organizationId: string) =>
       tauri.invoke("teams_billing", { organizationId }, S.TeamBilling);
     const checkout = (organizationId: string) =>
@@ -110,6 +125,8 @@ export const TeamsLive = Layer.effect(
       linkPoll,
       inbox,
       updateQueue,
+      fastLanePolicy,
+      updateFastLanePolicy,
       billing,
       checkout,
       billingPortal,

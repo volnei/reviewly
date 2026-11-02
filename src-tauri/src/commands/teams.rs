@@ -89,6 +89,19 @@ pub struct TeamsInbox {
     pub pulls: Vec<TeamPull>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FastLanePolicy {
+    pub enabled: bool,
+    pub include_dependabot: bool,
+    pub include_renovate: bool,
+    pub require_green_ci: bool,
+    pub exclude_drafts: bool,
+    pub exclude_conflicts: bool,
+    pub exclude_changes_requested: bool,
+    pub exclude_open_threads: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamBillingPrice {
@@ -285,6 +298,65 @@ pub async fn teams_queue_update(
         )));
     }
     Ok(())
+}
+
+async fn teams_api_request(
+    organization_id: &str,
+    path: &str,
+    method: reqwest::Method,
+    body: Option<serde_json::Value>,
+) -> AppResult<reqwest::Response> {
+    let token = creds::load_teams_token()?.ok_or(AppError::NotSignedIn)?;
+    let mut request = client()?
+        .request(
+            method,
+            format!(
+                "{}/api/organizations/{}/{}",
+                base_url(),
+                urlencoding::encode(organization_id),
+                path.trim_start_matches('/')
+            ),
+        )
+        .bearer_auth(token);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let response = request.send().await?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        creds::delete_teams_token()?;
+        return Err(AppError::Auth("Reviewly Teams session expired".into()));
+    }
+    if !response.status().is_success() {
+        return Err(AppError::Other(format!(
+            "Reviewly Teams returned {}",
+            response.status()
+        )));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn teams_fast_lane_policy(organization_id: String) -> AppResult<FastLanePolicy> {
+    Ok(teams_api_request(&organization_id, "fast-lane", reqwest::Method::GET, None)
+        .await?
+        .json()
+        .await?)
+}
+
+#[tauri::command]
+pub async fn teams_fast_lane_policy_update(
+    organization_id: String,
+    policy: FastLanePolicy,
+) -> AppResult<FastLanePolicy> {
+    Ok(teams_api_request(
+        &organization_id,
+        "fast-lane",
+        reqwest::Method::PATCH,
+        Some(serde_json::to_value(policy)?),
+    )
+    .await?
+    .json()
+    .await?)
 }
 
 async fn teams_request(

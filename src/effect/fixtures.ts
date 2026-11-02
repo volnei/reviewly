@@ -764,6 +764,16 @@ let fixtureQueue: Record<
     slaDueAt: new Date(Date.now() - 2 * 36e5).toISOString(),
   },
 };
+let fixtureFastLanePolicy = {
+  enabled: true,
+  includeDependabot: true,
+  includeRenovate: true,
+  requireGreenCi: true,
+  excludeDrafts: true,
+  excludeConflicts: true,
+  excludeChangesRequested: true,
+  excludeOpenThreads: true,
+};
 const fixtureTeamPull = (
   id: string,
   repository: string,
@@ -868,6 +878,11 @@ const commands: Record<string, Handler> = {
       },
     };
     return {};
+  },
+  teams_fast_lane_policy: () => fixtureFastLanePolicy,
+  teams_fast_lane_policy_update: ({ policy }) => {
+    fixtureFastLanePolicy = policy as typeof fixtureFastLanePolicy;
+    return fixtureFastLanePolicy;
   },
   teams_billing: ({ organizationId }) => ({
     organizationId,

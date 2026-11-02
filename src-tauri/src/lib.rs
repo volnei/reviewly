@@ -317,6 +317,8 @@ pub fn run() {
             commands::teams::teams_sign_out,
             commands::teams::teams_inbox,
             commands::teams::teams_queue_update,
+            commands::teams::teams_fast_lane_policy,
+            commands::teams::teams_fast_lane_policy_update,
             commands::teams::teams_billing,
             commands::teams::teams_checkout,
             commands::teams::teams_billing_portal,

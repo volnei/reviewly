@@ -56,6 +56,7 @@ import { type Prefs, prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { Teams, useTeams } from "@/effect/services/Teams";
 import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
+import { FastLaneSettings } from "@/features/fast-lane-settings";
 import { isDemo, setDemo } from "@/lib/demo";
 import { APP_STORE } from "@/lib/edition";
 import { safeOpenUrl } from "@/lib/ui";
@@ -1111,6 +1112,8 @@ function TeamsSettings() {
           )}
         </Section>
       ) : null}
+
+      {teams.signedIn ? <FastLaneSettings /> : null}
     </>
   );
 }
