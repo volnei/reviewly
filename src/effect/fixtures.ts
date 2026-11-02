@@ -816,7 +816,7 @@ const commands: Record<string, Handler> = {
   teams_status: () => ({
     signed_in: true,
     organizations: [
-      { id: "fixture-volnei", login: "volnei", display_name: "volnei", role: "owner" },
+      { id: "fixture-volnei", login: "volnei", displayName: "volnei", role: "owner" },
     ],
   }),
   teams_link_start: () => ({
@@ -829,7 +829,7 @@ const commands: Record<string, Handler> = {
   teams_link_poll: () => ({
     status: "authorized",
     organizations: [
-      { id: "fixture-volnei", login: "volnei", display_name: "volnei", role: "owner" },
+      { id: "fixture-volnei", login: "volnei", displayName: "volnei", role: "owner" },
     ],
   }),
   teams_sign_out: () => ({}),

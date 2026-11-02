@@ -37,7 +37,7 @@ export type DeviceStart = typeof DeviceStart.Type;
 export const TeamOrganization = S.Struct({
   id: S.String,
   login: S.String,
-  display_name: S.NullOr(S.String),
+  displayName: S.NullOr(S.String),
   role: S.String,
 });
 export type TeamOrganization = typeof TeamOrganization.Type;

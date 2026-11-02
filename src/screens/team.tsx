@@ -269,7 +269,7 @@ export function TeamScreen() {
               >
                 <SelectValue>
                   {teams.organizations.find((organization) => organization.id === organizationId)
-                    ?.display_name ??
+                    ?.displayName ??
                     teams.organizations.find((organization) => organization.id === organizationId)
                       ?.login}
                 </SelectValue>
@@ -277,7 +277,7 @@ export function TeamScreen() {
               <SelectPopup alignItemWithTrigger={false}>
                 {teams.organizations.map((organization) => (
                   <SelectItem key={organization.id} value={organization.id}>
-                    {organization.display_name ?? organization.login}
+                    {organization.displayName ?? organization.login}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -285,7 +285,7 @@ export function TeamScreen() {
           </div>
         ) : (
           <span className="text-[12px] text-ink-3">
-            {teams.organizations[0]?.display_name ?? teams.organizations[0]?.login}
+            {teams.organizations[0]?.displayName ?? teams.organizations[0]?.login}
           </span>
         )}
       </header>

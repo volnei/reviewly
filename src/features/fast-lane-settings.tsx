@@ -193,7 +193,7 @@ function WorkspacePolicy({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-ink">
-            {organization.display_name ?? organization.login}
+            {organization.displayName ?? organization.login}
           </p>
           <span className="text-[11.5px] text-ink-3">
             @{organization.login} · {canEdit ? "team policy" : "managed by an admin"}

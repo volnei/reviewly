@@ -16,7 +16,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
 import {
@@ -848,6 +848,7 @@ function billingStatusLabel(billing: TeamBilling): string {
 function TeamsSettings() {
   const teams = useTeams();
   const [connecting, setConnecting] = useState(false);
+  const connectingRef = useRef(false);
   const [billingAction, setBillingAction] = useState<string | null>(null);
   const [integrationAction, setIntegrationAction] = useState<string | null>(null);
   const [integrationOrganizationId, setIntegrationOrganizationId] = useState(
@@ -919,7 +920,8 @@ function TeamsSettings() {
   };
 
   const connect = async () => {
-    if (connecting) return;
+    if (connectingRef.current) return;
+    connectingRef.current = true;
     setConnecting(true);
     try {
       const link = await run(Effect.flatMap(Teams, (service) => service.linkStart));
@@ -939,6 +941,7 @@ function TeamsSettings() {
     } catch (error) {
       toast.fail("Couldn’t connect Reviewly Teams", error);
     } finally {
+      connectingRef.current = false;
       setConnecting(false);
     }
   };
@@ -1031,7 +1034,7 @@ function TeamsSettings() {
                 <SelectPopup>
                   {teams.organizations.map((organization) => (
                     <SelectItem key={organization.id} value={organization.id}>
-                      {organization.display_name ?? organization.login}
+                      {organization.displayName ?? organization.login}
                     </SelectItem>
                   ))}
                 </SelectPopup>
@@ -1098,7 +1101,7 @@ function TeamsSettings() {
                   <div className="teams-billing-row" key={organization.id}>
                     <div className="min-w-0 flex-1">
                       <div className="teams-billing-title">
-                        <p>{organization.display_name ?? organization.login}</p>
+                        <p>{organization.displayName ?? organization.login}</p>
                         <span className={cn(billing.access && "is-active")}>
                           {billingStatusLabel(billing)}
                         </span>
@@ -1180,7 +1183,7 @@ function TeamsSettings() {
                         {organization.login.slice(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p>{organization.display_name ?? organization.login}</p>
+                        <p>{organization.displayName ?? organization.login}</p>
                         <span>@{organization.login} · subscription required</span>
                       </div>
                       <div className="teams-org-counts">
@@ -1204,7 +1207,7 @@ function TeamsSettings() {
                       {organization.login.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p>{organization.display_name ?? organization.login}</p>
+                      <p>{organization.displayName ?? organization.login}</p>
                       <span>
                         @{organization.login} · {organization.role}
                       </span>
