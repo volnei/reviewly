@@ -619,7 +619,7 @@ pub async fn ai_apply(
         "agy" => apply_with_agy(&prompt, &cwd, model.as_deref()).await,
         "gemini" => apply_with_gemini(&prompt, &cwd, model.as_deref()).await,
         _ => Err(AppError::Other(
-            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex or Antigravity to implement it."
+            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex, Antigravity, or Gemini to implement it."
                 .into(),
         )),
     }
@@ -698,6 +698,28 @@ async fn run_codex(
     Ok(text)
 }
 
+pub(crate) fn build_agy_review_cmd(
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+) -> Command {
+    let mut cmd = cli_command("agy");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--mode")
+        .arg("plan")
+        .arg("--sandbox")
+        .arg("--settings")
+        .arg(r#"{"toolPermission":"proceed-in-sandbox"}"#)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, cwd);
+    cmd
+}
+
 /// Antigravity CLI in non-interactive mode (`agy -p`). Drop-in like Claude/Codex;
 /// runs inside the PR clone when present so it can read the repo.
 async fn run_agy(
@@ -706,16 +728,7 @@ async fn run_agy(
     model: Option<&str>,
     timeout_secs: Option<u64>,
 ) -> AppResult<String> {
-    let mut cmd = cli_command("agy");
-    cmd.arg("-p")
-        .arg(prompt)
-        .arg("--dangerously-skip-permissions")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    add_model(&mut cmd, "--model", model);
-    apply_cwd(&mut cmd, cwd);
+    let mut cmd = build_agy_review_cmd(prompt, cwd, model);
     let child = cmd
         .spawn()
         .map_err(|e| AppError::Other(format!("failed to spawn agy: {e}")))?;
@@ -1397,6 +1410,101 @@ async fn stream_codex(
     Ok((text, None))
 }
 
+pub(crate) fn build_agy_stream_cmd(
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+) -> Command {
+    let mut cmd = cli_command("agy");
+    cmd.arg("-p")
+        .arg(prompt)
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--mode")
+        .arg("plan")
+        .arg("--sandbox")
+        .arg("--settings")
+        .arg(r#"{"toolPermission":"proceed-in-sandbox"}"#)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, cwd);
+    cmd
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum AgyStreamAction {
+    Init,
+    Chunk(String),
+    Progress {
+        phase: &'static str,
+        message: &'static str,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        cached_tokens: Option<u64>,
+    },
+    Complete {
+        response: Option<String>,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        cached_tokens: Option<u64>,
+        turns: Option<u64>,
+    },
+}
+
+pub(crate) fn parse_agy_stream_line(line: &str) -> Option<AgyStreamAction> {
+    let v = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    match v.get("event").and_then(|x| x.as_str()) {
+        Some("init") => Some(AgyStreamAction::Init),
+        Some("step_update") => {
+            let step = v.get("step_update")?;
+            if let Some(delta) = step.get("text_delta").and_then(|d| d.as_str()) {
+                if !delta.is_empty() {
+                    return Some(AgyStreamAction::Chunk(delta.to_string()));
+                }
+            }
+            let usage = step.get("usage");
+            Some(AgyStreamAction::Progress {
+                phase: "writing",
+                message: "Generating response",
+                input_tokens: usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|x| x.as_u64()),
+                output_tokens: usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|x| x.as_u64()),
+                cached_tokens: usage
+                    .and_then(|u| u.get("cache_read_tokens"))
+                    .and_then(|x| x.as_u64()),
+            })
+        }
+        Some("result") => {
+            let res = v.get("result")?;
+            let response = res
+                .get("response")
+                .and_then(|r| r.as_str())
+                .map(|s| s.to_string());
+            let usage = res.get("usage");
+            Some(AgyStreamAction::Complete {
+                response,
+                input_tokens: usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|x| x.as_u64()),
+                output_tokens: usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|x| x.as_u64()),
+                cached_tokens: usage
+                    .and_then(|u| u.get("cache_read_tokens"))
+                    .and_then(|x| x.as_u64()),
+                turns: res.get("num_turns").and_then(|x| x.as_u64()),
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Antigravity CLI in non-interactive streaming mode (`agy -p --output-format stream-json`).
 /// Streams incremental tokens and parses run telemetry in real time.
 async fn stream_agy(
@@ -1407,18 +1515,7 @@ async fn stream_agy(
     model: Option<&str>,
     timeout_secs: Option<u64>,
 ) -> AppResult<(String, Option<f64>)> {
-    let mut cmd = cli_command("agy");
-    cmd.arg("-p")
-        .arg(prompt)
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--dangerously-skip-permissions")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    add_model(&mut cmd, "--model", model);
-    apply_cwd(&mut cmd, cwd);
+    let mut cmd = build_agy_stream_cmd(prompt, cwd, model);
     let mut child = cmd
         .spawn()
         .map_err(|e| AppError::Other(format!("failed to spawn agy: {e}")))?;
@@ -1451,11 +1548,8 @@ async fn stream_agy(
                 }
             };
             let Some(line) = line else { break };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
-                continue;
-            };
-            match v.get("event").and_then(|x| x.as_str()) {
-                Some("init") => {
+            match parse_agy_stream_line(&line) {
+                Some(AgyStreamAction::Init) => {
                     let _ = app.emit(
                         "ai:progress",
                         serde_json::json!({
@@ -1467,71 +1561,62 @@ async fn stream_agy(
                         }),
                     );
                 }
-                Some("step_update") => {
-                    if let Some(step) = v.get("step_update") {
-                        if let Some(delta) = step.get("text_delta").and_then(|d| d.as_str()) {
-                            if !delta.is_empty() {
-                                full.push_str(delta);
-                                let _ = app.emit(
-                                    "ai:chunk",
-                                    serde_json::json!({ "key": key, "delta": delta }),
-                                );
-                            }
-                        }
-                        if step.get("state").and_then(|s| s.as_str()) == Some("ACTIVE") {
-                            let _ = app.emit(
-                                "ai:progress",
-                                serde_json::json!({
-                                    "key": key,
-                                    "provider": "agy",
-                                    "phase": "writing",
-                                    "message": "Generating response",
-                                    "model": model,
-                                }),
-                            );
-                        }
-                        if let Some(usage) = step.get("usage") {
-                            let _ = app.emit(
-                                "ai:progress",
-                                serde_json::json!({
-                                    "key": key,
-                                    "provider": "agy",
-                                    "phase": "writing",
-                                    "message": "Generating response",
-                                    "model": model,
-                                    "inputTokens": usage.get("input_tokens").and_then(|x| x.as_u64()),
-                                    "outputTokens": usage.get("output_tokens").and_then(|x| x.as_u64()),
-                                    "cachedTokens": usage.get("cache_read_tokens").and_then(|x| x.as_u64()),
-                                }),
-                            );
+                Some(AgyStreamAction::Chunk(delta)) => {
+                    full.push_str(&delta);
+                    let _ = app.emit(
+                        "ai:chunk",
+                        serde_json::json!({ "key": key, "delta": delta }),
+                    );
+                }
+                Some(AgyStreamAction::Progress {
+                    phase,
+                    message,
+                    input_tokens,
+                    output_tokens,
+                    cached_tokens,
+                }) => {
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "agy",
+                            "phase": phase,
+                            "message": message,
+                            "model": model,
+                            "inputTokens": input_tokens,
+                            "outputTokens": output_tokens,
+                            "cachedTokens": cached_tokens,
+                        }),
+                    );
+                }
+                Some(AgyStreamAction::Complete {
+                    response,
+                    input_tokens,
+                    output_tokens,
+                    cached_tokens,
+                    turns,
+                }) => {
+                    if full.is_empty() {
+                        if let Some(resp) = response {
+                            full = resp;
                         }
                     }
+                    let _ = app.emit(
+                        "ai:progress",
+                        serde_json::json!({
+                            "key": key,
+                            "provider": "agy",
+                            "phase": "complete",
+                            "message": "Response complete",
+                            "model": model,
+                            "inputTokens": input_tokens,
+                            "outputTokens": output_tokens,
+                            "cachedTokens": cached_tokens,
+                            "turns": turns,
+                        }),
+                    );
                 }
-                Some("result") => {
-                    if let Some(res) = v.get("result") {
-                        if full.is_empty() {
-                            if let Some(resp) = res.get("response").and_then(|r| r.as_str()) {
-                                full = resp.to_string();
-                            }
-                        }
-                        let usage = res.get("usage");
-                        let _ = app.emit(
-                            "ai:progress",
-                            serde_json::json!({
-                                "key": key,
-                                "provider": "agy",
-                                "phase": "complete",
-                                "message": "Response complete",
-                                "model": model,
-                                "inputTokens": usage.and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()),
-                                "outputTokens": usage.and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()),
-                                "cachedTokens": usage.and_then(|u| u.get("cache_read_tokens")).and_then(|x| x.as_u64()),
-                                "turns": res.get("num_turns").and_then(|x| x.as_u64()),
-                            }),
-                        );
-                    }
-                }
-                _ => {}
+                None => {}
             }
         }
         Ok::<(), AppError>(())
@@ -1721,4 +1806,103 @@ async fn stream_openai(
 #[tauri::command]
 pub fn path_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_bin_mapping() {
+        assert_eq!(provider_bin("codex"), "codex");
+        assert_eq!(provider_bin("agy"), "agy");
+        assert_eq!(provider_bin("gemini"), "gemini");
+        assert_eq!(provider_bin("claude"), "claude");
+        assert_eq!(provider_bin("unknown"), "claude");
+    }
+
+    #[test]
+    fn test_agy_review_command_is_sandboxed_and_not_permissive() {
+        let cmd = build_agy_review_cmd("review diff", Some("/tmp"), Some("gemini-3.8-flash-high"));
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+
+        // Must NOT contain dangerously-skip-permissions in review
+        assert!(!args.contains(&"--dangerously-skip-permissions".to_string()));
+
+        // Must enforce plan mode and sandbox with scoped settings
+        assert!(args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+        assert!(args.contains(&"--sandbox".to_string()));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--settings" && w[1].contains("proceed-in-sandbox")));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--model" && w[1] == "gemini-3.8-flash-high"));
+    }
+
+    #[test]
+    fn test_agy_stream_command_is_sandboxed_and_not_permissive() {
+        let cmd = build_agy_stream_cmd("review diff", Some("/tmp"), Some("gemini-3.8-flash-high"));
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+
+        // Must NOT contain dangerously-skip-permissions in stream review
+        assert!(!args.contains(&"--dangerously-skip-permissions".to_string()));
+
+        // Must enforce stream-json, plan mode, and sandbox
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--output-format" && w[1] == "stream-json"));
+        assert!(args.windows(2).any(|w| w[0] == "--mode" && w[1] == "plan"));
+        assert!(args.contains(&"--sandbox".to_string()));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--settings" && w[1].contains("proceed-in-sandbox")));
+    }
+
+    #[test]
+    fn test_agy_stream_line_parsing() {
+        let init_line = r#"{"event":"init"}"#;
+        assert_eq!(
+            parse_agy_stream_line(init_line),
+            Some(AgyStreamAction::Init)
+        );
+
+        let delta_line = r#"{"event":"step_update","step_update":{"state":"ACTIVE","text_delta":"hello world"}}"#;
+        assert_eq!(
+            parse_agy_stream_line(delta_line),
+            Some(AgyStreamAction::Chunk("hello world".into()))
+        );
+
+        let progress_line = r#"{"event":"step_update","step_update":{"state":"ACTIVE","usage":{"input_tokens":100,"output_tokens":20,"cache_read_tokens":5}}}"#;
+        assert_eq!(
+            parse_agy_stream_line(progress_line),
+            Some(AgyStreamAction::Progress {
+                phase: "writing",
+                message: "Generating response",
+                input_tokens: Some(100),
+                output_tokens: Some(20),
+                cached_tokens: Some(5),
+            })
+        );
+
+        let result_line = r#"{"event":"result","result":{"status":"SUCCESS","response":"complete text","num_turns":2}}"#;
+        assert_eq!(
+            parse_agy_stream_line(result_line),
+            Some(AgyStreamAction::Complete {
+                response: Some("complete text".into()),
+                input_tokens: None,
+                output_tokens: None,
+                cached_tokens: None,
+                turns: Some(2),
+            })
+        );
+    }
 }

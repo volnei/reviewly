@@ -719,7 +719,7 @@ function About() {
     void import("@tauri-apps/api/app")
       .then(({ getVersion }) => getVersion())
       .then(setVersion)
-      .catch(() => { });
+      .catch(() => {});
   }, []);
   return (
     <div className="grid gap-3 text-[13px]">
@@ -953,7 +953,7 @@ const OPENAI_PRESETS = [
 const INSTALL: Record<string, string> = {
   claude: "npm i -g @anthropic-ai/claude-code",
   codex: "npm i -g @openai/codex",
-  agy: "curl -fsSL https://antigravity.google/install.sh | bash",
+  agy: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
   gemini: "npm i -g @google/gemini-cli",
 };
 

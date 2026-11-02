@@ -148,10 +148,7 @@ function decode(raw: unknown): Prefs {
     if (!(k in raw)) continue;
     const stored = raw[k];
     const fallback = defaultPrefs[k];
-    let candidate = isRecord(fallback) && isRecord(stored) ? { ...fallback, ...stored } : stored;
-    if (k === "ai" && isRecord(candidate) && candidate.provider === "gemini") {
-      candidate = { ...candidate, provider: "agy" };
-    }
+    const candidate = isRecord(fallback) && isRecord(stored) ? { ...fallback, ...stored } : stored;
     try {
       out[k] = Schema.decodeUnknownSync(Prefs.fields[k])(candidate);
     } catch {
