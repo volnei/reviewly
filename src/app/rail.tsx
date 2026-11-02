@@ -175,15 +175,15 @@ export function Rail() {
             aria-label="Set up Reviewly Teams"
             title="Set up your team"
             onClick={() => settingsCategoryStore.set("teams")}
-            className="workspace-team-setup flex min-h-9 items-center gap-2.5 rounded-md border border-hair px-2.5 text-[12px] font-medium text-ink transition-colors hover:bg-raise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+            className="workspace-team-setup"
           >
-            <UsersRound className="size-4 shrink-0 text-workspace" strokeWidth={1.75} />
-            <span className="workspace-nav-label flex-1 truncate">Set up your team</span>
-            <ArrowRight
-              className="workspace-team-setup-arrow size-3.5 shrink-0 text-ink-3"
-              strokeWidth={1.75}
-              aria-hidden
-            />
+            <span className="workspace-team-setup-topline" aria-hidden>
+              <UsersRound className="workspace-team-setup-icon" strokeWidth={1.75} />
+              <span>Reviewly Teams</span>
+              <ArrowRight className="workspace-team-setup-arrow" strokeWidth={1.75} />
+            </span>
+            <span className="workspace-team-setup-title">Set up your team</span>
+            <span className="workspace-team-setup-copy">Shared queue · Fast lane</span>
           </Link>
         ) : (
           <div

@@ -4450,6 +4450,61 @@ mark.dm {
 .workspace-nav-link[aria-current="page"] {
   background: color-mix(in srgb, var(--raise) 72%, transparent);
 }
+.workspace-team-setup {
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  padding: 13px 14px 14px;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+.workspace-team-setup:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+.workspace-team-setup:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.workspace-team-setup-topline {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.68;
+}
+.workspace-team-setup-icon {
+  width: 16px;
+  height: 16px;
+}
+.workspace-team-setup-arrow {
+  width: 14px;
+  height: 14px;
+  transition: transform 150ms ease;
+}
+.workspace-team-setup:hover .workspace-team-setup-arrow {
+  transform: translateX(2px);
+}
+.workspace-team-setup-title {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+}
+.workspace-team-setup-copy {
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.66;
+}
 .workspace-sidebar .workspace-option {
   min-height: 30px;
   border-radius: var(--radius-control);
@@ -4805,6 +4860,23 @@ mark.dm {
     justify-content: center;
     gap: 0;
     padding-inline: 0;
+  }
+  .workspace-team-setup {
+    display: grid;
+    min-height: 34px;
+    padding-block: 0;
+    border-radius: var(--radius-control);
+    place-items: center;
+  }
+  .workspace-team-setup-topline {
+    display: block;
+    line-height: 0;
+  }
+  .workspace-team-setup-topline > span,
+  .workspace-team-setup-title,
+  .workspace-team-setup-copy,
+  .workspace-team-setup-arrow {
+    display: none;
   }
   .workspace-sidebar > ul,
   .workspace-sidebar > div.border-t {
