@@ -79,8 +79,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .hero-copy > p { max-width: 530px; margin: 32px 0; color: var(--ink); font-size: clamp(18px, 1.4vw, 20px); line-height: 1.5; }
 .support-note { display: block; margin-top: 18px; color: var(--muted); font-size: 14px; }
 
-.hero-stage { position: absolute; z-index: 1; top: 330px; right: 0; width: 58%; display: flex; align-items: flex-end; margin: 0; padding-left: 4vw; overflow: hidden; }
-.hero-fragment { width: min(860px, 100%); max-width: none; margin-bottom: -18px; animation: fragment-shutter 1050ms 120ms cubic-bezier(.22,1,.36,1) both; }
+.hero-stage { position: absolute; z-index: 1; top: 330px; right: 0; width: 58%; aspect-ratio: 16 / 10; margin: 0; padding-left: 4vw; overflow: hidden; }
+.hero-fragment { width: 100%; height: 100%; object-fit: contain; animation: fragment-shutter 1050ms 120ms cubic-bezier(.22,1,.36,1) both; }
 
 [data-ui] { font-family: "Cal Sans Text", -apple-system, sans-serif; }
 .inbox-fragment { overflow: hidden; border: 1px solid rgba(255,255,255,.1); /* taste-skill-ignore */ border-radius: 12px; background: #17191c; color: #eeeeee; }
@@ -122,8 +122,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .section-intro { display: grid; grid-template-columns: 7fr 4fr; gap: 8vw; align-items: end; margin-bottom: 110px; }
 .section-intro h2, .workflow h2, .teams h2, .faq h2, .closing h2 { margin: 0; font-size: var(--heading); font-weight: 500; line-height: .98; letter-spacing: -0.05em; }
 .section-intro p, .teams-copy > p { margin: 0; color: var(--ink); font-size: var(--body); line-height: 1.55; }
-.showcase-image { width: 92%; margin: 0 0 0 auto; overflow: hidden; border-radius: 12px 0 0 12px; background: #1b1916; }
-.showcase-image img { width: 100%; }
+.showcase-image { width: 92%; aspect-ratio: 16 / 10; margin: 0 0 0 auto; overflow: hidden; border-radius: 12px 0 0 12px; background: #1b1916; }
+.showcase-image img { width: 100%; height: 100%; object-fit: contain; }
 .state-sequence { display: grid; grid-template-columns: 1.5fr minmax(620px, 6fr) 1fr; gap: 28px 40px; align-items: center; }
 .state-label { grid-column: 1; color: var(--muted); font-size: 18px; text-align: right; }
 .state-row { grid-column: 2; min-height: 82px; display: grid; grid-template-columns: 32px minmax(220px, 1fr) auto auto; gap: 18px; align-items: center; padding: 0 22px; border: 1px solid rgba(255,255,255,.09); /* taste-skill-ignore */ border-radius: 10px; background: #151719; }
@@ -153,8 +153,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .workflow-nav strong { width: 90px; font-size: 16px; font-weight: 600; }
 .workflow-nav span { font-size: 16px; }
 .workflow-copy > p { max-width: 45ch; margin: 0; color: #3f3b36; font-size: 17px; line-height: 1.55; }
-.workflow-image { position: relative; overflow: hidden; margin: 0; min-height: 70svh; border-radius: 12px 0 0 12px; background: #17191c; }
-.workflow-image img { width: 135%; max-width: none; height: 70svh; object-fit: cover; object-position: left top; animation: image-shutter 650ms ease both; }
+.workflow-image { position: relative; overflow: hidden; margin: 0; aspect-ratio: 16 / 10; border-radius: 12px 0 0 12px; background: #17191c; }
+.workflow-image img { width: 100%; height: 100%; object-fit: contain; animation: image-shutter 650ms ease both; }
 
 .teams { overflow: hidden; display: grid; grid-template-columns: 4fr 8fr; gap: 7vw; align-items: center; min-height: 92svh; padding: 130px 0 130px var(--margin); background: #171614; }
 .teams-copy { padding-right: 24px; }
@@ -162,8 +162,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .text-action { display: inline-flex; align-items: center; gap: 12px; margin-top: 34px; color: var(--ink); font-weight: 600; }
 .text-action:hover svg { transform: translateX(3px); }
 .text-action svg { transition: transform 160ms ease; }
-.teams-image { width: 110%; margin: 0; overflow: hidden; border-radius: 12px 0 0 12px; background: #17191c; }
-.teams-image img { width: 100%; }
+.teams-image { width: 110%; aspect-ratio: 16 / 10; margin: 0; overflow: hidden; border-radius: 12px 0 0 12px; background: #17191c; }
+.teams-image img { width: 100%; height: 100%; object-fit: contain; }
 
 .pricing { min-height: 88svh; display: grid; grid-template-columns: 1fr 1fr; gap: 10vw; align-items: center; padding: 130px var(--margin); }
 .plan-list { display: flex; flex-direction: column; align-items: flex-start; }
@@ -194,8 +194,8 @@ svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-li
 .closing-copy .logo { margin-bottom: 36px; }
 .closing h2 { max-width: 8ch; }
 .closing-copy > p { max-width: 36ch; margin: 28px 0; font-size: 18px; line-height: 1.5; }
-.closing-image { width: 110%; margin: 0; overflow: hidden; border-radius: 12px 0 0 12px; background: #17191c; }
-.closing-image img { width: 100%; }
+.closing-image { width: 110%; aspect-ratio: 16 / 10; margin: 0; overflow: hidden; border-radius: 12px 0 0 12px; background: #17191c; }
+.closing-image img { width: 100%; height: 100%; object-fit: contain; }
 
 footer { min-height: 34svh; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 32px; padding: 100px var(--margin) 34px; color: var(--muted); font-size: 14px; }
 footer > div { display: flex; gap: 26px; color: var(--ink); }
@@ -213,14 +213,11 @@ footer a:hover, footer a:focus-visible { color: var(--accent); }
   .hero { align-items: start; min-height: auto; padding-top: 148px; }
   .hero::after { inset: 52% 0 0 22%; }
   .hero-copy { grid-column: 1 / -1; }
-  .hero-stage { position: relative; top: auto; right: auto; width: auto; grid-column: 3 / -1; min-height: 58svh; padding-top: 80px; }
-  .hero-fragment { width: 820px; max-width: none; }
+  .hero-stage { position: relative; top: auto; right: auto; width: auto; grid-column: 3 / -1; padding: 0; }
   .section-intro { grid-template-columns: 1fr 1fr; }
   .install { grid-template-columns: 1fr; gap: 48px; }
   .state-sequence { grid-template-columns: 120px minmax(540px, 1fr); overflow: hidden; }
   .workflow { grid-template-columns: 1fr; }
-  .workflow-image { min-height: 58svh; }
-  .workflow-image img { height: 58svh; }
   .teams { grid-template-columns: 1fr; gap: 64px; padding-right: 0; }
   .teams-copy { max-width: 650px; padding-right: var(--margin); }
   .teams-image { justify-self: end; width: 94%; }
@@ -234,8 +231,7 @@ footer a:hover, footer a:focus-visible { color: var(--accent); }
   .hero { display: flex; flex-direction: column; gap: 58px; padding: 120px var(--margin) 0; }
   .hero::after { inset: auto 0 0 0; height: 48%; }
   .hero-copy > p { margin: 24px 0 28px; font-size: 17px; }
-  .hero-stage { width: calc(100% + 36px); min-height: 500px; align-self: auto; padding: 60px 0 0 18px; margin-inline: -18px; overflow: hidden; }
-  .hero-fragment { width: 670px; margin-bottom: -20px; }
+  .hero-stage { width: calc(100% + 36px); align-self: auto; margin-inline: -18px; overflow: hidden; }
   .showcase { padding: 100px var(--margin); }
   .install { padding-block: 84px; }
   .install-copy p { margin-top: 18px; }
@@ -254,8 +250,7 @@ footer a:hover, footer a:focus-visible { color: var(--accent); }
   .workflow h2 { max-width: 8ch; }
   .workflow-nav { margin-top: 38px; }
   .workflow-nav button { align-items: flex-start; flex-direction: column; gap: 4px; }
-  .workflow-image { width: 100%; min-height: 48svh; border-radius: 10px; }
-  .workflow-image img { width: 190%; height: 48svh; }
+  .workflow-image { width: 100%; border-radius: 10px; }
   .teams { min-height: auto; padding-block: 90px; }
   .teams-image { width: calc(100% - 18px); margin-right: 18px; border-radius: 10px; }
   .pricing { grid-template-columns: 1fr; gap: 58px; min-height: auto; padding-block: 100px; }
