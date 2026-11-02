@@ -36,9 +36,7 @@ import {
 } from "@/components/ui/command";
 import { useEffectQuery } from "@/effect/runtime";
 import { useAuth } from "@/effect/services/Auth";
-import type { Verdict } from "@/effect/services/Prefs";
 import { applyView, savedViewPath, useSavedViews } from "@/features/list/filters";
-import { VerdictWord } from "@/features/list/row";
 import { APP_STORE } from "@/lib/edition";
 import { parsePrRef } from "@/lib/pr-ref";
 import { inboxQuery, useOpenItem } from "@/screens/inbox";
@@ -49,7 +47,6 @@ interface Entry {
   readonly hint: string;
   readonly key?: string;
   readonly icon?: LucideIcon;
-  readonly verdict?: Verdict;
   /** Shown whatever was typed — the entry that *is* the typed text. */
   readonly pinned?: boolean;
   readonly run: () => void;
@@ -164,7 +161,6 @@ export function Palette({
       id: it.id,
       label: it.title,
       hint: `${it.repo.split("/").pop() ?? it.repo}${it.number ? ` #${it.number}` : ""}${it.author ? ` ${it.author}` : ""}`,
-      verdict: it.kind === "pr" ? undefined : it.verdict,
       run: () => openItem(it),
     }));
     // The store updates the App Store edition.
@@ -225,7 +221,6 @@ export function Palette({
                         {e.key}
                       </CommandShortcut>
                     ) : null}
-                    {e.verdict ? <VerdictWord verdict={e.verdict} /> : null}
                   </CommandItem>
                 )}
               </CommandCollection>

@@ -21,8 +21,6 @@ export interface Section {
   readonly folded?: ReactNode;
   /** False when the section already is one stack: rows stay as given, no block head. */
   readonly cluster?: boolean;
-  /** The section is one verdict: its head says it, the rows need not. */
-  readonly hideVerdict?: boolean;
 }
 
 const flatten = (blocks: ReadonlyArray<Block>): Ranked[] =>
@@ -229,12 +227,11 @@ export function List({
   const total = sections.reduce((n, s) => n + s.items.length, 0);
   if (total === 0) return <>{empty}</>;
 
-  const row = (it: Ranked, hideVerdict?: boolean, inStack = false, stackGapBefore = false) => (
+  const row = (it: Ranked, inStack = false, stackGapBefore = false) => (
     <Fragment key={it.id}>
       <Row
         item={it}
         selected={it.id === selected?.id}
-        hideVerdict={hideVerdict}
         inStack={inStack}
         stackGapBefore={stackGapBefore}
         onSelect={() => setSelectedId(it.id)}
@@ -252,8 +249,8 @@ export function List({
         : null}
     </Fragment>
   );
-  const block = (b: Block, hideVerdict?: boolean) => {
-    if (b.kind === "one") return row(b.item, hideVerdict);
+  const block = (b: Block) => {
+    if (b.kind === "one") return row(b.item);
     const first = b.items[0];
     return (
       <div
@@ -266,7 +263,6 @@ export function List({
           {b.items.map((it, index) =>
             row(
               it,
-              hideVerdict,
               true,
               index > 0 &&
                 (it.stack?.position ?? 0) !== (b.items[index - 1].stack?.position ?? 0) + 1,
@@ -305,14 +301,14 @@ export function List({
                 />
                 <span className="min-w-0 flex-1 truncate">{s.folded}</span>
               </Button>
-              {open ? pagedBlocks[si].map((b) => block(b, s.hideVerdict)) : null}
+              {open ? pagedBlocks[si].map((b) => block(b)) : null}
             </div>
           );
         }
         return (
           <div key={s.key}>
             {s.head ? <div className="px-5 pt-5 pb-2">{s.head}</div> : null}
-            {pagedBlocks[si].map((b) => block(b, s.hideVerdict))}
+            {pagedBlocks[si].map((b) => block(b))}
           </div>
         );
       })}

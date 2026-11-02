@@ -18,7 +18,7 @@ import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePrefs, type Verdict } from "@/effect/services/Prefs";
+import { usePrefs } from "@/effect/services/Prefs";
 import type { Ranked } from "@/effect/services/Triage";
 import { useReview } from "@/features/pr/review-state";
 import { safeOpenUrl } from "@/lib/ui";
@@ -38,21 +38,6 @@ export function age(iso: string | null | undefined): string {
   const d = Math.round(h / 24);
   if (d < 30) return `${d}d`;
   return `${Math.round(d / 30)}mo`;
-}
-
-/** The verdict word: six words, lowercase, mono. Amber means one thing. */
-export function VerdictWord({ verdict, className }: { verdict: Verdict; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "mono text-[12px] leading-none",
-        verdict === "risky" ? "text-amber" : "text-ink-2",
-        className,
-      )}
-    >
-      {verdict}
-    </span>
-  );
 }
 
 function Ci({ ci }: { ci?: string }) {
@@ -114,7 +99,6 @@ function Where({ item, inStack = false }: { item: Ranked; inStack?: boolean }) {
 export function Row({
   item,
   selected,
-  hideVerdict,
   inStack = false,
   stackGapBefore = false,
   onSelect,
@@ -126,7 +110,6 @@ export function Row({
 }: {
   item: Ranked;
   selected: boolean;
-  hideVerdict?: boolean;
   inStack?: boolean;
   /** This visible layer is not consecutive with the previous visible layer. */
   stackGapBefore?: boolean;
@@ -294,15 +277,13 @@ export function Row({
       aria-selected={selected}
       id={item.id}
       data-id={item.id}
-      data-hide-verdict={hideVerdict || undefined}
+      data-hide-verdict
       tabIndex={-1}
       onClick={onOpen}
       onFocus={onSelect}
       className={cn(
         "review-row group relative grid h-10 w-full cursor-default items-center gap-5 border-b border-hair px-5 text-left transition-colors",
-        hideVerdict
-          ? "grid-cols-[minmax(220px,1.1fr)_minmax(200px,300px)_minmax(0,1.3fr)]"
-          : "grid-cols-[minmax(220px,1.1fr)_minmax(200px,300px)_84px_minmax(0,1.3fr)]",
+        "grid-cols-[minmax(220px,1.1fr)_minmax(200px,300px)_minmax(0,1.3fr)]",
         selected ? "bg-raise" : "hover:bg-raise/50",
       )}
     >
@@ -310,7 +291,6 @@ export function Row({
         {item.title}
       </span>
       <Where item={item} inStack={inStack} />
-      {hideVerdict ? null : <VerdictWord verdict={item.verdict} />}
       <span className="truncate text-[12.5px] text-ink-2">
         {pending ? (
           <span className="tnum mr-2 rounded-[3px] bg-raise px-1 text-[11px] text-ink-2">
