@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useThemeAppearance } from "@/app/appearance";
 import { usePrefs } from "@/effect/services/Prefs";
 import { ReviewlyMark } from "@/components/reviewly-mark";
 import {
@@ -35,6 +36,7 @@ const appearanceArtwork = {
 } as const;
 
 function TrayPanel() {
+  useThemeAppearance();
   const [inbox, setInbox] = useState(0);
   const appearance = usePrefs((prefs) => prefs.appearance);
   const artwork =

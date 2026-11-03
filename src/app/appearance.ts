@@ -11,7 +11,7 @@ import { useEffect } from "react";
  * follows the OS and changes with it.
  */
 export function useAppearance() {
-  const appearance = usePrefs((p) => p.appearance);
+  useThemeAppearance();
   const zoom = usePrefs((p) => p.zoom);
   const reduceMotion = usePrefs((p) => p.reduceMotion);
   const appIcon = usePrefs((p) => p.appIcon);
@@ -24,6 +24,20 @@ export function useAppearance() {
   }, [appIcon]);
 
   useEffect(() => {
+    if (isNative()) {
+      void import("@tauri-apps/api/webview")
+        .then(({ getCurrentWebview }) => getCurrentWebview().setZoom(zoom))
+        .catch(() => {
+          (document.documentElement.style as unknown as { zoom: string }).zoom = String(zoom);
+        });
+    } else (document.documentElement.style as unknown as { zoom: string }).zoom = String(zoom);
+  }, [zoom]);
+}
+
+/** Apply only the shared colour theme, for compact secondary WebViews such as the tray. */
+export function useThemeAppearance() {
+  const appearance = usePrefs((p) => p.appearance);
+  useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: light)");
     const apply = () => {
       const resolved = appearance === "system" ? (mq.matches ? "light" : "dark") : appearance;
@@ -35,16 +49,6 @@ export function useAppearance() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, [appearance]);
-
-  useEffect(() => {
-    if (isNative()) {
-      void import("@tauri-apps/api/webview")
-        .then(({ getCurrentWebview }) => getCurrentWebview().setZoom(zoom))
-        .catch(() => {
-          (document.documentElement.style as unknown as { zoom: string }).zoom = String(zoom);
-        });
-    } else (document.documentElement.style as unknown as { zoom: string }).zoom = String(zoom);
-  }, [zoom]);
 }
 
 const STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
