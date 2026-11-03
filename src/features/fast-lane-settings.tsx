@@ -1,6 +1,7 @@
+import { Effect } from "effect";
 import { useEffect, useState } from "react";
 
-import { useFastLanePolicies, type FastLaneWorkspacePolicy } from "@/app/fast-lane";
+import { type FastLaneWorkspacePolicy, useFastLanePolicies } from "@/app/fast-lane";
 import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,7 +11,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { run } from "@/effect/runtime";
 import { Teams } from "@/effect/services/Teams";
-import { Effect } from "effect";
 
 type BooleanPolicyKey =
   | "includeDependabot"
@@ -32,6 +32,7 @@ function PolicyList({
   value,
   placeholder,
   disabled,
+  balanced = false,
   onChange,
 }: {
   id: string;
@@ -40,11 +41,12 @@ function PolicyList({
   value: ReadonlyArray<string>;
   placeholder: string;
   disabled: boolean;
+  balanced?: boolean;
   onChange: (value: string[]) => void;
 }) {
   return (
-    <div>
-      <label className="block" htmlFor={id}>
+    <div className="min-w-0">
+      <label className={balanced ? "block sm:min-h-20" : "block"} htmlFor={id}>
         <span className="block text-[12px] font-medium text-ink">{label}</span>
         <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">{detail}</span>
       </label>
@@ -99,9 +101,7 @@ function LimitSlider({
         step={step}
         disabled={disabled}
         ariaLabel={label}
-        ariaValueText={(current) =>
-          current === unlimited ? "No limit" : `${current} ${unit}`
-        }
+        ariaValueText={(current) => (current === unlimited ? "No limit" : `${current} ${unit}`)}
         onValueChange={(next) => onChange(next === unlimited ? null : next)}
       />
       <div className="tnum mt-1 flex justify-between text-[10.5px] text-ink-3">
@@ -172,9 +172,7 @@ function WorkspacePolicy({
         blockedLabels: normalizePaths(draft.blockedLabels),
       };
       await run(
-        Effect.flatMap(Teams, (service) =>
-          service.updateFastLanePolicy(organization.id, next),
-        ),
+        Effect.flatMap(Teams, (service) => service.updateFastLanePolicy(organization.id, next)),
       );
       await refresh();
       toast.done("Fast lane policy saved", `@${organization.login}`);
@@ -213,9 +211,7 @@ function WorkspacePolicy({
       {draft.enabled ? (
         <div className="border-t border-hair bg-raise/15 px-5 py-5">
           <section>
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">
-              Trusted automation
-            </p>
+            <p className="text-[12px] font-medium text-ink-2">Trusted automation</p>
             <div className="mt-3 grid gap-4 md:grid-cols-[1fr_1.35fr]">
               <div className="grid content-start gap-3">
                 {(["includeDependabot", "includeRenovate"] as const).map((key) => (
@@ -249,9 +245,7 @@ function WorkspacePolicy({
           </section>
 
           <section className="mt-5 border-t border-hair pt-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">
-              Change limits
-            </p>
+            <p className="text-[12px] font-medium text-ink-2">Change limits</p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <LimitSlider
                 label="Maximum changed files"
@@ -281,75 +275,75 @@ function WorkspacePolicy({
           </section>
 
           <section className="mt-5 border-t border-hair pt-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">
-              Safety checks
-            </p>
-          <div className="grid gap-x-8 gap-y-4 md:grid-cols-2">
-            {OPTIONS.map((option) => (
-              <label key={option.key} className="flex items-start gap-3">
-                <Checkbox
-                  checked={draft[option.key]}
-                  disabled={!canEdit || saving}
-                  onCheckedChange={(checked) =>
-                    setDraft((current) => ({ ...current, [option.key]: checked === true }))
-                  }
-                  aria-label={option.label}
-                />
-                <span className="min-w-0">
-                  <span className="block text-[12px] font-medium text-ink">{option.label}</span>
-                  <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">
-                    {option.detail}
+            <p className="text-[12px] font-medium text-ink-2">Safety checks</p>
+            <div className="grid gap-x-8 gap-y-4 md:grid-cols-2">
+              {OPTIONS.map((option) => (
+                <label key={option.key} className="flex items-start gap-3">
+                  <Checkbox
+                    checked={draft[option.key]}
+                    disabled={!canEdit || saving}
+                    onCheckedChange={(checked) =>
+                      setDraft((current) => ({ ...current, [option.key]: checked === true }))
+                    }
+                    aria-label={option.label}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[12px] font-medium text-ink">{option.label}</span>
+                    <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">
+                      {option.detail}
+                    </span>
                   </span>
-                </span>
-              </label>
-            ))}
-          </div>
+                </label>
+              ))}
+            </div>
           </section>
 
-          <section className="mt-5 grid gap-5 border-t border-hair pt-4 md:grid-cols-2">
-            <PolicyList
-              id={`fast-lane-allowed-paths-${organization.id}`}
-              label="Allowed paths"
-              detail="Every changed file must match at least one glob. Empty allows any path."
-              value={draft.allowedPaths}
-              placeholder={"docs/**\n**/*.md\nconfig/safe/**"}
-              disabled={!canEdit || saving}
-              onChange={(allowedPaths) => setDraft((current) => ({ ...current, allowedPaths }))}
-            />
-            <PolicyList
-              id={`fast-lane-blocked-paths-${organization.id}`}
-              label="Blocked paths"
-              detail="A single matching file keeps the PR in Review requested."
-              value={draft.blockedPaths}
-              placeholder={"src/auth/**\ndb/migrations/**\n.github/workflows/**"}
-              disabled={!canEdit || saving}
-              onChange={(blockedPaths) => setDraft((current) => ({ ...current, blockedPaths }))}
-            />
-          </section>
-
-          <section className="mt-5 grid gap-5 border-t border-hair pt-4 md:grid-cols-2">
-            <PolicyList
-              id={`fast-lane-required-labels-${organization.id}`}
-              label="Required labels"
-              detail="All labels listed here must be present. Empty means none required."
-              value={draft.requiredLabels}
-              placeholder={"automation\nsafe-change"}
-              disabled={!canEdit || saving}
-              onChange={(requiredLabels) =>
-                setDraft((current) => ({ ...current, requiredLabels }))
-              }
-            />
-            <PolicyList
-              id={`fast-lane-blocked-labels-${organization.id}`}
-              label="Blocked labels"
-              detail="Any matching label keeps the PR in Review requested."
-              value={draft.blockedLabels}
-              placeholder={"security\nbreaking-change\nneeds-design"}
-              disabled={!canEdit || saving}
-              onChange={(blockedLabels) =>
-                setDraft((current) => ({ ...current, blockedLabels }))
-              }
-            />
+          <section className="mt-5 border-t border-hair pt-4">
+            <p className="text-[12px] font-medium text-ink-2">Path and label rules</p>
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-start gap-4">
+              <PolicyList
+                balanced
+                id={`fast-lane-allowed-paths-${organization.id}`}
+                label="Allowed paths"
+                detail="Every changed file must match a glob. Empty allows any path."
+                value={draft.allowedPaths}
+                placeholder={"docs/**\n**/*.md\nconfig/safe/**"}
+                disabled={!canEdit || saving}
+                onChange={(allowedPaths) => setDraft((current) => ({ ...current, allowedPaths }))}
+              />
+              <PolicyList
+                balanced
+                id={`fast-lane-blocked-paths-${organization.id}`}
+                label="Blocked paths"
+                detail="One matching file keeps the PR in Review requested."
+                value={draft.blockedPaths}
+                placeholder={"src/auth/**\ndb/migrations/**\n.github/workflows/**"}
+                disabled={!canEdit || saving}
+                onChange={(blockedPaths) => setDraft((current) => ({ ...current, blockedPaths }))}
+              />
+              <PolicyList
+                balanced
+                id={`fast-lane-required-labels-${organization.id}`}
+                label="Required labels"
+                detail="Every listed label must be present. Empty requires none."
+                value={draft.requiredLabels}
+                placeholder={"automation\nsafe-change"}
+                disabled={!canEdit || saving}
+                onChange={(requiredLabels) =>
+                  setDraft((current) => ({ ...current, requiredLabels }))
+                }
+              />
+              <PolicyList
+                balanced
+                id={`fast-lane-blocked-labels-${organization.id}`}
+                label="Blocked labels"
+                detail="One matching label keeps the PR in Review requested."
+                value={draft.blockedLabels}
+                placeholder={"security\nbreaking-change\nneeds-design"}
+                disabled={!canEdit || saving}
+                onChange={(blockedLabels) => setDraft((current) => ({ ...current, blockedLabels }))}
+              />
+            </div>
           </section>
           {canEdit ? (
             <div className="mt-5 flex items-center justify-between border-t border-hair pt-4">
@@ -388,11 +382,7 @@ export function FastLaneSettings() {
           </div>
         ) : policies.data?.length ? (
           policies.data.map((value) => (
-            <WorkspacePolicy
-              key={value.organization.id}
-              value={value}
-              refresh={policies.refetch}
-            />
+            <WorkspacePolicy key={value.organization.id} value={value} refresh={policies.refetch} />
           ))
         ) : (
           <p className="px-5 py-5 text-[12px] text-ink-3">
