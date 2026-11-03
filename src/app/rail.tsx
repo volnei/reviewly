@@ -21,8 +21,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { settingsCategoryStore } from "@/app/settings-navigation";
 import { useFastLaneItems } from "@/app/fast-lane-items";
+import { settingsCategoryStore } from "@/app/settings-navigation";
 import { useTeamsPlan } from "@/app/teams-billing";
 import { matchesWorkspace, useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import { BulletTrain } from "@/components/icons/bullet-train";
@@ -110,17 +110,6 @@ export function Rail() {
   );
   const items: Item[] = [
     { to: "/inbox", label: "Inbox", key: "⌘2", icon: Inbox, count: counts?.inbox },
-    ...(teamsPlan === "teams"
-      ? [
-          {
-            to: "/fast-lane",
-            label: "Fast lane",
-            key: "G F",
-            icon: BulletTrain,
-            count: fastLane.items.length,
-          },
-        ]
-      : []),
     {
       to: "/prs",
       label: "Pull requests",
@@ -165,10 +154,26 @@ export function Rail() {
       <div className="mt-6">
         <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
         {teamsPlan === "teams" ? (
-          <NavItem
-            item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
-            active={active("/team")}
-          />
+          <ul className="space-y-1">
+            <li>
+              <NavItem
+                item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
+                active={active("/team")}
+              />
+            </li>
+            <li>
+              <NavItem
+                item={{
+                  to: "/fast-lane",
+                  label: "Fast lane",
+                  key: "G F",
+                  icon: BulletTrain,
+                  count: fastLane.items.length,
+                }}
+                active={active("/fast-lane")}
+              />
+            </li>
+          </ul>
         ) : teamsPlan === "hobby" ? (
           <Link
             to="/settings"

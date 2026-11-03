@@ -2,7 +2,8 @@ import { Effect } from "effect";
 import { useMemo } from "react";
 
 import { enabledFastLanePoliciesByRepository, useFastLanePolicies } from "@/app/fast-lane";
-import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
+import { useTeamsWorkspace } from "@/app/teams-workspace";
+import { useAllPullRequestInbox } from "@/app/workspace";
 import { useEffectQuery } from "@/effect/runtime";
 import { GitHub } from "@/effect/services/GitHub";
 import type { Ranked } from "@/effect/services/Triage";
@@ -14,9 +15,9 @@ import {
 } from "@/features/fast-lane";
 
 export function useFastLaneItems() {
-  const workspace = useWorkspace();
-  const inbox = usePullRequestInbox();
-  const policies = useFastLanePolicies();
+  const teamsWorkspace = useTeamsWorkspace();
+  const inbox = useAllPullRequestInbox();
+  const policies = useFastLanePolicies(teamsWorkspace.organizationId);
   const active = useMemo(
     () => (inbox.data ? [...inbox.data.turn, ...inbox.data.unsorted] : []),
     [inbox.data],
@@ -54,7 +55,7 @@ export function useFastLaneItems() {
     .sort()
     .join(",");
   const facts = useEffectQuery(
-    ["teams", "fast-lane", "changed-paths", signature],
+    ["teams", "fast-lane", teamsWorkspace.organizationId, "changed-paths", signature],
     Effect.forEach(
       candidates,
       (item) =>
@@ -100,10 +101,17 @@ export function useFastLaneItems() {
 
   return {
     items,
-    workspace,
-    isConnected: workspace ? connectedRepositories.has(workspace.toLowerCase()) : true,
-    isConfigured: workspace ? enabled.has(workspace.toLowerCase()) : enabled.size > 0,
-    isPending: inbox.isPending || policies.isPending || (candidates.length > 0 && facts.isPending),
-    isError: inbox.isError || policies.isError,
+    organization: teamsWorkspace.organization,
+    organizationId: teamsWorkspace.organizationId,
+    organizations: teamsWorkspace.organizations,
+    setOrganizationId: teamsWorkspace.setOrganizationId,
+    isConnected: connectedRepositories.size > 0,
+    isConfigured: enabled.size > 0,
+    isPending:
+      teamsWorkspace.isPending ||
+      inbox.isPending ||
+      policies.isPending ||
+      (candidates.length > 0 && facts.isPending),
+    isError: teamsWorkspace.isError || inbox.isError || policies.isError,
   };
 }

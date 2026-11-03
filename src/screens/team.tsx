@@ -12,12 +12,14 @@ import {
   UserRoundCheck,
   UsersRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { settingsCategoryStore } from "@/app/settings-navigation";
 import { useTeamsPlan } from "@/app/teams-billing";
+import { useTeamsWorkspace } from "@/app/teams-workspace";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
+import { TeamsWorkspaceSelect } from "@/components/teams-workspace-select";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -28,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { run, useEffectQuery } from "@/effect/runtime";
 import type { TeamPull, TeamQueueUpdate, TeamsInbox } from "@/effect/schema";
-import { Teams, useTeams } from "@/effect/services/Teams";
+import { Teams } from "@/effect/services/Teams";
 import { age } from "@/features/list/row";
 import { cn } from "@/lib/utils";
 
@@ -72,19 +74,13 @@ function slaLabel(iso: string | null): { label: string; tone: string } {
 }
 
 export function TeamScreen() {
-  const teams = useTeams();
   const teamsPlan = useTeamsPlan();
-  const [organizationId, setOrganizationId] = useState(teams.organizations[0]?.id ?? "");
+  const teamsWorkspace = useTeamsWorkspace();
+  const organizationId = teamsWorkspace.organizationId ?? "";
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [pending, setPending] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!teams.organizations.some((organization) => organization.id === organizationId)) {
-      setOrganizationId(teams.organizations[0]?.id ?? "");
-    }
-  }, [organizationId, teams.organizations]);
 
   const queryKey = ["teams", "queue", organizationId] as const;
   const queue = useEffectQuery(
@@ -255,39 +251,11 @@ export function TeamScreen() {
           <h1 className="text-[24px] font-semibold tracking-[-0.015em]">Team queue</h1>
           <p className="mt-1 text-[13px] text-ink-2">{finding}</p>
         </div>
-        {teams.organizations.length > 1 ? (
-          <div className="flex items-center gap-2 text-[12px] text-ink-3">
-            <span>Workspace</span>
-            <Select
-              value={organizationId}
-              onValueChange={(value) => value !== null && setOrganizationId(value)}
-            >
-              <SelectTrigger
-                aria-label="Workspace"
-                size="sm"
-                className="min-w-0 border-0 bg-transparent px-2 text-ink shadow-none hover:bg-raise/55 dark:bg-transparent"
-              >
-                <SelectValue>
-                  {teams.organizations.find((organization) => organization.id === organizationId)
-                    ?.displayName ??
-                    teams.organizations.find((organization) => organization.id === organizationId)
-                      ?.login}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup alignItemWithTrigger={false}>
-                {teams.organizations.map((organization) => (
-                  <SelectItem key={organization.id} value={organization.id}>
-                    {organization.displayName ?? organization.login}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-          </div>
-        ) : (
-          <span className="text-[12px] text-ink-3">
-            {teams.organizations[0]?.displayName ?? teams.organizations[0]?.login}
-          </span>
-        )}
+        <TeamsWorkspaceSelect
+          organizations={teamsWorkspace.organizations}
+          value={teamsWorkspace.organizationId}
+          onValueChange={teamsWorkspace.setOrganizationId}
+        />
       </header>
 
       {data ? (

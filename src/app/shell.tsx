@@ -14,6 +14,7 @@ import { Palette } from "@/app/palette";
 import { usePrSync } from "@/app/pr-sync";
 import { Rail } from "@/app/rail";
 import { isChatWindow, VIEW_PATHS } from "@/app/router";
+import { useTeamsPlan } from "@/app/teams-billing";
 import { TitleBar } from "@/app/title-bar";
 import { toast } from "@/app/toast";
 import { useUpdater } from "@/app/updater";
@@ -305,6 +306,7 @@ function useNativeChrome() {
 /** ⌘1–6 views, ⌘, settings; the rest goes to the screen's scope. */
 function useGlobalKeys() {
   const navigate = useNavigate();
+  const teamsPlan = useTeamsPlan();
   useEffect(() => {
     // The App Store edition has no Local repositories (⌘6), Turborepo or Spec Lens.
     const views = APP_STORE
@@ -327,6 +329,7 @@ function useGlobalKeys() {
       s: "/settings",
     };
     if (APP_STORE) for (const k of ["t", "v", "l"]) delete GO[k];
+    if (teamsPlan !== "teams") delete GO.f;
     let pendingG = 0;
     const onKey = (e: KeyboardEvent) => {
       const c = chord(e);
@@ -377,5 +380,5 @@ function useGlobalKeys() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate]);
+  }, [navigate, teamsPlan]);
 }

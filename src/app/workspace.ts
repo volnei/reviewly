@@ -1,10 +1,11 @@
-import { run, useEffectQuery } from "@/effect/runtime";
-import { authStore, useAuth } from "@/effect/services/Auth";
-import { Inbox, type InboxData, countMentions, pullRequestInbox } from "@/effect/services/Inbox";
-import { persistedStore, useStore } from "@/effect/store";
-import { readInboxSnapshot, saveInboxSnapshot } from "@/features/inbox/cache";
 import type { QueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
+
+import { run, useEffectQuery } from "@/effect/runtime";
+import { authStore, useAuth } from "@/effect/services/Auth";
+import { countMentions, Inbox, type InboxData, pullRequestInbox } from "@/effect/services/Inbox";
+import { persistedStore, useStore } from "@/effect/store";
+import { readInboxSnapshot, saveInboxSnapshot } from "@/features/inbox/cache";
 
 export const workspaceStore = persistedStore<string | null>("reviewly.v2.workspace", null, (raw) =>
   typeof raw === "string" && /^[^/\s]+\/[^/\s]+$/.test(raw) ? raw : null,
@@ -53,8 +54,7 @@ export function scopeInbox(data: InboxData, workspace: string | null): InboxData
   };
 }
 
-export function useWorkspaceInbox(pullRequestsOnly = false) {
-  const workspace = useWorkspace();
+function useInboxForWorkspace(workspace: string | null, pullRequestsOnly: boolean) {
   const auth = useAuth();
   const login = auth.viewer?.login ?? "";
   const snapshot = readInboxSnapshot(login);
@@ -71,7 +71,12 @@ export function useWorkspaceInbox(pullRequestsOnly = false) {
   });
 }
 
+export function useWorkspaceInbox(pullRequestsOnly = false) {
+  return useInboxForWorkspace(useWorkspace(), pullRequestsOnly);
+}
+
 export const usePullRequestInbox = () => useWorkspaceInbox(true);
+export const useAllPullRequestInbox = () => useInboxForWorkspace(null, true);
 
 const loadAndCacheInbox = (login: string) =>
   Effect.flatMap(Inbox, (inbox) => inbox.load).pipe(

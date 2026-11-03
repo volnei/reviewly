@@ -29,9 +29,14 @@ export const fastLanePoliciesKey = (organizationIds: ReadonlyArray<string>) => [
   organizationIds.join(","),
 ];
 
-export function useFastLanePolicies() {
+export function useFastLanePolicies(organizationId?: string | null) {
   const billing = useTeamsBilling();
-  const accounts = billing.data?.filter((account) => account.billing.access) ?? [];
+  const accounts =
+    billing.data?.filter(
+      (account) =>
+        account.billing.access &&
+        (organizationId === undefined || account.organization.id === organizationId),
+    ) ?? [];
   const organizationIds = accounts.map(({ organization }) => organization.id);
 
   return useEffectQuery(

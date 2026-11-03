@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 
 import { useCommands } from "@/app/commands";
 import { overlays } from "@/app/overlays";
+import { useTeamsPlan } from "@/app/teams-billing";
 import { checkForUpdates } from "@/app/updater";
 import { openWhatsNew } from "@/app/whats-new";
 import { BulletTrain } from "@/components/icons/bullet-train";
@@ -82,6 +83,7 @@ export function Palette({
 }) {
   const navigate = useNavigate();
   const auth = useAuth();
+  const teamsPlan = useTeamsPlan();
   const inbox = useEffectQuery(["inbox"], inboxQuery, { enabled: auth.signedIn });
   const openItem = useOpenItem();
   const commands = useCommands();
@@ -115,7 +117,9 @@ export function Palette({
       icon: Zap,
       run: c.run,
     }));
-    const views = VIEWS.map<Entry>((v) => ({
+    const views = VIEWS.filter(
+      (view) => view.to !== "/fast-lane" || teamsPlan === "teams",
+    ).map<Entry>((v) => ({
       id: `view:${v.to}`,
       label: v.label,
       hint: "view",
@@ -168,7 +172,7 @@ export function Palette({
     // The store updates the App Store edition.
     const appEntries = APP_STORE ? app.filter((e) => e.id !== "app:updates") : app;
     return [...typed, ...actions, ...views, ...savedViews, ...items, ...appEntries];
-  }, [inbox.data, navigate, openItem, query, commands, saved, auth.host]);
+  }, [inbox.data, navigate, openItem, query, commands, saved, auth.host, teamsPlan]);
 
   const close = (o: boolean) => {
     if (!o) setQuery("");
