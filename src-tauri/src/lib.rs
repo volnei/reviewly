@@ -312,6 +312,7 @@ pub fn run() {
             commands::auth::auth_use_token,
             // Reviewly Teams
             commands::teams::teams_status,
+            commands::teams::teams_install_url,
             commands::teams::teams_link_start,
             commands::teams::teams_link_poll,
             commands::teams::teams_sign_out,

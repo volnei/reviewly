@@ -227,6 +227,11 @@ pub async fn teams_status() -> AppResult<TeamsStatus> {
 }
 
 #[tauri::command]
+pub fn teams_install_url() -> String {
+    format!("{}/api/github/install", base_url())
+}
+
+#[tauri::command]
 pub async fn teams_link_start() -> AppResult<DesktopLinkStart> {
     let response = client()?
         .post(format!("{}/api/desktop/link/start", base_url()))

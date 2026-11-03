@@ -9,6 +9,7 @@ import {
   Info,
   MessageSquareText,
   Palette,
+  Plus,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -853,6 +854,7 @@ function TeamsSettings() {
   const [connecting, setConnecting] = useState(false);
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const connectingRef = useRef(false);
+  const [addingWorkspace, setAddingWorkspace] = useState(false);
   const [billingAction, setBillingAction] = useState<string | null>(null);
   const [integrationAction, setIntegrationAction] = useState<string | null>(null);
   const [integrationOrganizationId, setIntegrationOrganizationId] = useState("");
@@ -906,6 +908,17 @@ function TeamsSettings() {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [integrations.refetch]);
+
+  useEffect(() => {
+    if (!teams.signedIn) return;
+    const refresh = () => {
+      void run(Effect.flatMap(Teams, (service) => service.bootstrap))
+        .then(() => billingAccounts.refetch())
+        .catch(() => {});
+    };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [billingAccounts.refetch, teams.signedIn]);
 
   const openBilling = async (workspace: TeamsBillingAccount) => {
     if (billingAction) return;
@@ -974,6 +987,19 @@ function TeamsSettings() {
     }
   };
 
+  const addWorkspace = async () => {
+    if (addingWorkspace) return;
+    setAddingWorkspace(true);
+    try {
+      const url = await run(Effect.flatMap(Teams, (service) => service.installUrl));
+      safeOpenUrl(url);
+    } catch (error) {
+      toast.fail("Couldn’t add a Teams workspace", error);
+    } finally {
+      setAddingWorkspace(false);
+    }
+  };
+
   return (
     <>
       <Section
@@ -995,21 +1021,32 @@ function TeamsSettings() {
               <p>Connected</p>
               <span>
                 {teams.organizations.length
-                  ? `${teams.organizations.length} GitHub ${teams.organizations.length === 1 ? "account" : "accounts"} available`
-                  : "Install the GitHub App on an account to create its shared queue."}
+                  ? `${teams.organizations.length} Teams ${teams.organizations.length === 1 ? "workspace" : "workspaces"} connected`
+                  : "Add a workspace to create its shared queue."}
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                run(Effect.flatMap(Teams, (service) => service.signOut)).catch((error) =>
-                  toast.fail("Couldn’t disconnect Teams", error),
-                )
-              }
-            >
-              Disconnect
-            </Button>
+            <div className="teams-connection-actions">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={addingWorkspace}
+                onClick={() => void addWorkspace()}
+              >
+                <Plus aria-hidden />
+                {addingWorkspace ? "Opening…" : "Add workspace"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  run(Effect.flatMap(Teams, (service) => service.signOut)).catch((error) =>
+                    toast.fail("Couldn’t disconnect Teams", error),
+                  )
+                }
+              >
+                Disconnect
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="teams-connect-prompt">

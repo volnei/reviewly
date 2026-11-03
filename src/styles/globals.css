@@ -3630,6 +3630,11 @@ mark.dm {
 .teams-status-dot.is-connected {
   background: var(--add);
 }
+.teams-connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .teams-org-list {
   display: grid;
 }
@@ -3862,6 +3867,16 @@ mark.dm {
   }
   .teams-connect-prompt [data-slot="button"] {
     width: 100%;
+  }
+  .teams-connection-state {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .teams-connection-actions {
+    width: 100%;
+  }
+  .teams-connection-actions [data-slot="button"] {
+    flex: 1;
   }
   .teams-billing-row {
     align-items: flex-start;

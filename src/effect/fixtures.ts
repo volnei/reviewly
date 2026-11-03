@@ -819,6 +819,7 @@ const commands: Record<string, Handler> = {
       { id: "fixture-volnei", login: "volnei", displayName: "volnei", role: "owner" },
     ],
   }),
+  teams_install_url: () => "https://getreviewly.dev/api/github/install",
   teams_link_start: () => ({
     link_id: "fixture-link",
     device_code: "fixture-device-code-with-enough-entropy",

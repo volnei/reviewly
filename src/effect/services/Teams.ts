@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { useSyncExternalStore } from "react";
 
 import * as S from "../schema";
@@ -30,6 +30,7 @@ export class Teams extends Context.Service<
   Teams,
   {
     readonly bootstrap: Effect.Effect<TeamsState>;
+    readonly installUrl: Effect.Effect<string, import("../errors").AppError>;
     readonly linkStart: Effect.Effect<S.TeamsLinkStart, import("../errors").AppError>;
     readonly linkPoll: (
       linkId: string,
@@ -90,6 +91,7 @@ export const TeamsLive = Layer.effect(
       })),
       Effect.tap((next) => Effect.sync(() => teamsStore.set(next))),
     );
+    const installUrl = tauri.invoke("teams_install_url", {}, Schema.String);
     const linkStart = tauri.invoke("teams_link_start", {}, S.TeamsLinkStart);
     const linkPoll = (linkId: string, deviceCode: string) =>
       tauri.invoke("teams_link_poll", { linkId, deviceCode }, S.TeamsLinkPoll).pipe(
@@ -135,6 +137,7 @@ export const TeamsLive = Layer.effect(
       );
     return {
       bootstrap,
+      installUrl,
       linkStart,
       linkPoll,
       inbox,
