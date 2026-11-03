@@ -1,19 +1,20 @@
-import { useMemo } from "react";
 import { Effect } from "effect";
+import { useMemo } from "react";
 
-import { useFastLanePolicies } from "@/app/fast-lane";
-import { usePullRequestInbox } from "@/app/workspace";
+import { enabledFastLanePoliciesByRepository, useFastLanePolicies } from "@/app/fast-lane";
+import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
 import { useEffectQuery } from "@/effect/runtime";
 import { GitHub } from "@/effect/services/GitHub";
 import type { Ranked } from "@/effect/services/Triage";
 import {
+  type FastLaneFileFacts,
   isFastLane,
   isFastLaneCandidate,
   requiresFastLaneFiles,
-  type FastLaneFileFacts,
 } from "@/features/fast-lane";
 
 export function useFastLaneItems() {
+  const workspace = useWorkspace();
   const inbox = usePullRequestInbox();
   const policies = useFastLanePolicies();
   const active = useMemo(
@@ -21,18 +22,22 @@ export function useFastLaneItems() {
     [inbox.data],
   );
   const enabled = useMemo(
+    () => enabledFastLanePoliciesByRepository(policies.data),
+    [policies.data],
+  );
+  const connectedRepositories = useMemo(
     () =>
-      new Map(
-        (policies.data ?? [])
-          .filter(({ policy }) => policy.enabled)
-          .map(({ organization, policy }) => [organization.login.toLowerCase(), policy] as const),
+      new Set(
+        (policies.data ?? []).flatMap(({ repositories }) =>
+          repositories.map((repository) => repository.toLowerCase()),
+        ),
       ),
     [policies.data],
   );
   const candidates = useMemo(
     () =>
       active.filter((item) => {
-        const policy = enabled.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+        const policy = enabled.get(item.repo.toLowerCase());
         return (
           policy &&
           requiresFastLaneFiles(policy) &&
@@ -44,7 +49,10 @@ export function useFastLaneItems() {
       }),
     [active, enabled],
   );
-  const signature = candidates.map((item) => item.id).sort().join(",");
+  const signature = candidates
+    .map((item) => item.id)
+    .sort()
+    .join(",");
   const facts = useEffectQuery(
     ["teams", "fast-lane", "changed-paths", signature],
     Effect.forEach(
@@ -84,7 +92,7 @@ export function useFastLaneItems() {
   const items = useMemo(
     () =>
       active.filter((item: Ranked) => {
-        const policy = enabled.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+        const policy = enabled.get(item.repo.toLowerCase());
         return policy ? isFastLane(item, policy, facts.data?.get(item.id)) : false;
       }),
     [active, enabled, facts.data],
@@ -92,6 +100,9 @@ export function useFastLaneItems() {
 
   return {
     items,
+    workspace,
+    isConnected: workspace ? connectedRepositories.has(workspace.toLowerCase()) : true,
+    isConfigured: workspace ? enabled.has(workspace.toLowerCase()) : enabled.size > 0,
     isPending: inbox.isPending || policies.isPending || (candidates.length > 0 && facts.isPending),
     isError: inbox.isError || policies.isError,
   };

@@ -1,39 +1,40 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { Effect } from "effect";
+import { RefreshCw, Search } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+
+import { enabledFastLanePoliciesByRepository, useFastLanePolicies } from "@/app/fast-lane";
 import { overlays } from "@/app/overlays";
-import { useFastLanePolicies } from "@/app/fast-lane";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { usePullRequestInbox, useWorkspace } from "@/app/workspace";
 import { IconButton } from "@/components/icon-button";
-import { isNative } from "@/effect/Tauri";
-import { APP_STORE } from "@/lib/edition";
 import { run, useEffectQuery } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
 import { GitHub } from "@/effect/services/GitHub";
 import { Inbox, type InboxData } from "@/effect/services/Inbox";
 import { prefsStore, tomorrowMorning, usePrefs } from "@/effect/services/Prefs";
 import type { Ranked } from "@/effect/services/Triage";
-import { FilterBar, applyFilter, isFiltering, useListFilter } from "@/features/list/filters";
+import { isNative } from "@/effect/Tauri";
 import {
+  type FastLaneFileFacts,
   isFastLane,
   isFastLaneCandidate,
   requiresFastLaneFiles,
-  type FastLaneFileFacts,
 } from "@/features/fast-lane";
+import { applyFilter, FilterBar, isFiltering, useListFilter } from "@/features/list/filters";
 import { List, ListHead, Nothing, type Section } from "@/features/list/list";
 import { usePreread } from "@/features/list/preread";
 import { age } from "@/features/list/row";
 import { useKeepScroll } from "@/features/list/scroll";
-import { SNOOZE_LABEL, type SnoozeWhen, snoozeUntil } from "@/features/list/snooze";
+import { SNOOZE_LABEL, snoozeUntil, type SnoozeWhen } from "@/features/list/snooze";
 import { reconcileStackItems, useWithStacks } from "@/features/list/stacks";
+import { APP_STORE } from "@/lib/edition";
 import { syncPrs } from "@/lib/pr-sync";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Effect } from "effect";
-import { RefreshCw } from "lucide-react";
-import { Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+
 import { PrPeek } from "./pr-peek";
 
 export const inboxQuery = Effect.flatMap(Inbox, (i) => i.load);
@@ -220,7 +221,7 @@ function useFastLaneFileFacts(
   const candidates = useMemo(
     () =>
       items.filter((item) => {
-        const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+        const policy = policies.get(item.repo.toLowerCase());
         return (
           policy &&
           requiresFastLaneFiles(policy) &&
@@ -232,7 +233,10 @@ function useFastLaneFileFacts(
       }),
     [items, policies],
   );
-  const signature = candidates.map((item) => item.id).sort().join(",");
+  const signature = candidates
+    .map((item) => item.id)
+    .sort()
+    .join(",");
 
   return useEffectQuery(
     ["teams", "fast-lane", "changed-paths", signature],
@@ -318,12 +322,7 @@ export function InboxScreen() {
     [inbox.data, all],
   );
   const enabledFastLanePolicies = useMemo(
-    () =>
-      new Map(
-        (fastLanePolicies.data ?? [])
-          .filter(({ policy }) => policy.enabled)
-          .map(({ organization, policy }) => [organization.login.toLowerCase(), policy] as const),
-      ),
+    () => enabledFastLanePoliciesByRepository(fastLanePolicies.data),
     [fastLanePolicies.data],
   );
   const fastLaneFiles = useFastLaneFileFacts(
@@ -418,7 +417,7 @@ function toSections(
   const active = [...turn, ...unsorted];
   const fastLaneEnabled = policies.size > 0;
   const fastLane = active.filter((item) => {
-    const policy = policies.get(item.repo.split("/")[0]?.toLowerCase() ?? "");
+    const policy = policies.get(item.repo.toLowerCase());
     return policy ? isFastLane(item, policy, fileFacts?.get(item.id)) : false;
   });
   const fastLaneIds = new Set(fastLane.map((item) => item.id));
@@ -461,9 +460,7 @@ function toSections(
               folded: (
                 <>
                   Fast lane <span className="tnum text-ink-3">{fastLane.length}</span>
-                  <span className="text-ink-3">
-                    Routine dependency updates with green checks
-                  </span>
+                  <span className="text-ink-3">Routine dependency updates with green checks</span>
                 </>
               ),
             } satisfies Section,

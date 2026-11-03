@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import { enabledFastLanePoliciesByRepository } from "../src/app/fast-lane";
 import type { Ranked } from "../src/effect/services/Triage";
-import {
-  fastLaneReason,
-  isFastLane,
-  matchesFastLanePath,
-} from "../src/features/fast-lane";
+import { fastLaneReason, isFastLane, matchesFastLanePath } from "../src/features/fast-lane";
 
 const policy = {
   enabled: true,
@@ -50,11 +47,22 @@ const pr = (patch: Partial<Ranked> = {}): Ranked => ({
 });
 
 describe("Teams Fast lane", () => {
+  test("scopes a policy to repositories connected to its GitHub App installation", () => {
+    const policies = enabledFastLanePoliciesByRepository([
+      {
+        organization: { id: "org-1", login: "volnei", displayName: null, role: "owner" },
+        policy,
+        repositories: ["volnei/reviewly"],
+      },
+    ]);
+
+    expect(policies.get("volnei/reviewly")).toEqual(policy);
+    expect(policies.has("volnei/cal")).toBe(false);
+  });
+
   test("accepts a clean dependency-bot update and explains the placement", () => {
     expect(isFastLane(pr(), policy)).toBe(true);
-    expect(fastLaneReason(pr(), policy)).toBe(
-      "dependabot · team policy matched",
-    );
+    expect(fastLaneReason(pr(), policy)).toBe("dependabot · team policy matched");
     expect(isFastLane(pr({ author: "renovate[bot]" }), policy)).toBe(true);
   });
 
@@ -114,9 +122,9 @@ describe("Teams Fast lane", () => {
     );
     expect(isFastLane(candidate, guarded, files(["docs/readme.md"], 101))).toBe(false);
     expect(isFastLane(candidate, guarded, files(["src/main.rs"]))).toBe(false);
-    expect(isFastLane(pr({ labels: ["automation", "security"] }), guarded, files(["docs/a.md"]))).toBe(
-      false,
-    );
+    expect(
+      isFastLane(pr({ labels: ["automation", "security"] }), guarded, files(["docs/a.md"])),
+    ).toBe(false);
   });
 
   test("fails closed when changed files cannot be verified", () => {

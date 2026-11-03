@@ -8,7 +8,20 @@ import { Teams } from "@/effect/services/Teams";
 export type FastLaneWorkspacePolicy = {
   readonly organization: TeamOrganization;
   readonly policy: FastLanePolicy;
+  readonly repositories: ReadonlyArray<string>;
 };
+
+export function enabledFastLanePoliciesByRepository(
+  policies: ReadonlyArray<FastLaneWorkspacePolicy> | undefined,
+): ReadonlyMap<string, FastLanePolicy> {
+  return new Map(
+    (policies ?? []).flatMap(({ policy, repositories }) =>
+      policy.enabled
+        ? repositories.map((repository) => [repository.toLowerCase(), policy] as const)
+        : [],
+    ),
+  );
+}
 
 export const fastLanePoliciesKey = (organizationIds: ReadonlyArray<string>) => [
   "teams",
@@ -26,10 +39,19 @@ export function useFastLanePolicies() {
     Effect.flatMap(Teams, (service) =>
       Effect.forEach(
         accounts,
-        ({ organization }): Effect.Effect<FastLaneWorkspacePolicy, import("@/effect/errors").AppError> =>
-          service
-            .fastLanePolicy(organization.id)
-            .pipe(Effect.map((policy) => ({ organization, policy }))),
+        ({
+          organization,
+        }): Effect.Effect<FastLaneWorkspacePolicy, import("@/effect/errors").AppError> =>
+          Effect.all({
+            policy: service.fastLanePolicy(organization.id),
+            repositories: service.repositories(organization.id),
+          }).pipe(
+            Effect.map(({ policy, repositories }) => ({
+              organization,
+              policy,
+              repositories: repositories.repositories,
+            })),
+          ),
         { concurrency: 3 },
       ),
     ),

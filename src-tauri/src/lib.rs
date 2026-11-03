@@ -319,6 +319,7 @@ pub fn run() {
             commands::teams::teams_queue_update,
             commands::teams::teams_fast_lane_policy,
             commands::teams::teams_fast_lane_policy_update,
+            commands::teams::teams_repositories,
             commands::teams::teams_integrations,
             commands::teams::teams_integration_start,
             commands::teams::teams_billing,

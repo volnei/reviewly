@@ -45,6 +45,9 @@ export class Teams extends Context.Service<
     readonly fastLanePolicy: (
       organizationId: string,
     ) => Effect.Effect<S.FastLanePolicy, import("../errors").AppError>;
+    readonly repositories: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamRepositories, import("../errors").AppError>;
     readonly updateFastLanePolicy: (
       organizationId: string,
       policy: S.FastLanePolicy,
@@ -108,12 +111,10 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_queue_update", { organizationId, update }, S.Unit).pipe(Effect.asVoid);
     const fastLanePolicy = (organizationId: string) =>
       tauri.invoke("teams_fast_lane_policy", { organizationId }, S.FastLanePolicy);
+    const repositories = (organizationId: string) =>
+      tauri.invoke("teams_repositories", { organizationId }, S.TeamRepositories);
     const updateFastLanePolicy = (organizationId: string, policy: S.FastLanePolicy) =>
-      tauri.invoke(
-        "teams_fast_lane_policy_update",
-        { organizationId, policy },
-        S.FastLanePolicy,
-      );
+      tauri.invoke("teams_fast_lane_policy_update", { organizationId, policy }, S.FastLanePolicy);
     const billing = (organizationId: string) =>
       tauri.invoke("teams_billing", { organizationId }, S.TeamBilling);
     const checkout = (organizationId: string) =>
@@ -123,11 +124,7 @@ export const TeamsLive = Layer.effect(
     const integrations = (organizationId: string) =>
       tauri.invoke("teams_integrations", { organizationId }, S.TeamIntegrations);
     const integrationStart = (organizationId: string, provider: "gitlab" | "slack") =>
-      tauri.invoke(
-        "teams_integration_start",
-        { organizationId, provider },
-        S.TeamsBillingUrl,
-      );
+      tauri.invoke("teams_integration_start", { organizationId, provider }, S.TeamsBillingUrl);
     const signOut = tauri.invoke("teams_sign_out", {}, S.Unit).pipe(
       Effect.tap(() =>
         Effect.sync(() => teamsStore.set({ loading: false, signedIn: false, organizations: [] })),
@@ -141,6 +138,7 @@ export const TeamsLive = Layer.effect(
       inbox,
       updateQueue,
       fastLanePolicy,
+      repositories,
       updateFastLanePolicy,
       billing,
       checkout,

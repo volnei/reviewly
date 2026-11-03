@@ -132,6 +132,9 @@ export const FastLanePolicy = S.Struct({
 });
 export type FastLanePolicy = typeof FastLanePolicy.Type;
 
+export const TeamRepositories = S.Struct({ repositories: S.Array(S.String) });
+export type TeamRepositories = typeof TeamRepositories.Type;
+
 export const TeamBilling = S.Struct({
   organizationId: S.String,
   configured: S.Boolean,

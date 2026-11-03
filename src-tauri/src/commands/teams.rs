@@ -160,6 +160,11 @@ pub struct TeamIntegrations {
     pub integrations: Vec<TeamIntegration>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeamRepositories {
+    pub repositories: Vec<String>,
+}
+
 fn base_url() -> String {
     #[cfg(debug_assertions)]
     if let Ok(value) = std::env::var("REVIEWLY_TEAMS_URL") {
@@ -369,6 +374,16 @@ async fn teams_api_request(
 pub async fn teams_fast_lane_policy(organization_id: String) -> AppResult<FastLanePolicy> {
     Ok(
         teams_api_request(&organization_id, "fast-lane", reqwest::Method::GET, None)
+            .await?
+            .json()
+            .await?,
+    )
+}
+
+#[tauri::command]
+pub async fn teams_repositories(organization_id: String) -> AppResult<TeamRepositories> {
+    Ok(
+        teams_api_request(&organization_id, "repositories", reqwest::Method::GET, None)
             .await?
             .json()
             .await?,
