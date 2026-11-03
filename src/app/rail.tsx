@@ -124,7 +124,7 @@ export function Rail() {
   return (
     <nav
       aria-label="Workspace navigation"
-      className="workspace-sidebar flex shrink-0 flex-col bg-rail px-2.5 py-4"
+      className="workspace-sidebar flex min-h-0 shrink-0 flex-col overflow-hidden bg-rail px-2.5 py-4"
     >
       <Link
         to="/"
@@ -138,123 +138,125 @@ export function Rail() {
         </span>
         <span className="workspace-brand-name">Reviewly</span>
       </Link>
-      <p
-        className="workspace-section-label mb-2 truncate px-2 text-ink-3"
-        title={workspace ?? "All repositories"}
-      >
-        {workspace?.split("/").pop() ?? "All repositories"}
-      </p>
-      <ul className="space-y-1">
-        {items.map((item) => (
-          <li key={item.to}>
-            <NavItem item={item} active={active(item.to)} />
-          </li>
-        ))}
-      </ul>
-      <div className="mt-6">
-        <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
-        {teamsPlan === "teams" ? (
-          <ul className="space-y-1">
-            <li>
-              <NavItem
-                item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
-                active={active("/team")}
-              />
+      <div className="workspace-sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+        <p
+          className="workspace-section-label mb-2 truncate px-2 text-ink-3"
+          title={workspace ?? "All repositories"}
+        >
+          {workspace?.split("/").pop() ?? "All repositories"}
+        </p>
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li key={item.to}>
+              <NavItem item={item} active={active(item.to)} />
             </li>
-            <li>
-              <NavItem
-                item={{
-                  to: "/fast-lane",
-                  label: "Fast lane",
-                  key: "G F",
-                  icon: BulletTrain,
-                  count: fastLane.items.length,
-                }}
-                active={active("/fast-lane")}
-              />
-            </li>
-          </ul>
-        ) : teamsPlan === "hobby" ? (
-          <Link
-            to="/settings"
-            aria-label="Set up Reviewly Teams"
-            title="Set up your team"
-            onClick={() => settingsCategoryStore.set("teams")}
-            className="workspace-team-setup"
-          >
-            <span className="workspace-team-setup-topline" aria-hidden>
-              <UsersRound className="workspace-team-setup-icon" strokeWidth={1.75} />
-              <span>Reviewly Teams</span>
-              <ArrowRight className="workspace-team-setup-arrow" strokeWidth={1.75} />
-            </span>
-            <span className="workspace-team-setup-title">Set up your team</span>
-            <span className="workspace-team-setup-copy">Shared queue · Fast lane</span>
-          </Link>
-        ) : (
-          <div
-            className="workspace-team-pending flex min-h-9 items-center gap-2.5 px-2.5 text-ink-3"
-            role="status"
-            aria-label="Checking Teams plan"
-          >
-            <UsersRound className="size-4 shrink-0" strokeWidth={1.75} />
-            <span className="workspace-nav-label h-2.5 w-20 rounded-sm bg-raise" aria-hidden />
-          </div>
-        )}
-      </div>
-      <div className="mt-6">
-        <p className="workspace-section-label mb-2 px-2 text-ink-3">Labs</p>
-        {scopedTurboWorkspaces.length ? (
-          <NavItem
-            item={{
-              to: "/turbo",
-              label: "Living architecture",
-              key: "G T",
-              icon: Boxes,
-              count: turboProblems,
-            }}
-            active={active("/turbo")}
-          />
-        ) : null}
-        {scopedSpecWorkspaces.length ? (
-          <NavItem
-            item={{
-              to: "/spec-lens",
-              label: "Spec Lens",
-              key: "G V",
-              icon: ScanSearch,
-              count: specProblems,
-            }}
-            active={active("/spec-lens")}
-          />
-        ) : null}
-        <NavItem
-          item={{
-            to: "/merge-lab",
-            label: "Merge Lab",
-            key: "G X",
-            icon: FlaskConical,
-          }}
-          active={active("/merge-lab")}
-        />
-      </div>
-      <p className="workspace-section-label mt-6 mb-2 px-2 text-ink-3">Saved views</p>
-      <div className="workspace-saved min-h-0 flex-1 overflow-y-auto">
-        {views.length ? (
-          views.map((view) => (
-            <SavedViewItem
-              key={view.id}
-              view={view}
-              onOpen={() => {
-                applyView(view);
-                void navigate({ to: savedViewPath(view) });
+          ))}
+        </ul>
+        <div className="mt-6">
+          <p className="workspace-section-label mb-2 px-2 text-ink-3">Team</p>
+          {teamsPlan === "teams" ? (
+            <ul className="space-y-1">
+              <li>
+                <NavItem
+                  item={{ to: "/team", label: "Review queue", key: "G Q", icon: UsersRound }}
+                  active={active("/team")}
+                />
+              </li>
+              <li>
+                <NavItem
+                  item={{
+                    to: "/fast-lane",
+                    label: "Fast lane",
+                    key: "G F",
+                    icon: BulletTrain,
+                    count: fastLane.items.length,
+                  }}
+                  active={active("/fast-lane")}
+                />
+              </li>
+            </ul>
+          ) : teamsPlan === "hobby" ? (
+            <Link
+              to="/settings"
+              aria-label="Set up Reviewly Teams"
+              title="Set up your team"
+              onClick={() => settingsCategoryStore.set("teams")}
+              className="workspace-team-setup"
+            >
+              <span className="workspace-team-setup-topline" aria-hidden>
+                <UsersRound className="workspace-team-setup-icon" strokeWidth={1.75} />
+                <span>Reviewly Teams</span>
+                <ArrowRight className="workspace-team-setup-arrow" strokeWidth={1.75} />
+              </span>
+              <span className="workspace-team-setup-title">Set up your team</span>
+              <span className="workspace-team-setup-copy">Shared queue · Fast lane</span>
+            </Link>
+          ) : (
+            <div
+              className="workspace-team-pending flex min-h-9 items-center gap-2.5 px-2.5 text-ink-3"
+              role="status"
+              aria-label="Checking Teams plan"
+            >
+              <UsersRound className="size-4 shrink-0" strokeWidth={1.75} />
+              <span className="workspace-nav-label h-2.5 w-20 rounded-sm bg-raise" aria-hidden />
+            </div>
+          )}
+        </div>
+        <div className="mt-6">
+          <p className="workspace-section-label mb-2 px-2 text-ink-3">Labs</p>
+          {scopedTurboWorkspaces.length ? (
+            <NavItem
+              item={{
+                to: "/turbo",
+                label: "Living architecture",
+                key: "G T",
+                icon: Boxes,
+                count: turboProblems,
               }}
+              active={active("/turbo")}
             />
-          ))
-        ) : (
-          <p className="px-2 text-[12px] leading-relaxed text-ink-3">
-            Save your filters to create a view.
-          </p>
-        )}
+          ) : null}
+          {scopedSpecWorkspaces.length ? (
+            <NavItem
+              item={{
+                to: "/spec-lens",
+                label: "Spec Lens",
+                key: "G V",
+                icon: ScanSearch,
+                count: specProblems,
+              }}
+              active={active("/spec-lens")}
+            />
+          ) : null}
+          <NavItem
+            item={{
+              to: "/merge-lab",
+              label: "Merge Lab",
+              key: "G X",
+              icon: FlaskConical,
+            }}
+            active={active("/merge-lab")}
+          />
+        </div>
+        <p className="workspace-section-label mt-6 mb-2 px-2 text-ink-3">Saved views</p>
+        <div className="workspace-saved pb-2">
+          {views.length ? (
+            views.map((view) => (
+              <SavedViewItem
+                key={view.id}
+                view={view}
+                onOpen={() => {
+                  applyView(view);
+                  void navigate({ to: savedViewPath(view) });
+                }}
+              />
+            ))
+          ) : (
+            <p className="px-2 text-[12px] leading-relaxed text-ink-3">
+              Save your filters to create a view.
+            </p>
+          )}
+        </div>
       </div>
       <div className="mt-5 space-y-1 border-t border-hair pt-3">
         <NavItem
