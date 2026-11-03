@@ -893,6 +893,9 @@ const commands: Record<string, Handler> = {
     fixtureFastLanePolicy = policy as typeof fixtureFastLanePolicy;
     return fixtureFastLanePolicy;
   },
+  teams_repositories: () => ({
+    repositories: ["volnei/reviewly", "volnei/cal", "volnei/dotfiles"],
+  }),
   teams_billing: ({ organizationId }) => ({
     organizationId,
     configured: true,

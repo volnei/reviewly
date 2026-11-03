@@ -32,7 +32,6 @@ function PolicyList({
   value,
   placeholder,
   disabled,
-  balanced = false,
   onChange,
 }: {
   id: string;
@@ -41,12 +40,11 @@ function PolicyList({
   value: ReadonlyArray<string>;
   placeholder: string;
   disabled: boolean;
-  balanced?: boolean;
   onChange: (value: string[]) => void;
 }) {
   return (
     <div className="min-w-0">
-      <label className={balanced ? "block sm:min-h-20" : "block"} htmlFor={id}>
+      <label className="block" htmlFor={id}>
         <span className="block text-[12px] font-medium text-ink">{label}</span>
         <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">{detail}</span>
       </label>
@@ -300,9 +298,8 @@ function WorkspacePolicy({
 
           <section className="mt-5 border-t border-hair pt-4">
             <p className="text-[12px] font-medium text-ink-2">Path and label rules</p>
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-start gap-4">
+            <div className="mt-3 grid grid-cols-1 gap-4">
               <PolicyList
-                balanced
                 id={`fast-lane-allowed-paths-${organization.id}`}
                 label="Allowed paths"
                 detail="Every changed file must match a glob. Empty allows any path."
@@ -312,7 +309,6 @@ function WorkspacePolicy({
                 onChange={(allowedPaths) => setDraft((current) => ({ ...current, allowedPaths }))}
               />
               <PolicyList
-                balanced
                 id={`fast-lane-blocked-paths-${organization.id}`}
                 label="Blocked paths"
                 detail="One matching file keeps the PR in Review requested."
@@ -322,7 +318,6 @@ function WorkspacePolicy({
                 onChange={(blockedPaths) => setDraft((current) => ({ ...current, blockedPaths }))}
               />
               <PolicyList
-                balanced
                 id={`fast-lane-required-labels-${organization.id}`}
                 label="Required labels"
                 detail="Every listed label must be present. Empty requires none."
@@ -334,7 +329,6 @@ function WorkspacePolicy({
                 }
               />
               <PolicyList
-                balanced
                 id={`fast-lane-blocked-labels-${organization.id}`}
                 label="Blocked labels"
                 detail="One matching label keeps the PR in Review requested."
