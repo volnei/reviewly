@@ -46,7 +46,7 @@ base64 = "0.22"
 urlencoding = "2"
 # Direct-download build only — the Mac App Store edition (`appstore`) updates
 # through the store and registers login items with SMAppService instead.
-tauri-plugin-updater = { version = "2.10.1", optional = true }
+tauri-plugin-updater = { version = "2.10.1", optional = true, default-features = false, features = ["native-tls"] }
 tauri-plugin-process = { version = "2.3.1", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-single-instance = "2"
