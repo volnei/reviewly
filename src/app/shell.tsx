@@ -25,7 +25,7 @@ import { run, runtime } from "@/effect/runtime";
 import { DependabotDone, Viewer } from "@/effect/schema";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, authStore, useAuth } from "@/effect/services/Auth";
-import { usePrefs } from "@/effect/services/Prefs";
+import { prefsStore, usePrefs } from "@/effect/services/Prefs";
 import { Teams } from "@/effect/services/Teams";
 import { Tauri } from "@/effect/Tauri";
 import { clearHomeCache } from "@/features/home/cache";
@@ -50,6 +50,7 @@ export function Shell() {
 /** The detached Ask window: the screen alone, with toasts and tooltips. */
 function ChatShell() {
   useAppearance();
+  useTeamsThemeEntitlement();
   return (
     <TooltipProvider delay={300}>
       <ToastProvider position="bottom-right" limit={2}>
@@ -61,6 +62,16 @@ function ChatShell() {
   );
 }
 
+/** A Teams-only atmosphere cannot survive a billing downgrade in persisted prefs. */
+function useTeamsThemeEntitlement() {
+  const teamsPlan = useTeamsPlan();
+  const appearance = usePrefs((prefs) => prefs.appearance);
+  useEffect(() => {
+    if (teamsPlan !== "hobby" || appearance !== "teams") return;
+    prefsStore.update((prefs) => ({ ...prefs, appearance: "dark" }));
+  }, [appearance, teamsPlan]);
+}
+
 function MainShell() {
   useAuthBootstrap();
   useBackendSettingsSync();
@@ -70,6 +81,7 @@ function MainShell() {
   useClipboardSniff();
   useNativeChrome();
   useAppearance();
+  useTeamsThemeEntitlement();
   useUpdater();
   useWhatsNew();
   useGlobalKeys();

@@ -1,10 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { Gauge, ShieldCheck, TrainFront, type LucideIcon } from "lucide-react";
+import { useRef } from "react";
 
 import { useFastLaneItems } from "@/app/fast-lane-items";
+import { settingsCategoryStore } from "@/app/settings-navigation";
 import { useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlot } from "@/app/title-slot";
 import { TeamsWorkspaceSelect } from "@/components/teams-workspace-select";
+import { Button } from "@/components/ui/button";
 import { List, Nothing } from "@/features/list/list";
 import { useKeepScroll } from "@/features/list/scroll";
 import { RefreshButton, TitleSearch, useItemActions, useOpenItem } from "@/screens/inbox";
@@ -26,16 +29,62 @@ export function FastLaneScreen() {
     </>,
     "desk",
   );
-  useEffect(() => {
-    if (teamsPlan === "hobby") void navigate({ to: "/team", replace: true });
-  }, [navigate, teamsPlan]);
-
-  if (teamsPlan !== "teams") {
+  if (teamsPlan === null) {
     return (
       <div className="h-full bg-desk p-8" role="status">
         <span className="sr-only">Checking your Teams plan</span>
         <div className="h-7 w-32 rounded-sm bg-raise" />
         <div className="mt-3 h-3 w-72 max-w-full rounded-sm bg-raise" />
+      </div>
+    );
+  }
+
+  if (teamsPlan === "hobby") {
+    return (
+      <div className="team-gate h-full overflow-y-auto bg-desk text-ink scrollbar-thin">
+        <header className="team-gate-header">
+          <p>Fast lane · Reviewly Teams</p>
+          <h1>Routine changes keep moving.</h1>
+          <span>
+            Your team defines the exact rules. Reviewly separates matching pull requests without
+            approving or merging them.
+          </span>
+        </header>
+        <div className="team-gate-surface">
+          <section className="team-gate-capabilities" aria-label="Fast lane capabilities">
+            <FastLaneGateCapability
+              icon={TrainFront}
+              title="A queue for routine work"
+              detail="Keep low-risk dependency, documentation and maintenance changes out of the main queue."
+            />
+            <FastLaneGateCapability
+              icon={Gauge}
+              title="Rules owned by the team"
+              detail="Set limits for files, changed lines, authors, labels and paths per workspace."
+            />
+            <FastLaneGateCapability
+              icon={ShieldCheck}
+              title="Never an automatic approval"
+              detail="Fast lane only changes where a review waits. GitHub protections remain in control."
+            />
+          </section>
+          <aside className="team-gate-plan" aria-label="Unlock Fast lane">
+            <div>
+              <p>Teams feature</p>
+              <h2>Fast lane follows the workspace, not the local repository.</h2>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                settingsCategoryStore.set("teams");
+                void navigate({ to: "/settings" });
+              }}
+            >
+              Set up Reviewly Teams
+            </Button>
+            <span>Connect a GitHub organization and choose the repositories your team controls.</span>
+          </aside>
+        </div>
       </div>
     );
   }
@@ -86,6 +135,26 @@ export function FastLaneScreen() {
         renderPeek={(item) => <PrPeek item={item} />}
         empty={empty}
       />
+    </div>
+  );
+}
+
+function FastLaneGateCapability({
+  icon: Icon,
+  title,
+  detail,
+}: {
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="team-gate-capability">
+      <Icon size={18} />
+      <div>
+        <strong>{title}</strong>
+        <span>{detail}</span>
+      </div>
     </div>
   );
 }
