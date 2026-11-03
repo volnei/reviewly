@@ -2530,8 +2530,7 @@ mark.dm {
   flex-shrink: 0;
 }
 .titlebar-plan {
-  padding-left: 6px;
-  border-left: 1px solid var(--hair);
+  font-weight: 500;
 }
 .home-metric,
 .home-panel {

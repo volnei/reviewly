@@ -1,3 +1,7 @@
+import { useNavigate } from "@tanstack/react-router";
+import { CloudOff, LoaderCircle } from "lucide-react";
+import type { MouseEvent } from "react";
+
 import { useOnline } from "@/app/online";
 import { useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlotValue } from "@/app/title-slot";
@@ -5,10 +9,6 @@ import { WorkspacePicker } from "@/app/workspace-picker";
 import { isNative } from "@/effect/Tauri";
 import { useAiActivity } from "@/features/pr/ai";
 import { cn } from "@/lib/utils";
-import { ReviewlyMark } from "@/components/reviewly-mark";
-import { useNavigate } from "@tanstack/react-router";
-import { CloudOff, LoaderCircle } from "lucide-react";
-import type { MouseEvent } from "react";
 
 /**
  * One bar across the whole window, in the screen's own colour, centred on the
@@ -26,18 +26,14 @@ export function TitleBar() {
   const activities = useAiActivity();
   const teamsPlan = useTeamsPlan();
   const currentActivity =
-    [...activities].reverse().find((activity) => activity.returnTo) ??
-    activities.at(-1);
-  const mac =
-    typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+    [...activities].reverse().find((activity) => activity.returnTo) ?? activities.at(-1);
+  const mac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   const onMouseDown = (e: MouseEvent<HTMLElement>) => {
     if (e.button !== 0 || !isNative()) return;
     if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      e.detail === 2
-        ? getCurrentWindow().toggleMaximize()
-        : getCurrentWindow().startDragging(),
+      e.detail === 2 ? getCurrentWindow().toggleMaximize() : getCurrentWindow().startDragging(),
     );
   };
 
@@ -49,10 +45,6 @@ export function TitleBar() {
         mac ? "pl-[84px]" : "pl-3",
       )}
     >
-      <span className="titlebar-brand mr-1 flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
-        <ReviewlyMark className="size-3.5 text-ink" />
-        Reviewly
-      </span>
       {teamsPlan ? (
         <span
           className="titlebar-plan mr-1 text-[11px] text-ink-3"
@@ -67,9 +59,7 @@ export function TitleBar() {
         </span>
       ) : null}
       <WorkspacePicker />
-      <div className="ml-3 flex min-w-0 flex-1 items-center gap-2 pr-3">
-        {node}
-      </div>
+      <div className="ml-3 flex min-w-0 flex-1 items-center gap-2 pr-3">{node}</div>
       {currentActivity ? (
         currentActivity.returnTo ? (
           <button
@@ -86,9 +76,7 @@ export function TitleBar() {
             />
             <span className="truncate">{currentActivity.label}</span>
             {activities.length > 1 ? (
-              <span className="font-mono text-[10px] text-ink-3">
-                +{activities.length - 1}
-              </span>
+              <span className="font-mono text-[10px] text-ink-3">+{activities.length - 1}</span>
             ) : null}
           </button>
         ) : (
