@@ -140,7 +140,7 @@ jobs:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "Reviewly ${{ inputs.tag || github.ref_name }}"
           releaseBody: "Download the installer for your platform below."
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 

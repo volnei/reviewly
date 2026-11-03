@@ -125,12 +125,14 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_integrations", { organizationId }, S.TeamIntegrations);
     const integrationStart = (organizationId: string, provider: "gitlab" | "slack") =>
       tauri.invoke("teams_integration_start", { organizationId, provider }, S.TeamsBillingUrl);
-    const signOut = tauri.invoke("teams_sign_out", {}, S.Unit).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => teamsStore.set({ loading: false, signedIn: false, organizations: [] })),
-      ),
-      Effect.asVoid,
-    );
+    const signOut = tauri
+      .invoke("teams_sign_out", {}, S.Unit)
+      .pipe(
+        Effect.ensuring(
+          Effect.sync(() => teamsStore.set({ loading: false, signedIn: false, organizations: [] })),
+        ),
+        Effect.asVoid,
+      );
     return {
       bootstrap,
       linkStart,

@@ -6,5 +6,22 @@ import { openUrl } from "@tauri-apps/plugin-opener";
  * external links are opened.
  */
 export function safeOpenUrl(url: string): void {
-  void openUrl(url).catch(() => {});
+  const parsed = safeExternalUrl(url);
+  if (!parsed) return;
+  void openUrl(parsed).catch(() => {});
+}
+
+export function safeExternalUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const localDevelopment =
+    parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "mailto:" && !localDevelopment)
+    return null;
+  if (parsed.username || parsed.password) return null;
+  return parsed.toString();
 }

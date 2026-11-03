@@ -5,7 +5,7 @@ name: ci
 # reserved for release builds. Tag pushes are handled by release.yml.
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
 
 concurrency:

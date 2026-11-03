@@ -29,6 +29,7 @@ pub struct TeamsStatus {
 pub struct DesktopLinkStart {
     pub link_id: String,
     pub device_code: String,
+    pub user_code: String,
     pub authorize_url: String,
     pub expires_in: u64,
     pub interval: u64,
@@ -272,8 +273,33 @@ pub async fn teams_link_poll(link_id: String, device_code: String) -> AppResult<
 }
 
 #[tauri::command]
-pub fn teams_sign_out() -> AppResult<()> {
-    creds::delete_teams_token()
+pub async fn teams_sign_out() -> AppResult<()> {
+    let mut revoke_error = None;
+    if let Some(token) = creds::load_teams_token()? {
+        match client()?
+            .post(format!("{}/api/auth/logout", base_url()))
+            .bearer_auth(token)
+            .send()
+            .await
+        {
+            Ok(response)
+                if !response.status().is_success()
+                    && response.status() != reqwest::StatusCode::UNAUTHORIZED =>
+            {
+                revoke_error = Some(AppError::Other(format!(
+                    "Could not revoke Reviewly Teams session ({})",
+                    response.status()
+                )));
+            }
+            Err(error) => revoke_error = Some(AppError::from(error)),
+            _ => {}
+        }
+    }
+    creds::delete_teams_token()?;
+    if let Some(error) = revoke_error {
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]

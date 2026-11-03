@@ -46,14 +46,27 @@ pub async fn gh_fetch_attachment(
         .header("Accept", "*/*")
         .send()
         .await?;
-    let res = check(res).await?;
+    let mut res = check(res).await?;
+    const MAX_ATTACHMENT_BYTES: u64 = 25 * 1024 * 1024;
+    if res
+        .content_length()
+        .is_some_and(|size| size > MAX_ATTACHMENT_BYTES)
+    {
+        return Err(AppError::Other("attachment exceeds 25 MB".into()));
+    }
     let content_type = res
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream")
         .to_string();
-    let bytes = res.bytes().await?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = res.chunk().await? {
+        if bytes.len() as u64 + chunk.len() as u64 > MAX_ATTACHMENT_BYTES {
+            return Err(AppError::Other("attachment exceeds 25 MB".into()));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     let size = bytes.len() as u64;
     let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(FetchedAttachment {

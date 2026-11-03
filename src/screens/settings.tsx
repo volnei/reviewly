@@ -16,7 +16,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
 import { type TeamsBillingAccount, useTeamsBilling, useTeamsPlan } from "@/app/teams-billing";
@@ -851,14 +851,16 @@ function billingStatusLabel(billing: TeamBilling): string {
 function TeamsSettings() {
   const teams = useTeams();
   const [connecting, setConnecting] = useState(false);
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const connectingRef = useRef(false);
   const [billingAction, setBillingAction] = useState<string | null>(null);
   const [integrationAction, setIntegrationAction] = useState<string | null>(null);
-  const [integrationOrganizationId, setIntegrationOrganizationId] = useState(
-    teams.organizations[0]?.id ?? "",
-  );
+  const [integrationOrganizationId, setIntegrationOrganizationId] = useState("");
   const billingAccounts = useTeamsBilling();
-  const paidAccounts = billingAccounts.data?.filter((account) => account.billing.access) ?? [];
+  const paidAccounts = useMemo(
+    () => billingAccounts.data?.filter((account) => account.billing.access) ?? [],
+    [billingAccounts.data],
+  );
   const inboxes = useEffectQuery(
     ["teams", "inboxes", paidAccounts.map((account) => account.organization.id).join(",")],
     Effect.flatMap(Teams, (service) =>
@@ -887,19 +889,17 @@ function TeamsSettings() {
     billingAccounts.isPending || (paidAccounts.length > 0 && inboxes.isPending);
   const sharedQueuesError = billingAccounts.isError || inboxes.isError;
   useEffect(() => {
-    if (
-      !teams.organizations.some((organization) => organization.id === integrationOrganizationId)
-    ) {
-      setIntegrationOrganizationId(teams.organizations[0]?.id ?? "");
+    if (!paidAccounts.some(({ organization }) => organization.id === integrationOrganizationId)) {
+      setIntegrationOrganizationId(paidAccounts[0]?.organization.id ?? "");
     }
-  }, [integrationOrganizationId, teams.organizations]);
-  const integrationOrganization = teams.organizations.find(
-    (organization) => organization.id === integrationOrganizationId,
-  );
+  }, [integrationOrganizationId, paidAccounts]);
+  const integrationOrganization = paidAccounts.find(
+    ({ organization }) => organization.id === integrationOrganizationId,
+  )?.organization;
   const integrations = useEffectQuery(
     ["teams", "integrations", integrationOrganizationId],
     Effect.flatMap(Teams, (service) => service.integrations(integrationOrganizationId)),
-    { enabled: teams.signedIn && !!integrationOrganizationId, staleTime: 10_000 },
+    { enabled: teams.signedIn && !!integrationOrganization, staleTime: 10_000 },
   );
   useEffect(() => {
     const refresh = () => void integrations.refetch();
@@ -934,6 +934,7 @@ function TeamsSettings() {
     setConnecting(true);
     try {
       const link = await run(Effect.flatMap(Teams, (service) => service.linkStart));
+      setDeviceCode(link.user_code);
       safeOpenUrl(link.authorize_url);
       const deadline = Date.now() + link.expires_in * 1000;
       while (Date.now() < deadline) {
@@ -950,6 +951,7 @@ function TeamsSettings() {
     } catch (error) {
       toast.fail("Couldn’t connect Reviewly Teams", error);
     } finally {
+      setDeviceCode(null);
       connectingRef.current = false;
       setConnecting(false);
     }
@@ -1018,9 +1020,16 @@ function TeamsSettings() {
                 GitHub OAuth token.
               </span>
             </div>
-            <Button size="sm" disabled={connecting} onClick={() => void connect()}>
-              {connecting ? "Waiting for GitHub…" : "Connect Teams"}
-            </Button>
+            <div className="flex items-center gap-3">
+              {deviceCode ? (
+                <code className="rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm font-semibold tracking-[.14em]">
+                  {deviceCode}
+                </code>
+              ) : null}
+              <Button size="sm" disabled={connecting} onClick={() => void connect()}>
+                {connecting ? "Enter this code in your browser" : "Connect Teams"}
+              </Button>
+            </div>
           </div>
         )}
       </Section>
@@ -1030,7 +1039,7 @@ function TeamsSettings() {
           title="Integrations"
           blurb="Connect the places where code changes happen and where reviewers coordinate."
         >
-          {teams.organizations.length > 1 ? (
+          {paidAccounts.length > 1 ? (
             <div className="teams-integration-scope">
               <span>Workspace</span>
               <Select
@@ -1043,7 +1052,7 @@ function TeamsSettings() {
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
-                  {teams.organizations.map((organization) => (
+                  {paidAccounts.map(({ organization }) => (
                     <SelectItem key={organization.id} value={organization.id}>
                       {organization.displayName ?? organization.login}
                     </SelectItem>
@@ -1052,7 +1061,13 @@ function TeamsSettings() {
               </Select>
             </div>
           ) : null}
-          {integrations.isPending ? (
+          {billingAccounts.isPending ? (
+            <p className="teams-inline-state">Checking plan access…</p>
+          ) : paidAccounts.length === 0 ? (
+            <p className="teams-inline-state">
+              Integrations are available after Teams is enabled for a workspace.
+            </p>
+          ) : integrations.isPending ? (
             <p className="teams-inline-state">Loading integrations…</p>
           ) : integrations.isError ? (
             <div className="teams-inline-error">

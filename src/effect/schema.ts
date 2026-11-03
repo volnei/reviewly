@@ -51,6 +51,7 @@ export type TeamsStatus = typeof TeamsStatus.Type;
 export const TeamsLinkStart = S.Struct({
   link_id: S.String,
   device_code: S.String,
+  user_code: S.String,
   authorize_url: S.String,
   expires_in: S.Number,
   interval: S.Number,

@@ -822,7 +822,8 @@ const commands: Record<string, Handler> = {
   teams_link_start: () => ({
     link_id: "fixture-link",
     device_code: "fixture-device-code-with-enough-entropy",
-    authorize_url: "https://getreviewly.dev/api/auth/github/start",
+    user_code: "RVLY-2026",
+    authorize_url: "https://getreviewly.dev/connect",
     expires_in: 600,
     interval: 2,
   }),
