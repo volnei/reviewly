@@ -4,8 +4,8 @@ import {
   Bell,
   Check,
   FolderGit2,
-  GitPullRequest,
   GitFork,
+  GitPullRequest,
   Info,
   MessageSquareText,
   Palette,
@@ -19,11 +19,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { settingsCategoryStore, useSettingsCategory } from "@/app/settings-navigation";
-import {
-  type TeamsBillingAccount,
-  useTeamsBilling,
-  useTeamsPlan,
-} from "@/app/teams-billing";
+import { type TeamsBillingAccount, useTeamsBilling, useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { checkForUpdates } from "@/app/updater";
@@ -54,7 +50,13 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { run, useEffectQuery } from "@/effect/runtime";
 import type { TeamBilling, TeamsInbox } from "@/effect/schema";
-import { Ai, MODEL_SUGGESTIONS, providerName, PROVIDERS, type Provider } from "@/effect/services/Ai";
+import {
+  Ai,
+  MODEL_SUGGESTIONS,
+  type Provider,
+  providerName,
+  PROVIDERS,
+} from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { Auth, useAuth } from "@/effect/services/Auth";
 import { GitHub } from "@/effect/services/GitHub";
@@ -884,10 +886,15 @@ function TeamsSettings() {
     billingAccounts.isPending || (paidAccounts.length > 0 && inboxes.isPending);
   const sharedQueuesError = billingAccounts.isError || inboxes.isError;
   useEffect(() => {
-    if (!teams.organizations.some((organization) => organization.id === integrationOrganizationId)) {
+    if (
+      !teams.organizations.some((organization) => organization.id === integrationOrganizationId)
+    ) {
       setIntegrationOrganizationId(teams.organizations[0]?.id ?? "");
     }
   }, [integrationOrganizationId, teams.organizations]);
+  const integrationOrganization = teams.organizations.find(
+    (organization) => organization.id === integrationOrganizationId,
+  );
   const integrations = useEffectQuery(
     ["teams", "integrations", integrationOrganizationId],
     Effect.flatMap(Teams, (service) => service.integrations(integrationOrganizationId)),
@@ -1029,7 +1036,9 @@ function TeamsSettings() {
                 onValueChange={(value) => value && setIntegrationOrganizationId(value)}
               >
                 <SelectTrigger aria-label="Integration workspace">
-                  <SelectValue />
+                  <SelectValue>
+                    {integrationOrganization?.displayName ?? integrationOrganization?.login}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {teams.organizations.map((organization) => (
@@ -1256,31 +1265,37 @@ function IntegrationRow({
   onConnect: () => void;
 }) {
   const connected = integration?.connection?.status === "active";
+  const configured = integration?.configured !== false;
+  const status = connected ? "Connected" : configured ? "Not connected" : "Setup required";
   return (
     <div className="teams-integration-row">
       <Icon size={17} aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="teams-integration-title">
           <p>{name}</p>
-          <span className={cn(connected && "is-connected")}>
-            {connected ? "Connected" : "Not connected"}
-          </span>
+          <span className={cn(connected && "is-connected")}>{status}</span>
         </div>
         <span>
           {connected
-            ? integration.connection?.displayName ?? description
-            : integration?.configured === false
-              ? "The server credentials still need to be configured."
+            ? (integration.connection?.displayName ?? description)
+            : !configured
+              ? `${name} OAuth is not configured on the Reviewly Teams server yet.`
               : description}
         </span>
       </div>
       <Button
         variant={connected ? "ghost" : "outline"}
         size="sm"
-        disabled={busy || integration?.configured === false}
+        disabled={busy || !configured}
         onClick={onConnect}
       >
-        {busy ? "Opening…" : connected ? "Reconnect" : `Connect ${name}`}
+        {busy
+          ? "Opening…"
+          : connected
+            ? "Reconnect"
+            : configured
+              ? `Connect ${name}`
+              : "Server setup"}
       </Button>
     </div>
   );
