@@ -137,6 +137,7 @@ export const TeamBilling = S.Struct({
   configured: S.Boolean,
   status: S.String,
   access: S.Boolean,
+  complimentary: S.Boolean,
   canManage: S.Boolean,
   price: S.Struct({
     currency: S.String,

@@ -832,6 +832,7 @@ type TeamsWorkspace = {
 
 function billingStatusLabel(billing: TeamBilling): string {
   if (!billing.configured) return "Unavailable";
+  if (billing.complimentary) return "Complimentary";
   if (billing.cancelAtPeriodEnd) return "Cancels at period end";
   switch (billing.status) {
     case "active":
@@ -909,6 +910,7 @@ function TeamsSettings() {
   const openBilling = async (workspace: TeamsBillingAccount) => {
     if (billingAction) return;
     const { organization, billing } = workspace;
+    if (billing.complimentary) return;
     setBillingAction(organization.id);
     try {
       const answer = await run(
@@ -1104,7 +1106,9 @@ function TeamsSettings() {
             <div className="teams-billing-list">
               {billingAccounts.data.map((workspace) => {
                 const { organization, billing } = workspace;
-                const total = (billing.memberCount * billing.price.unitAmount) / 100;
+                const total = billing.complimentary
+                  ? 0
+                  : (billing.memberCount * billing.price.unitAmount) / 100;
                 const busy = billingAction === organization.id;
                 return (
                   <div className="teams-billing-row" key={organization.id}>
@@ -1116,16 +1120,18 @@ function TeamsSettings() {
                         </span>
                       </div>
                       <span>
-                        {billing.memberCount} {billing.memberCount === 1 ? "member" : "members"} · $
-                        {total.toFixed(0)} / month
+                        {billing.memberCount} {billing.memberCount === 1 ? "member" : "members"} ·{" "}
+                        {billing.complimentary
+                          ? "Free Teams access"
+                          : `$${total.toFixed(0)} / month`}
                       </span>
                     </div>
                     <div
                       className="teams-billing-price"
                       aria-label="Eight dollars per user monthly"
                     >
-                      <strong>$8</strong>
-                      <span>user / month</span>
+                      <strong>{billing.complimentary ? "$0" : "$8"}</strong>
+                      <span>{billing.complimentary ? "complimentary" : "user / month"}</span>
                     </div>
                     {APP_STORE ? (
                       <span className="teams-inline-state">
@@ -1133,6 +1139,8 @@ function TeamsSettings() {
                           ? "Managed by your organization"
                           : "Organization plan required"}
                       </span>
+                    ) : billing.complimentary ? (
+                      <span className="teams-inline-state">Included for you</span>
                     ) : billing.canManage ? (
                       <Button
                         variant={billing.access ? "outline" : "default"}

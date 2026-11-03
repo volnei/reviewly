@@ -896,6 +896,7 @@ const commands: Record<string, Handler> = {
     configured: true,
     status: "active",
     access: true,
+    complimentary: true,
     canManage: true,
     price: { currency: "usd", unitAmount: 800, interval: "month" },
     memberCount: 4,

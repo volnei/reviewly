@@ -124,6 +124,7 @@ pub struct TeamBilling {
     pub configured: bool,
     pub status: String,
     pub access: bool,
+    pub complimentary: bool,
     pub can_manage: bool,
     pub price: TeamBillingPrice,
     pub member_count: u64,
