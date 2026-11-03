@@ -10,6 +10,10 @@ export interface TeamsState {
   readonly organizations: ReadonlyArray<S.TeamOrganization>;
 }
 
+export function teamsStateAfterBootstrapFailure(current: TeamsState): TeamsState {
+  return { ...current, loading: false };
+}
+
 const listeners = new Set<() => void>();
 let state: TeamsState = { loading: true, signedIn: false, organizations: [] };
 export const teamsStore = {
@@ -84,11 +88,7 @@ export const TeamsLive = Layer.effect(
     });
     const bootstrap = tauri.invoke("teams_status", {}, S.TeamsStatus).pipe(
       Effect.map(fromStatus),
-      Effect.orElseSucceed((): TeamsState => ({
-        loading: false,
-        signedIn: false,
-        organizations: [],
-      })),
+      Effect.orElseSucceed(() => teamsStateAfterBootstrapFailure(teamsStore.get())),
       Effect.tap((next) => Effect.sync(() => teamsStore.set(next))),
     );
     const installUrl = tauri.invoke("teams_install_url", {}, Schema.String);

@@ -912,13 +912,11 @@ function TeamsSettings() {
   useEffect(() => {
     if (!teams.signedIn) return;
     const refresh = () => {
-      void run(Effect.flatMap(Teams, (service) => service.bootstrap))
-        .then(() => billingAccounts.refetch())
-        .catch(() => {});
+      void run(Effect.flatMap(Teams, (service) => service.bootstrap)).catch(() => {});
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [billingAccounts.refetch, teams.signedIn]);
+  }, [teams.signedIn]);
 
   const openBilling = async (workspace: TeamsBillingAccount) => {
     if (billingAction) return;
