@@ -61,6 +61,7 @@ import { readingMinutes } from "@/lib/estimate";
 import type { GuidedPlan, GuidedStep } from "@/lib/guided";
 import { boundaryCrossings, dependentsOf, ownerOf } from "@/lib/monorepo";
 import { previewLinks } from "@/lib/pr-links";
+import { reviewInstructions, selectReviewSkills } from "@/lib/review-skills";
 import type { PullFile } from "@/lib/tauri";
 import { safeOpenUrl } from "@/lib/ui";
 import { useQueryClient } from "@tanstack/react-query";
@@ -68,6 +69,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { Effect } from "effect";
 import {
   ArrowLeft,
+  BookOpenCheck,
   ChevronDown,
   ChevronUp,
   Columns2,
@@ -252,7 +254,20 @@ export function PrScreen() {
     () => (pull ? prContext(pull, files, ref) : ""),
     [pull, files, ref],
   );
-  const promptOpts = { instructions: prefs.ai.instructions, hasClone: !!clone };
+  const activeReviewSkills = useMemo(
+    () =>
+      selectReviewSkills(
+        prefs.reviewSkills,
+        `${ref.owner}/${ref.repo}`,
+        files.map(({ filename }) => filename),
+      ),
+    [prefs.reviewSkills, ref.owner, ref.repo, files],
+  );
+  const promptInstructions = useMemo(
+    () => reviewInstructions(prefs.ai.instructions, activeReviewSkills),
+    [prefs.ai.instructions, activeReviewSkills],
+  );
+  const promptOpts = { instructions: promptInstructions, hasClone: !!clone };
   const guided = useGuided(prKey, context, {
     headSha: pull?.head.sha ?? "",
     cwd: clone,
@@ -1496,6 +1511,24 @@ export function PrScreen() {
               /{pr.checks.data.check_runs.length} checks passed
             </Button>
           ) : null}
+          {activeReviewSkills.length ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              className="h-6 gap-1.5 rounded-md bg-raise px-2 text-[11.5px] text-ink-2 hover:text-ink"
+              title={`Active review skills: ${activeReviewSkills.map(({ name }) => name).join(", ")}`}
+              onClick={() => {
+                settingsCategoryStore.set("assistant");
+                void navigate({ to: "/settings" });
+              }}
+            >
+              <BookOpenCheck className="size-3.5" aria-hidden />
+              {activeReviewSkills.length === 1
+                ? activeReviewSkills[0].name
+                : `${activeReviewSkills.length} review skills`}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -1953,7 +1986,7 @@ export function PrScreen() {
         prRef={ref}
         context={context}
         cwd={clone}
-        instructions={prefs.ai.instructions}
+        instructions={promptInstructions}
         onAction={runAction}
         width={askW}
         onWidth={onAskWidth}

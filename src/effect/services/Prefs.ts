@@ -16,6 +16,16 @@ export const Verdict = Schema.Literals([
 ]);
 export type Verdict = typeof Verdict.Type;
 
+export const ReviewSkill = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  enabled: Schema.Boolean,
+  repositories: Schema.Array(Schema.String),
+  paths: Schema.Array(Schema.String),
+  instructions: Schema.String,
+});
+export type ReviewSkill = typeof ReviewSkill.Type;
+
 export const Prefs = Schema.Struct({
   watchedRepos: Schema.Array(Schema.String),
   pollMinutes: Schema.Number,
@@ -60,6 +70,8 @@ export const Prefs = Schema.Struct({
     /** Where a stop's suggested comment goes first: into your review, or straight to GitHub. */
     suggestionAction: Schema.Literals(["draft", "post"]),
   }),
+  /** Review playbooks selected automatically from repository and changed paths. */
+  reviewSkills: Schema.Array(ReviewSkill),
   /** Sending a review on a draft PR marks it ready for review. */
   autoReadyOnReview: Schema.Boolean,
   /** One more step before a review goes up. */
@@ -124,6 +136,7 @@ const defaultPrefs: Prefs = {
     autoTour: false,
     suggestionAction: "draft",
   },
+  reviewSkills: [],
   autoReadyOnReview: false,
   confirmBeforeSubmit: false,
   appIcon: "white",

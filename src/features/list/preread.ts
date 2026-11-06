@@ -6,6 +6,7 @@ import type { Ranked } from "@/effect/services/Triage";
 import { prContext, startBackground, summaryPrompt } from "@/features/pr/ai";
 import { prefetchPull, pullKey } from "@/features/pr/model";
 import { getSummary, saveSummary } from "@/features/pr/plans-store";
+import { reviewInstructions, selectReviewSkills } from "@/lib/review-skills";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
 import { useEffect } from "react";
@@ -70,7 +71,14 @@ async function next(qc: QueryClient) {
       startBackground(
         `summary:${key}`,
         summaryPrompt(prContext(pull, files, ref), {
-          instructions: prefs.ai.instructions,
+          instructions: reviewInstructions(
+            prefs.ai.instructions,
+            selectReviewSkills(
+              prefs.reviewSkills,
+              `${ref.owner}/${ref.repo}`,
+              files.map(({ filename }) => filename),
+            ),
+          ),
           hasClone: false,
         }),
         null,
