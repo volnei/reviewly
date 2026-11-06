@@ -5,7 +5,9 @@ import {
   Braces,
   Check,
   ChevronRight,
+  FileCode2,
   KeyRound,
+  Laptop,
   LockKeyhole,
   Play,
   Plus,
@@ -851,12 +853,31 @@ function VariablesEditor({
               }
               className="rounded-xl font-mono text-[12px]"
             />
-            <Badge variant="outline" className="w-fit rounded-md font-mono font-normal">
-              {variable.origin === "team"
-                ? "Team"
-                : variable.origin === "file"
-                  ? (variable.importedFrom ?? ".env")
-                  : "Local"}
+            <Badge
+              variant="outline"
+              className="w-fit gap-1.5 rounded-md px-1.5 font-mono font-normal text-ink-2"
+              title={
+                variable.origin === "team"
+                  ? "Defined by the team"
+                  : variable.origin === "file"
+                    ? `Loaded from ${variable.importedFrom ?? ".env"}`
+                    : "Saved on this Mac"
+              }
+            >
+              {variable.origin === "team" ? (
+                <UsersRound aria-hidden />
+              ) : variable.origin === "file" ? (
+                <FileCode2 aria-hidden />
+              ) : (
+                <Laptop aria-hidden />
+              )}
+              <span>
+                {variable.origin === "team"
+                  ? "Team"
+                  : variable.origin === "file"
+                    ? (variable.importedFrom ?? ".env")
+                    : "Local"}
+              </span>
             </Badge>
             <label className="flex items-center gap-2 text-[11px] text-ink-2">
               <Switch
