@@ -896,6 +896,58 @@ const commands: Record<string, Handler> = {
   teams_repositories: () => ({
     repositories: ["volnei/reviewly", "volnei/cal", "volnei/dotfiles"],
   }),
+  teams_environments: () => ({
+    canEdit: true,
+    environments: [
+      {
+        id: "team-env-preview",
+        name: "Preview",
+        repository: "volnei/reviewly",
+        variables: [
+          {
+            id: "team-var-api",
+            key: "API_BASE_URL",
+            secret: false,
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: "team-var-token",
+            key: "PREVIEW_TOKEN",
+            secret: true,
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        commands: [
+          {
+            id: "team-command-check",
+            name: "Verify preview",
+            command: "bun test && bun run build",
+            workingDirectory: "",
+            timeoutSeconds: 300,
+          },
+        ],
+      },
+    ],
+  }),
+  teams_environment_create: () => ({ id: crypto.randomUUID() }),
+  teams_environment_update: () => ({}),
+  teams_environment_delete: () => ({}),
+  teams_environment_command_run: () => ({
+    success: true,
+    exitCode: 0,
+    stdout: "All checks passed.\n",
+    stderr: "",
+    durationMs: 842,
+  }),
+  environment_values_save: () => ({}),
+  environment_value_delete: () => ({}),
+  environment_command_run: () => ({
+    success: true,
+    exitCode: 0,
+    stdout: "Command completed successfully.\n",
+    stderr: "",
+    durationMs: 614,
+  }),
   teams_billing: ({ organizationId }) => ({
     organizationId,
     configured: true,

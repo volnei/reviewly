@@ -9,6 +9,7 @@ import {
   House,
   Inbox,
   Keyboard,
+  KeyRound,
   type LucideIcon,
   RefreshCw,
   Settings2,
@@ -64,6 +65,7 @@ const VIEWS: ReadonlyArray<{ to: string; label: string; icon: LucideIcon; key: s
   { to: "/team", label: "Team queue", icon: UsersRound, key: "G Q" },
   { to: "/local", label: "Local repositories", icon: FolderGit2, key: "⌘6" },
   { to: "/history", label: "History", icon: History, key: "G Y" },
+  { to: "/environments", label: "Environments", icon: KeyRound, key: "G E" },
   { to: "/settings", label: "Settings", icon: Settings2, key: "⌘," },
 ].filter((v) => !(APP_STORE && v.to === "/local"));
 

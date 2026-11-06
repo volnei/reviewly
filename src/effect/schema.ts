@@ -136,6 +136,46 @@ export type FastLanePolicy = typeof FastLanePolicy.Type;
 export const TeamRepositories = S.Struct({ repositories: S.Array(S.String) });
 export type TeamRepositories = typeof TeamRepositories.Type;
 
+export const EnvironmentCommand = S.Struct({
+  id: S.String,
+  name: S.String,
+  command: S.String,
+  workingDirectory: S.String,
+  timeoutSeconds: S.Number,
+});
+export type EnvironmentCommand = typeof EnvironmentCommand.Type;
+
+export const TeamEnvironment = S.Struct({
+  id: S.String,
+  name: S.String,
+  repository: S.NullOr(S.String),
+  variables: S.Array(
+    S.Struct({
+      id: S.String,
+      key: S.String,
+      secret: S.Boolean,
+      updatedAt: S.String,
+    }),
+  ),
+  commands: S.Array(EnvironmentCommand),
+});
+export type TeamEnvironment = typeof TeamEnvironment.Type;
+
+export const TeamEnvironments = S.Struct({
+  environments: S.Array(TeamEnvironment),
+  canEdit: S.Boolean,
+});
+export type TeamEnvironments = typeof TeamEnvironments.Type;
+
+export const CommandRunResult = S.Struct({
+  success: S.Boolean,
+  exitCode: S.NullOr(S.Number),
+  stdout: S.String,
+  stderr: S.String,
+  durationMs: S.Number,
+});
+export type CommandRunResult = typeof CommandRunResult.Type;
+
 export const TeamBilling = S.Struct({
   organizationId: S.String,
   configured: S.Boolean,

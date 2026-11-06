@@ -326,6 +326,15 @@ pub fn run() {
             commands::teams::teams_billing,
             commands::teams::teams_checkout,
             commands::teams::teams_billing_portal,
+            commands::teams::teams_environments,
+            commands::teams::teams_environment_create,
+            commands::teams::teams_environment_update,
+            commands::teams::teams_environment_delete,
+            commands::teams::teams_environment_command_run,
+            // personal environments (available on Hobby)
+            commands::environments::environment_values_save,
+            commands::environments::environment_value_delete,
+            commands::environments::environment_command_run,
             // search
             commands::search::gh_review_requested,
             commands::search::gh_created,

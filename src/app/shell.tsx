@@ -128,6 +128,7 @@ const SCREEN_TITLES: Record<string, string> = {
   "/spec-lens": "Spec Lens",
   "/merge-lab": "Merge Lab",
   "/history": "History",
+  "/environments": "Environments",
   "/local": "Local repositories",
   "/settings": "Settings",
 };
@@ -199,6 +200,7 @@ const TRAY_ROUTES: Record<string, string> = {
   "/dependabot": "/health",
   "/repos": APP_STORE ? "/inbox" : "/local",
   "/history": "/history",
+  "/environments": "/environments",
   "/settings": "/settings",
 };
 
@@ -338,6 +340,7 @@ function useGlobalKeys() {
       x: "/merge-lab",
       l: "/local",
       y: "/history",
+      e: "/environments",
       s: "/settings",
     };
     if (APP_STORE) for (const k of ["t", "v", "l"]) delete GO[k];

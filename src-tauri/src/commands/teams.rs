@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::creds;
 use crate::error::{AppError, AppResult};
@@ -164,6 +165,59 @@ pub struct TeamIntegrations {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TeamRepositories {
     pub repositories: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamEnvironmentVariable {
+    pub id: String,
+    pub key: String,
+    pub secret: bool,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamEnvironmentCommand {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub working_directory: String,
+    pub timeout_seconds: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamEnvironment {
+    pub id: String,
+    pub name: String,
+    pub repository: Option<String>,
+    pub variables: Vec<TeamEnvironmentVariable>,
+    pub commands: Vec<TeamEnvironmentCommand>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamEnvironments {
+    pub environments: Vec<TeamEnvironment>,
+    pub can_edit: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CreatedEnvironment {
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolvedVariable {
+    key: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolvedEnvironment {
+    variables: Vec<ResolvedVariable>,
+    commands: Vec<TeamEnvironmentCommand>,
 }
 
 fn base_url() -> String {
@@ -524,4 +578,99 @@ pub async fn teams_billing_portal(organization_id: String) -> AppResult<TeamsBil
             .json()
             .await?,
     )
+}
+
+#[tauri::command]
+pub async fn teams_environments(organization_id: String) -> AppResult<TeamEnvironments> {
+    Ok(
+        teams_api_request(&organization_id, "environments", reqwest::Method::GET, None)
+            .await?
+            .json()
+            .await?,
+    )
+}
+
+#[tauri::command]
+pub async fn teams_environment_create(
+    organization_id: String,
+    environment: serde_json::Value,
+) -> AppResult<CreatedEnvironment> {
+    Ok(teams_api_request(
+        &organization_id,
+        "environments",
+        reqwest::Method::POST,
+        Some(environment),
+    )
+    .await?
+    .json()
+    .await?)
+}
+
+#[tauri::command]
+pub async fn teams_environment_update(
+    organization_id: String,
+    environment_id: String,
+    environment: serde_json::Value,
+) -> AppResult<()> {
+    teams_api_request(
+        &organization_id,
+        &format!("environments/{}", urlencoding::encode(&environment_id)),
+        reqwest::Method::PUT,
+        Some(environment),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn teams_environment_delete(
+    organization_id: String,
+    environment_id: String,
+) -> AppResult<()> {
+    teams_api_request(
+        &organization_id,
+        &format!("environments/{}", urlencoding::encode(&environment_id)),
+        reqwest::Method::DELETE,
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn teams_environment_command_run(
+    organization_id: String,
+    environment_id: String,
+    command_id: String,
+    cwd: String,
+) -> AppResult<crate::commands::environments::CommandRunResult> {
+    let resolved = teams_api_request(
+        &organization_id,
+        &format!(
+            "environments/{}/resolve",
+            urlencoding::encode(&environment_id)
+        ),
+        reqwest::Method::POST,
+        None,
+    )
+    .await?
+    .json::<ResolvedEnvironment>()
+    .await?;
+    let command = resolved
+        .commands
+        .into_iter()
+        .find(|command| command.id == command_id)
+        .ok_or_else(|| AppError::Other("Shared command no longer exists".into()))?;
+    let variables = resolved
+        .variables
+        .into_iter()
+        .map(|variable| (variable.key, variable.value))
+        .collect::<HashMap<_, _>>();
+    crate::commands::environments::run_command(
+        &cwd,
+        &command.command,
+        variables,
+        command.timeout_seconds,
+    )
+    .await
 }

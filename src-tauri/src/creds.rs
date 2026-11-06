@@ -44,6 +44,30 @@ fn teams_entry() -> AppResult<Entry> {
     Entry::new(SERVICE, TEAMS_ACCOUNT).map_err(AppError::from)
 }
 
+fn environment_entry(environment_id: &str, key: &str) -> AppResult<Entry> {
+    Entry::new(SERVICE, &format!("environment:{environment_id}:{key}")).map_err(AppError::from)
+}
+
+pub fn save_environment_value(environment_id: &str, key: &str, value: &str) -> AppResult<()> {
+    environment_entry(environment_id, key)?.set_password(value)?;
+    Ok(())
+}
+
+pub fn load_environment_value(environment_id: &str, key: &str) -> AppResult<Option<String>> {
+    match environment_entry(environment_id, key)?.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub fn delete_environment_value(environment_id: &str, key: &str) -> AppResult<()> {
+    match environment_entry(environment_id, key)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub fn save_teams_token(token: &str) -> AppResult<()> {
     teams_entry()?.set_password(token)?;
     Ok(())

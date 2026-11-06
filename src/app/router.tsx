@@ -76,6 +76,11 @@ const history = createRoute({
   path: "/history",
   component: lazyRouteComponent(() => import("@/screens/history"), "HistoryScreen"),
 });
+const environments = createRoute({
+  getParentRoute: () => root,
+  path: "/environments",
+  component: lazyRouteComponent(() => import("@/screens/environments"), "EnvironmentsScreen"),
+});
 const local = createRoute({
   getParentRoute: () => root,
   path: "/local",
@@ -140,6 +145,7 @@ const routeTree = root.addChildren([
   specLens,
   mergeLab,
   history,
+  environments,
   local,
   localRepo,
   settings,
@@ -179,7 +185,7 @@ declare module "@tanstack/react-router" {
 
 export type ListView = "inbox" | "prs" | "mentions" | "health" | "local";
 export const VIEW_PATHS: Record<
-  ListView | "home" | "history" | "settings" | "team" | "fastLane",
+  ListView | "home" | "history" | "environments" | "settings" | "team" | "fastLane",
   string
 > = {
   home: "/",
@@ -191,5 +197,6 @@ export const VIEW_PATHS: Record<
   health: "/health",
   local: "/local",
   history: "/history",
+  environments: "/environments",
   settings: "/settings",
 };

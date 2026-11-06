@@ -73,6 +73,28 @@ export class Teams extends Context.Service<
       organizationId: string,
       provider: "gitlab" | "slack",
     ) => Effect.Effect<S.TeamsBillingUrl, import("../errors").AppError>;
+    readonly environments: (
+      organizationId: string,
+    ) => Effect.Effect<S.TeamEnvironments, import("../errors").AppError>;
+    readonly createEnvironment: (
+      organizationId: string,
+      environment: unknown,
+    ) => Effect.Effect<string, import("../errors").AppError>;
+    readonly updateEnvironment: (
+      organizationId: string,
+      environmentId: string,
+      environment: unknown,
+    ) => Effect.Effect<void, import("../errors").AppError>;
+    readonly deleteEnvironment: (
+      organizationId: string,
+      environmentId: string,
+    ) => Effect.Effect<void, import("../errors").AppError>;
+    readonly runEnvironmentCommand: (
+      organizationId: string,
+      environmentId: string,
+      commandId: string,
+      cwd: string,
+    ) => Effect.Effect<S.CommandRunResult, import("../errors").AppError>;
     readonly signOut: Effect.Effect<void, import("../errors").AppError>;
   }
 >()("reviewly/Teams") {}
@@ -127,6 +149,39 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_integrations", { organizationId }, S.TeamIntegrations);
     const integrationStart = (organizationId: string, provider: "gitlab" | "slack") =>
       tauri.invoke("teams_integration_start", { organizationId, provider }, S.TeamsBillingUrl);
+    const environments = (organizationId: string) =>
+      tauri.invoke("teams_environments", { organizationId }, S.TeamEnvironments);
+    const createEnvironment = (organizationId: string, environment: unknown) =>
+      tauri
+        .invoke(
+          "teams_environment_create",
+          { organizationId, environment },
+          Schema.Struct({ id: Schema.String }),
+        )
+        .pipe(Effect.map((created) => created.id));
+    const updateEnvironment = (
+      organizationId: string,
+      environmentId: string,
+      environment: unknown,
+    ) =>
+      tauri
+        .invoke("teams_environment_update", { organizationId, environmentId, environment }, S.Unit)
+        .pipe(Effect.asVoid);
+    const deleteEnvironment = (organizationId: string, environmentId: string) =>
+      tauri
+        .invoke("teams_environment_delete", { organizationId, environmentId }, S.Unit)
+        .pipe(Effect.asVoid);
+    const runEnvironmentCommand = (
+      organizationId: string,
+      environmentId: string,
+      commandId: string,
+      cwd: string,
+    ) =>
+      tauri.invoke(
+        "teams_environment_command_run",
+        { organizationId, environmentId, commandId, cwd },
+        S.CommandRunResult,
+      );
     const signOut = tauri
       .invoke("teams_sign_out", {}, S.Unit)
       .pipe(
@@ -150,6 +205,11 @@ export const TeamsLive = Layer.effect(
       billingPortal,
       integrations,
       integrationStart,
+      environments,
+      createEnvironment,
+      updateEnvironment,
+      deleteEnvironment,
+      runEnvironmentCommand,
       signOut,
     };
   }),

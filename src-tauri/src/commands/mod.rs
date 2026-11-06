@@ -4,6 +4,7 @@ pub mod app;
 pub mod attachments;
 pub mod auth;
 pub mod comments;
+pub mod environments;
 pub mod git;
 pub mod monorepo;
 pub mod notifications;
