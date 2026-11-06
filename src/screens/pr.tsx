@@ -854,6 +854,7 @@ export function PrScreen() {
     [ref, pr.refresh],
   );
   const closePull = useCallback(async () => {
+    if (!window.confirm(`Close ${ref.owner}/${ref.repo}#${ref.number}?`)) return;
     try {
       await run(Effect.flatMap(GitHub, (g) => g.setState(ref, false)));
       qc.setQueryData(pullKey(ref, "detail"), (current: typeof pull) =>
@@ -1541,8 +1542,7 @@ export function PrScreen() {
               className="h-6 gap-1.5 rounded-md bg-raise px-2 text-[11.5px] text-ink-2 hover:text-ink"
               title={`Active review skills: ${activeReviewSkills.map(({ name }) => name).join(", ")}`}
               onClick={() => {
-                settingsCategoryStore.set("assistant");
-                void navigate({ to: "/settings" });
+                void navigate({ to: "/environments" });
               }}
             >
               <BookOpenCheck className="size-3.5" aria-hidden />

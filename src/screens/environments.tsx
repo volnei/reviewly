@@ -49,6 +49,7 @@ import {
   type PersonalEnvironment,
   type PersonalEnvironmentCommand,
   type PersonalEnvironmentVariable,
+  personalSecretKeysToDelete,
   savePersonalEnvironment,
   setTeamEnvironmentDirectory,
   usePersonalEnvironments,
@@ -353,8 +354,10 @@ export function EnvironmentsScreen() {
       if (scope === "personal") {
         const previous = personal.find((environment) => environment.id === draft.id);
         const previousSecrets = previous?.variables.filter((variable) => variable.secret) ?? [];
-        const currentKeys = new Set(draft.variables.map((variable) => variable.key));
-        const removedSecrets = previousSecrets.filter((variable) => !currentKeys.has(variable.key));
+        const removedSecretKeys = personalSecretKeysToDelete(
+          previous?.variables ?? [],
+          draft.variables,
+        );
         const newSecretsWithoutValues = draft.variables.filter(
           (variable) =>
             variable.secret &&
@@ -378,14 +381,10 @@ export function EnvironmentsScreen() {
             ),
           );
         }
-        for (const variable of removedSecrets) {
+        for (const key of removedSecretKeys) {
           await run(
             Effect.flatMap(Tauri, (tauri) =>
-              tauri.invoke(
-                "environment_value_delete",
-                { environmentId: draft.id, key: variable.key },
-                S.Unit,
-              ),
+              tauri.invoke("environment_value_delete", { environmentId: draft.id, key }, S.Unit),
             ),
           );
         }
@@ -444,14 +443,15 @@ export function EnvironmentsScreen() {
     if (!window.confirm(`Delete ${draft.name}? This cannot be undone.`)) return;
     try {
       if (scope === "personal") {
-        for (const variable of draft.variables.filter((item) => item.secret)) {
+        const persisted = personal.find((environment) => environment.id === draft.id);
+        const secretKeys = new Set([
+          ...(persisted?.variables.filter((item) => item.secret).map((item) => item.key) ?? []),
+          ...draft.variables.filter((item) => item.secret).map((item) => item.key),
+        ]);
+        for (const key of secretKeys) {
           await run(
             Effect.flatMap(Tauri, (tauri) =>
-              tauri.invoke(
-                "environment_value_delete",
-                { environmentId: draft.id, key: variable.key },
-                S.Unit,
-              ),
+              tauri.invoke("environment_value_delete", { environmentId: draft.id, key }, S.Unit),
             ),
           );
         }
@@ -470,6 +470,12 @@ export function EnvironmentsScreen() {
 
   const execute = async (command: DraftCommand) => {
     if (!draft.localDirectory.trim()) return toast.fail("Choose a local directory first");
+    if (
+      scope !== "personal" &&
+      !window.confirm(`Run the shared command “${command.name}” on this Mac?\n\n${command.command}`)
+    ) {
+      return;
+    }
     setRunning(command.id);
     setResult(null);
     try {
@@ -482,6 +488,7 @@ export function EnvironmentsScreen() {
                   environmentId: draft.id,
                   cwd: draft.localDirectory,
                   command: command.command,
+                  workingDirectory: command.workingDirectory,
                   values: draft.variables.map((variable) => ({
                     key: variable.key,
                     value: variable.value,
@@ -493,7 +500,7 @@ export function EnvironmentsScreen() {
               ),
             )
           : Effect.flatMap(Teams, (service) =>
-              service.runEnvironmentCommand(scope, draft.id, command.id, draft.localDirectory),
+              service.runEnvironmentCommand(scope, draft.id, command, draft.localDirectory),
             ),
       );
       setResult(answer);

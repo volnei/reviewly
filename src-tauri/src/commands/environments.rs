@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,40 @@ pub struct EnvironmentFileVariable {
 pub struct EnvironmentFileValues {
     pub variables: Vec<EnvironmentFileVariable>,
     pub sources: Vec<String>,
+}
+
+pub(crate) fn command_directory(base: &str, working_directory: &str) -> AppResult<PathBuf> {
+    let base = Path::new(base);
+    if working_directory.trim().is_empty() {
+        return Ok(base.to_path_buf());
+    }
+    let relative = Path::new(working_directory);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(AppError::Other(
+            "Command working directory must stay inside the selected repository".into(),
+        ));
+    }
+    Ok(base.join(relative))
+}
+
+fn trim_output(bytes: Vec<u8>) -> String {
+    const MAX_OUTPUT: usize = 200_000;
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    if text.len() <= MAX_OUTPUT {
+        return text;
+    }
+    let mut boundary = MAX_OUTPUT;
+    while !text.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}\n… output truncated", &text[..boundary])
 }
 
 fn valid_key(key: &str) -> bool {
@@ -166,20 +200,11 @@ pub async fn run_command(
     .await
     .map_err(|_| AppError::Other("Command timed out".into()))??;
 
-    const MAX_OUTPUT: usize = 200_000;
-    let trim = |bytes: Vec<u8>| {
-        let text = String::from_utf8_lossy(&bytes).to_string();
-        if text.len() <= MAX_OUTPUT {
-            text
-        } else {
-            format!("{}\n… output truncated", &text[..MAX_OUTPUT])
-        }
-    };
     Ok(CommandRunResult {
         success: output.status.success(),
         exit_code: output.status.code(),
-        stdout: trim(output.stdout),
-        stderr: trim(output.stderr),
+        stdout: trim_output(output.stdout),
+        stderr: trim_output(output.stderr),
         duration_ms: started.elapsed().as_millis() as u64,
     })
 }
@@ -189,6 +214,7 @@ pub async fn environment_command_run(
     environment_id: String,
     cwd: String,
     command: String,
+    working_directory: String,
     values: Vec<EnvironmentValue>,
     timeout_seconds: u64,
 ) -> AppResult<CommandRunResult> {
@@ -210,12 +236,15 @@ pub async fn environment_command_run(
         };
         variables.insert(value.key, resolved);
     }
-    run_command(&cwd, &command, variables, timeout_seconds).await
+    let cwd = command_directory(&cwd, &working_directory)?;
+    run_command(&cwd.to_string_lossy(), &command, variables, timeout_seconds).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{read_environment_files, valid_key};
+    use std::path::Path;
+
+    use super::{command_directory, read_environment_files, trim_output, valid_key};
 
     #[test]
     fn accepts_portable_environment_keys() {
@@ -224,6 +253,26 @@ mod tests {
         assert!(!valid_key("2FA_TOKEN"));
         assert!(!valid_key("BAD-KEY"));
         assert!(!valid_key(""));
+    }
+
+    #[test]
+    fn truncates_output_on_a_utf8_boundary() {
+        let mut output = vec![b'a'; 199_999];
+        output.extend_from_slice("🚀".as_bytes());
+        output.extend_from_slice(b"tail");
+        let trimmed = trim_output(output);
+        assert!(trimmed.ends_with("… output truncated"));
+        assert!(!trimmed.contains('🚀'));
+    }
+
+    #[test]
+    fn keeps_command_directories_inside_the_repository() {
+        assert_eq!(
+            command_directory("/tmp/reviewly", "services/api").unwrap(),
+            Path::new("/tmp/reviewly/services/api")
+        );
+        assert!(command_directory("/tmp/reviewly", "../secrets").is_err());
+        assert!(command_directory("/tmp/reviewly", "/tmp").is_err());
     }
 
     #[test]

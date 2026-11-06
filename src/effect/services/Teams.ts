@@ -92,7 +92,7 @@ export class Teams extends Context.Service<
     readonly runEnvironmentCommand: (
       organizationId: string,
       environmentId: string,
-      commandId: string,
+      command: S.EnvironmentCommand,
       cwd: string,
     ) => Effect.Effect<S.CommandRunResult, import("../errors").AppError>;
     readonly signOut: Effect.Effect<void, import("../errors").AppError>;
@@ -174,12 +174,20 @@ export const TeamsLive = Layer.effect(
     const runEnvironmentCommand = (
       organizationId: string,
       environmentId: string,
-      commandId: string,
+      command: S.EnvironmentCommand,
       cwd: string,
     ) =>
       tauri.invoke(
         "teams_environment_command_run",
-        { organizationId, environmentId, commandId, cwd },
+        {
+          organizationId,
+          environmentId,
+          commandId: command.id,
+          expectedCommand: command.command,
+          expectedWorkingDirectory: command.workingDirectory,
+          expectedTimeoutSeconds: command.timeoutSeconds,
+          cwd,
+        },
         S.CommandRunResult,
       );
     const signOut = tauri

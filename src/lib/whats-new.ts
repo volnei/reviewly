@@ -17,6 +17,141 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.1.3",
+    date: "2026-11-06",
+    items: [
+      {
+        title: "Environments, from local to shared",
+        detail:
+          "Keep variables and reusable commands per project, preload values from .env.example, .env, or .env.local, and share encrypted environments with your team.",
+      },
+      {
+        title: "Review skills that follow the code",
+        detail:
+          "Give each project focused review playbooks for security, migrations, API compatibility, accessibility, or your own standards; Reviewly selects them from the repository and changed paths.",
+      },
+      {
+        title: "More than one team",
+        detail:
+          "Connect multiple Teams workspaces and switch the Review queue, Fast lane, integrations, and shared environments without reconnecting your account.",
+      },
+      {
+        title: "Close a pull request from the conversation",
+        detail:
+          "Close an open pull request beside the main comment composer, with confirmation and a quick Reopen action.",
+      },
+      {
+        title: "Safer shared commands",
+        detail:
+          "Reviewly confirms team commands before running, detects changes made after you loaded them, keeps working directories inside the selected repository, and handles large Unicode output safely.",
+      },
+      {
+        title: "Teams stays truthful",
+        detail:
+          "Closed pull requests leave the shared queue reliably, transient refresh failures no longer erase a valid connection, and paid themes disappear after a downgrade.",
+      },
+    ],
+  },
+  {
+    version: "1.1.2",
+    date: "2026-11-03",
+    items: [
+      {
+        title: "Teams access tightened",
+        detail:
+          "Fast lane, integrations, organization pages, repository access, and complimentary plans now share the same server-backed access rules.",
+      },
+      {
+        title: "Repository-aware Fast lane",
+        detail:
+          "Fast lane only appears for repositories connected to the selected Teams workspace and explains when the current project is not available there.",
+      },
+      {
+        title: "A steadier desktop",
+        detail:
+          "The navigation rail scrolls correctly, duplicate window branding is gone, and release dependencies were aligned and hardened.",
+      },
+    ],
+  },
+  {
+    version: "1.1.1",
+    date: "2026-11-02",
+    items: [
+      {
+        title: "Teams connection repaired",
+        detail:
+          "Organization responses decode correctly again, so a completed browser connection reaches the desktop without getting stuck on Set up your team.",
+      },
+      {
+        title: "Clearer setup and native chrome",
+        detail:
+          "The Teams callout now explains the handoff before opening the browser, and macOS traffic lights align with the title bar.",
+      },
+    ],
+  },
+  {
+    version: "1.1.0",
+    date: "2026-11-02",
+    items: [
+      {
+        title: "Reviewly Teams",
+        detail:
+          "A shared review queue adds visible ownership, next actions, priority, and SLA across the team, with per-seat billing and complimentary access support.",
+      },
+      {
+        title: "Fast lane",
+        detail:
+          "Teams can define which safe changes move out of the review queue using authors, bots, CI, size, labels, paths, drafts, conflicts, threads, and changes requested.",
+      },
+      {
+        title: "GitLab and Slack",
+        detail:
+          "Bring GitLab merge requests into the team workflow and connect Slack for assignments, reminders, and review activity.",
+      },
+      {
+        title: "Obsidian",
+        detail:
+          "Teams members get a dedicated dark workspace atmosphere across the app and Home artwork.",
+      },
+      {
+        title: "Safer AI CLIs",
+        detail:
+          "Antigravity and Gemini reviews run with read-only sandbox permissions, and Antigravity joins the available local AI providers.",
+      },
+    ],
+  },
+  {
+    version: "1.0.4",
+    date: "2026-10-27",
+    items: [
+      {
+        title: "Production launch fixed",
+        detail: "The signed macOS build now opens reliably outside the development environment.",
+      },
+    ],
+  },
+  {
+    version: "1.0.3",
+    date: "2026-10-27",
+    items: [
+      {
+        title: "Stable macOS window startup",
+        detail:
+          "Removed startup vibrancy that could leave the production window blank or unstable.",
+      },
+    ],
+  },
+  {
+    version: "1.0.2",
+    date: "2026-10-27",
+    items: [
+      {
+        title: "Tray starts when it is needed",
+        detail: "The macOS tray webview is created lazily to keep application startup reliable.",
+      },
+    ],
+  },
+  {
     version: "1.0.1",
     date: "2026-10-27",
     items: [

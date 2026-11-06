@@ -62,6 +62,18 @@ export const useTeamEnvironmentDirectory = (environmentId: string | null) =>
     (state) => (environmentId ? state.teamDirectories[environmentId] : undefined) ?? "",
   );
 
+export function personalSecretKeysToDelete(
+  previous: ReadonlyArray<Pick<PersonalEnvironmentVariable, "key" | "secret">>,
+  current: ReadonlyArray<Pick<PersonalEnvironmentVariable, "key" | "secret">>,
+): ReadonlyArray<string> {
+  const currentSecrets = new Set(
+    current.filter((variable) => variable.secret).map((variable) => variable.key),
+  );
+  return previous
+    .filter((variable) => variable.secret && !currentSecrets.has(variable.key))
+    .map((variable) => variable.key);
+}
+
 export function savePersonalEnvironment(environment: PersonalEnvironment) {
   environmentsStore.update((state) => ({
     ...state,
