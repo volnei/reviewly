@@ -37,20 +37,51 @@ export const REVIEW_SKILL_TEMPLATES: ReadonlyArray<ReviewSkillTemplate> = [
 const normalizedLines = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
   values.map((value) => value.trim()).filter(Boolean);
 
+export function reviewSkillRepositoryMatches(skill: ReviewSkill, repository: string): boolean {
+  const repositories = normalizedLines(skill.repositories);
+  return (
+    repositories.length === 0 ||
+    repositories.some((pattern) =>
+      matchesFastLanePath(repository.toLowerCase(), pattern.toLowerCase()),
+    )
+  );
+}
+
+export function scopeReviewSkillsToRepositories(
+  skills: ReadonlyArray<ReviewSkill>,
+  repositories: ReadonlyArray<string>,
+): ReviewSkill[] {
+  const available = [
+    ...new Set(repositories.map((repository) => repository.trim()).filter(Boolean)),
+  ];
+  if (!available.length) return [...skills];
+
+  return skills.flatMap((skill) => {
+    const configured = normalizedLines(skill.repositories);
+    const isExactProject =
+      configured.length === 1 &&
+      available.some((repository) => repository.toLowerCase() === configured[0].toLowerCase());
+    if (isExactProject) return [skill];
+
+    const matches = available.filter((repository) =>
+      reviewSkillRepositoryMatches(skill, repository),
+    );
+    if (!matches.length) return [skill];
+    return matches.map((repository, index) => ({
+      ...skill,
+      id: index === 0 ? skill.id : `${skill.id}:${repository}`,
+      repositories: [repository],
+    }));
+  });
+}
+
 export function reviewSkillMatches(
   skill: ReviewSkill,
   repository: string,
   changedPaths: ReadonlyArray<string>,
 ): boolean {
   if (!skill.enabled || !skill.name.trim() || !skill.instructions.trim()) return false;
-  const repositories = normalizedLines(skill.repositories);
-  if (
-    repositories.length > 0 &&
-    !repositories.some((pattern) =>
-      matchesFastLanePath(repository.toLowerCase(), pattern.toLowerCase()),
-    )
-  )
-    return false;
+  if (!reviewSkillRepositoryMatches(skill, repository)) return false;
   const paths = normalizedLines(skill.paths);
   return (
     paths.length === 0 ||

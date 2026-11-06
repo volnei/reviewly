@@ -4,6 +4,7 @@ import type { ReviewSkill } from "../src/effect/services/Prefs";
 import {
   reviewInstructions,
   reviewSkillMatches,
+  scopeReviewSkillsToRepositories,
   selectReviewSkills,
 } from "../src/lib/review-skills";
 
@@ -60,5 +61,32 @@ describe("Review skills", () => {
     expect(prompt).toContain("Keep reviews concise.");
     expect(prompt).toContain("## Review skill: Security");
     expect(prompt).toContain("Check tenant boundaries.");
+  });
+
+  test("expands a global skill into exact local project scopes", () => {
+    const scoped = scopeReviewSkillsToRepositories([skill()], ["volnei/reviewly", "acme/api"]);
+    expect(scoped.map(({ repositories }) => repositories)).toEqual([
+      ["volnei/reviewly"],
+      ["acme/api"],
+    ]);
+    expect(new Set(scoped.map(({ id }) => id)).size).toBe(2);
+  });
+
+  test("expands wildcard skills only into matching local projects", () => {
+    const scoped = scopeReviewSkillsToRepositories(
+      [skill({ repositories: ["volnei/*"] })],
+      ["volnei/reviewly", "acme/api"],
+    );
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].repositories).toEqual(["volnei/reviewly"]);
+  });
+
+  test("keeps exact project scopes and unmatched legacy rules intact", () => {
+    const exact = skill({ repositories: ["volnei/reviewly"] });
+    const unmatched = skill({ id: "other", repositories: ["other/*"] });
+    expect(scopeReviewSkillsToRepositories([exact, unmatched], ["volnei/reviewly"])).toEqual([
+      exact,
+      unmatched,
+    ]);
   });
 });

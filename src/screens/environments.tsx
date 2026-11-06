@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
 import {
+  BookOpenCheck,
   Braces,
   Check,
   ChevronRight,
@@ -37,7 +38,7 @@ import { run, useEffectQuery } from "@/effect/runtime";
 import * as S from "@/effect/schema";
 import type { CommandRunResult, TeamEnvironment } from "@/effect/schema";
 import { Git } from "@/effect/services/Git";
-import { usePrefs } from "@/effect/services/Prefs";
+import { prefsStore, type ReviewSkill, usePrefs } from "@/effect/services/Prefs";
 import { Teams } from "@/effect/services/Teams";
 import { Tauri } from "@/effect/Tauri";
 import {
@@ -50,11 +51,13 @@ import {
   setTeamEnvironmentDirectory,
   usePersonalEnvironments,
 } from "@/features/environments/store";
+import { ReviewSkillsEditor } from "@/features/review-skills-settings";
 import { APP_STORE } from "@/lib/edition";
+import { scopeReviewSkillsToRepositories } from "@/lib/review-skills";
 import { cn } from "@/lib/utils";
 
 type Scope = "personal" | string;
-type Tab = "variables" | "commands";
+type Tab = "variables" | "commands" | "skills";
 type DraftVariable = PersonalEnvironmentVariable & {
   readonly persistedId?: string;
   readonly importedFrom?: string;
@@ -113,6 +116,7 @@ export function EnvironmentsScreen() {
   const teamsWorkspace = useTeamsWorkspace();
   const repository = useWorkspace();
   const localPaths = usePrefs((prefs) => prefs.localRepos);
+  const reviewSkills = usePrefs((prefs) => prefs.reviewSkills);
   const localRepositories = useEffectQuery(
     ["environment-local-repositories", localPaths],
     Effect.forEach(
@@ -166,6 +170,49 @@ export function EnvironmentsScreen() {
   const [result, setResult] = useState<CommandRunResult | null>(null);
   const [environmentImport, setEnvironmentImport] = useState<EnvironmentImport | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const repositories = (localRepositories.data ?? []).flatMap((item) =>
+      item.repository ? [item.repository] : [],
+    );
+    if (!repositories.length) return;
+    const scoped = scopeReviewSkillsToRepositories(reviewSkills, repositories);
+    if (JSON.stringify(scoped) === JSON.stringify(reviewSkills)) return;
+    prefsStore.update((prefs) => ({ ...prefs, reviewSkills: scoped }));
+  }, [localRepositories.data, reviewSkills]);
+
+  useEffect(() => {
+    if (tab === "skills" && !draft.repository) setTab("variables");
+  }, [draft.repository, tab]);
+
+  const projectReviewSkills = useMemo(
+    () =>
+      draft.repository
+        ? reviewSkills.filter(
+            (skill) =>
+              skill.repositories.length === 1 &&
+              skill.repositories[0].toLowerCase() === draft.repository?.toLowerCase(),
+          )
+        : [],
+    [draft.repository, reviewSkills],
+  );
+  const setProjectReviewSkills = (skills: ReviewSkill[]) => {
+    if (!draft.repository) return;
+    const repository = draft.repository;
+    prefsStore.update((prefs) => ({
+      ...prefs,
+      reviewSkills: [
+        ...prefs.reviewSkills.filter(
+          (skill) =>
+            !(
+              skill.repositories.length === 1 &&
+              skill.repositories[0].toLowerCase() === repository.toLowerCase()
+            ),
+        ),
+        ...skills.map((skill) => ({ ...skill, repositories: [repository] })),
+      ],
+    }));
+  };
 
   useEffect(() => {
     if (!creating || draft.localDirectory || !draft.repository) return;
@@ -622,6 +669,9 @@ export function EnvironmentsScreen() {
                 <TabsTab value="commands">
                   <TerminalSquare className="size-3.5" /> Commands
                 </TabsTab>
+                <TabsTab value="skills" disabled={!draft.repository}>
+                  <BookOpenCheck className="size-3.5" /> Review skills
+                </TabsTab>
               </TabsList>
             </Tabs>
 
@@ -632,7 +682,7 @@ export function EnvironmentsScreen() {
                 canEdit={canEdit}
                 environmentImport={environmentImport}
               />
-            ) : (
+            ) : tab === "commands" ? (
               <CommandsEditor
                 draft={draft}
                 setDraft={setDraft}
@@ -640,7 +690,25 @@ export function EnvironmentsScreen() {
                 running={running}
                 onRun={execute}
               />
-            )}
+            ) : draft.repository ? (
+              <div className="overflow-hidden rounded-2xl border border-hair">
+                <div className="border-b border-hair px-4 py-3">
+                  <p className="text-[13px] font-medium">Project review skills</p>
+                  <p className="mt-0.5 text-[11px] text-ink-3">
+                    Applied automatically to reviews in {draft.repository}. Changes save
+                    immediately.
+                  </p>
+                </div>
+                <div className="p-4">
+                  <ReviewSkillsEditor
+                    skills={projectReviewSkills}
+                    onChange={setProjectReviewSkills}
+                    repository={draft.repository}
+                    disabled={!canEdit}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {APP_STORE && tab === "commands" ? (
               <p className="rounded-xl border border-hair bg-raise/35 px-4 py-3 text-[12px] text-ink-2">

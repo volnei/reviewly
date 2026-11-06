@@ -21,9 +21,13 @@ const cleanLines = (value: ReadonlyArray<string>): string[] => [
 export function ReviewSkillsEditor({
   skills,
   onChange,
+  repository,
+  disabled = false,
 }: {
   skills: ReadonlyArray<ReviewSkill>;
   onChange: (skills: ReviewSkill[]) => void;
+  repository: string;
+  disabled?: boolean;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const update = (skillId: string, patch: Partial<ReviewSkill>) =>
@@ -33,7 +37,7 @@ export function ReviewSkillsEditor({
       id: id(),
       name: template?.name ?? "Custom review",
       enabled: true,
-      repositories: [...(template?.repositories ?? [])],
+      repositories: [repository],
       paths: [...(template?.paths ?? [])],
       instructions: template?.instructions ?? "",
     };
@@ -50,13 +54,13 @@ export function ReviewSkillsEditor({
             variant="outline"
             size="sm"
             onClick={() => add(template)}
-            disabled={skills.some((skill) => skill.name === template.name)}
+            disabled={disabled || skills.some((skill) => skill.name === template.name)}
           >
             <Plus aria-hidden />
             {template.name}
           </Button>
         ))}
-        <Button variant="ghost" size="sm" onClick={() => add()}>
+        <Button variant="ghost" size="sm" onClick={() => add()} disabled={disabled}>
           <Plus aria-hidden />
           Custom skill
         </Button>
@@ -66,12 +70,9 @@ export function ReviewSkillsEditor({
         <div className="grid gap-2">
           {skills.map((skill) => {
             const open = editing === skill.id;
-            const repositories = cleanLines(skill.repositories);
             const paths = cleanLines(skill.paths);
             const scope = [
-              repositories.length
-                ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}`
-                : "Every repository",
+              repository,
               paths.length
                 ? `${paths.length} path ${paths.length === 1 ? "rule" : "rules"}`
                 : "every changed path",
@@ -89,6 +90,7 @@ export function ReviewSkillsEditor({
                   <Switch
                     checked={skill.enabled}
                     onCheckedChange={(enabled) => update(skill.id, { enabled })}
+                    disabled={disabled}
                     aria-label={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
                   />
                   <Button
@@ -112,27 +114,10 @@ export function ReviewSkillsEditor({
                         value={skill.name}
                         onChange={(event) => update(skill.id, { name: event.target.value })}
                         placeholder="Security review"
+                        disabled={disabled}
                       />
                     </label>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <label className="grid gap-1.5 text-[11.5px] font-medium text-ink">
-                        Repositories
-                        <span className="font-normal text-ink-3">
-                          One glob per line. Empty applies everywhere.
-                        </span>
-                        <Textarea
-                          rows={3}
-                          value={skill.repositories.join("\n")}
-                          onChange={(event) =>
-                            update(skill.id, {
-                              repositories: draftLines(event.target.value),
-                            })
-                          }
-                          onBlur={() => update(skill.id, { repositories })}
-                          placeholder={"volnei/reviewly\nwork/*"}
-                          className="[&_textarea]:font-mono [&_textarea]:text-[11.5px]"
-                        />
-                      </label>
+                    <div className="grid gap-4">
                       <label className="grid gap-1.5 text-[11.5px] font-medium text-ink">
                         Changed paths
                         <span className="font-normal text-ink-3">
@@ -149,6 +134,7 @@ export function ReviewSkillsEditor({
                           onBlur={() => update(skill.id, { paths })}
                           placeholder={"src/auth/**\n**/permissions/**"}
                           className="[&_textarea]:font-mono [&_textarea]:text-[11.5px]"
+                          disabled={disabled}
                         />
                       </label>
                     </div>
@@ -162,6 +148,7 @@ export function ReviewSkillsEditor({
                         value={skill.instructions}
                         onChange={(event) => update(skill.id, { instructions: event.target.value })}
                         placeholder="What should the reviewer verify?"
+                        disabled={disabled}
                       />
                     </label>
                     <div className="flex justify-end">
@@ -169,6 +156,7 @@ export function ReviewSkillsEditor({
                         variant="ghost"
                         size="sm"
                         className="text-del"
+                        disabled={disabled}
                         onClick={() => {
                           onChange(skills.filter(({ id: skillId }) => skillId !== skill.id));
                           setEditing(null);
@@ -186,7 +174,7 @@ export function ReviewSkillsEditor({
         </div>
       ) : (
         <p className="rounded-lg border border-dashed border-edge px-3 py-4 text-[11.5px] text-ink-3">
-          No review skills yet. Add a focused playbook or create a repository-wide default.
+          No review skills for this project yet. Add a focused playbook or a project-wide default.
         </p>
       )}
     </div>

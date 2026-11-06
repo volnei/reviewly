@@ -66,7 +66,6 @@ import { Teams, useTeams } from "@/effect/services/Teams";
 import { isNative } from "@/effect/Tauri";
 import { StackHopperArcade } from "@/features/arcade/stack-hopper";
 import { FastLaneSettings } from "@/features/fast-lane-settings";
-import { ReviewSkillsEditor } from "@/features/review-skills-settings";
 import { isDemo, setDemo } from "@/lib/demo";
 import { APP_STORE } from "@/lib/edition";
 import { safeOpenUrl } from "@/lib/ui";
@@ -616,18 +615,6 @@ export function SettingsScreen() {
                   </span>
                 </div>
               </CossField>
-              <div className="grid gap-4">
-                <div>
-                  <p className="text-[12px] font-medium text-ink-2">Review skills</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
-                    Focused playbooks selected automatically from the repository and changed files.
-                  </p>
-                </div>
-                <ReviewSkillsEditor
-                  skills={prefs.reviewSkills}
-                  onChange={(reviewSkills) => set("reviewSkills", reviewSkills)}
-                />
-              </div>
             </Section>
             <p className="settings-autosave">
               <Check size={12} />
