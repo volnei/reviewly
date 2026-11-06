@@ -36,6 +36,8 @@ import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { run, useEffectQuery } from "@/effect/runtime";
 import * as S from "@/effect/schema";
 import type { CommandRunResult, TeamEnvironment } from "@/effect/schema";
+import { Git } from "@/effect/services/Git";
+import { usePrefs } from "@/effect/services/Prefs";
 import { Teams } from "@/effect/services/Teams";
 import { Tauri } from "@/effect/Tauri";
 import {
@@ -65,6 +67,11 @@ type Draft = {
 };
 
 const id = () => crypto.randomUUID();
+const slugOf = (remote: string | null | undefined) =>
+  remote
+    ?.match(/[/:]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/)
+    ?.slice(1, 3)
+    .join("/") ?? null;
 
 const blank = (repository: string | null): Draft => ({
   id: id(),
@@ -96,6 +103,20 @@ export function EnvironmentsScreen() {
   const teamsPlan = useTeamsPlan();
   const teamsWorkspace = useTeamsWorkspace();
   const repository = useWorkspace();
+  const localPaths = usePrefs((prefs) => prefs.localRepos);
+  const localRepositories = useEffectQuery(
+    ["environment-local-repositories", localPaths],
+    Effect.forEach(
+      localPaths,
+      (path) =>
+        Effect.flatMap(Git, (git) => git.repoInfo(path)).pipe(
+          Effect.map((info) => ({ path, repository: slugOf(info.remote_url) })),
+          Effect.orElseSucceed(() => ({ path, repository: null })),
+        ),
+      { concurrency: 4 },
+    ),
+    { enabled: localPaths.length > 0, staleTime: 60_000 },
+  );
   const personal = usePersonalEnvironments();
   const [scope, setScope] = useState<Scope>("personal");
   const organizationId = scope === "personal" ? null : scope;
@@ -135,6 +156,19 @@ export function EnvironmentsScreen() {
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<CommandRunResult | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!creating || draft.localDirectory || !draft.repository) return;
+    const localRepository = localRepositories.data?.find(
+      (item) => item.repository === draft.repository,
+    );
+    if (!localRepository) return;
+    setDraft((current) =>
+      current.repository === localRepository.repository && !current.localDirectory
+        ? { ...current, localDirectory: localRepository.path }
+        : current,
+    );
+  }, [creating, draft.localDirectory, draft.repository, localRepositories.data]);
 
   useTitleSlot(
     <>
@@ -437,29 +471,73 @@ export function EnvironmentsScreen() {
 
           <div className="space-y-6 p-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Repository" hint="Leave empty to use from any project.">
-                <Input
-                  value={draft.repository ?? ""}
-                  placeholder={repository ?? "owner/repository"}
-                  onChange={(event) =>
-                    setDraft({ ...draft, repository: event.target.value || null })
-                  }
-                  disabled={!canEdit}
-                  className="rounded-xl"
-                />
+              <Field
+                label="Local repository"
+                hint="Choose from repositories already added to Reviewly."
+              >
+                <Select
+                  value={draft.localDirectory || "__any__"}
+                  onValueChange={(path) => {
+                    if (!path) return;
+                    if (path === "__any__") {
+                      setDraft({ ...draft, repository: null, localDirectory: "" });
+                      return;
+                    }
+                    const selectedRepository = localRepositories.data?.find(
+                      (item) => item.path === path,
+                    );
+                    setDraft({
+                      ...draft,
+                      repository:
+                        scope === "personal" || canEdit
+                          ? (selectedRepository?.repository ?? null)
+                          : draft.repository,
+                      localDirectory: path,
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full rounded-xl" aria-label="Local repository">
+                    <SelectValue>
+                      {draft.repository ??
+                        (draft.localDirectory
+                          ? draft.localDirectory.split(/[\\/]/).pop()
+                          : "Any repository")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup alignItemWithTrigger={false} className="min-w-[360px]">
+                    <SelectItem value="__any__">Any repository</SelectItem>
+                    {(localRepositories.data ?? [])
+                      .filter(
+                        (item) =>
+                          scope === "personal" ||
+                          canEdit ||
+                          !draft.repository ||
+                          item.repository === draft.repository,
+                      )
+                      .map((item) => (
+                        <SelectItem key={item.path} value={item.path}>
+                          <span className="flex min-w-0 flex-col py-0.5">
+                            <span className="truncate text-[12px] text-ink">
+                              {item.repository ?? item.path.split(/[\\/]/).pop()}
+                            </span>
+                            <span className="truncate font-mono text-[10px] text-ink-3">
+                              {item.path}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                  </SelectPopup>
+                </Select>
               </Field>
               <Field
                 label="Local directory"
-                hint="Private to this Mac; never shared with the team."
+                hint="Filled from the selected repository and never shared with the team."
               >
                 <Input
                   value={draft.localDirectory}
-                  placeholder="/Users/you/Projects/repository"
-                  onChange={(event) => {
-                    const localDirectory = event.target.value;
-                    setDraft({ ...draft, localDirectory });
-                  }}
-                  className="rounded-xl font-mono text-[12px]"
+                  placeholder="Select a local repository"
+                  readOnly
+                  className="rounded-xl bg-raise/35 font-mono text-[12px] text-ink-2"
                 />
               </Field>
             </div>
