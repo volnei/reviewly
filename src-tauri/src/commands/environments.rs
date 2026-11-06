@@ -26,12 +26,84 @@ pub struct CommandRunResult {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentFileVariable {
+    pub key: String,
+    pub value: String,
+    pub source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentFileValues {
+    pub variables: Vec<EnvironmentFileVariable>,
+    pub sources: Vec<String>,
+}
+
 fn valid_key(key: &str) -> bool {
     let mut characters = key.chars();
     matches!(
         characters.next(),
         Some('_') | Some('A'..='Z') | Some('a'..='z')
     ) && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
+fn read_environment_files(path: &Path) -> AppResult<EnvironmentFileValues> {
+    if !path.is_dir() {
+        return Err(AppError::Other(
+            "The environment directory does not exist".into(),
+        ));
+    }
+
+    let mut variables = Vec::<EnvironmentFileVariable>::new();
+    let mut positions = HashMap::<String, usize>::new();
+    let mut sources = Vec::new();
+
+    // Later files deliberately win, matching the way local development normally
+    // layers private values over a checked-in example and shared defaults.
+    for source in [".env.example", ".env", ".env.local"] {
+        let file = path.join(source);
+        if !file.is_file() {
+            continue;
+        }
+        let metadata = std::fs::metadata(&file)
+            .map_err(|error| AppError::Other(format!("Could not inspect {source}: {error}")))?;
+        if metadata.len() > 1_000_000 {
+            return Err(AppError::Other(format!("{source} is too large to import")));
+        }
+
+        let parsed = dotenvy::from_path_iter(&file)
+            .map_err(|error| AppError::Other(format!("Could not read {source}: {error}")))?;
+        for item in parsed {
+            let (key, value) = item
+                .map_err(|error| AppError::Other(format!("Could not parse {source}: {error}")))?;
+            if !valid_key(&key) {
+                return Err(AppError::Other(format!(
+                    "Invalid environment key in {source}: {key}"
+                )));
+            }
+            let variable = EnvironmentFileVariable {
+                key: key.clone(),
+                value,
+                source: source.into(),
+            };
+            if let Some(position) = positions.get(&key).copied() {
+                variables[position] = variable;
+            } else {
+                positions.insert(key, variables.len());
+                variables.push(variable);
+            }
+        }
+        sources.push(source.into());
+    }
+
+    Ok(EnvironmentFileValues { variables, sources })
+}
+
+#[tauri::command]
+pub fn environment_file_values(cwd: String) -> AppResult<EnvironmentFileValues> {
+    read_environment_files(Path::new(&cwd))
 }
 
 #[tauri::command]
@@ -128,7 +200,9 @@ pub async fn environment_command_run(
                 value.key
             )));
         }
-        let resolved = if value.secret {
+        let resolved = if value.secret && !value.value.is_empty() {
+            value.value
+        } else if value.secret {
             creds::load_environment_value(&environment_id, &value.key)?
                 .ok_or_else(|| AppError::Other(format!("Missing value for {}", value.key)))?
         } else {
@@ -141,7 +215,7 @@ pub async fn environment_command_run(
 
 #[cfg(test)]
 mod tests {
-    use super::valid_key;
+    use super::{read_environment_files, valid_key};
 
     #[test]
     fn accepts_portable_environment_keys() {
@@ -150,5 +224,48 @@ mod tests {
         assert!(!valid_key("2FA_TOKEN"));
         assert!(!valid_key("BAD-KEY"));
         assert!(!valid_key(""));
+    }
+
+    #[test]
+    fn imports_environment_files_with_local_precedence() {
+        let directory = std::env::temp_dir().join(format!(
+            "reviewly-environments-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("create fixture directory");
+        std::fs::write(
+            directory.join(".env.example"),
+            "API_URL=https://example.test\nTOKEN=example\n",
+        )
+        .expect("write example");
+        std::fs::write(directory.join(".env"), "TOKEN=shared\nDEBUG=false\n").expect("write env");
+        std::fs::write(directory.join(".env.local"), "TOKEN=local\n").expect("write local");
+
+        let result = read_environment_files(&directory).expect("read environment files");
+        let values = result
+            .variables
+            .iter()
+            .map(|variable| {
+                (
+                    variable.key.as_str(),
+                    variable.value.as_str(),
+                    variable.source.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(result.sources, vec![".env.example", ".env", ".env.local"]);
+        assert_eq!(
+            values,
+            vec![
+                ("API_URL", "https://example.test", ".env.example"),
+                ("TOKEN", "local", ".env.local"),
+                ("DEBUG", "false", ".env"),
+            ]
+        );
+
+        std::fs::remove_dir_all(directory).expect("remove fixture directory");
     }
 }

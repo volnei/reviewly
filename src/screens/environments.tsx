@@ -55,7 +55,10 @@ import { cn } from "@/lib/utils";
 
 type Scope = "personal" | string;
 type Tab = "variables" | "commands";
-type DraftVariable = PersonalEnvironmentVariable & { readonly persistedId?: string };
+type DraftVariable = PersonalEnvironmentVariable & {
+  readonly persistedId?: string;
+  readonly importedFrom?: string;
+};
 type DraftCommand = PersonalEnvironmentCommand;
 type Draft = {
   readonly id: string;
@@ -64,6 +67,12 @@ type Draft = {
   readonly localDirectory: string;
   readonly variables: ReadonlyArray<DraftVariable>;
   readonly commands: ReadonlyArray<DraftCommand>;
+};
+type EnvironmentImport = {
+  readonly directory: string;
+  readonly loading: boolean;
+  readonly count: number;
+  readonly sources: ReadonlyArray<string>;
 };
 
 const id = () => crypto.randomUUID();
@@ -155,6 +164,7 @@ export function EnvironmentsScreen() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<CommandRunResult | null>(null);
+  const [environmentImport, setEnvironmentImport] = useState<EnvironmentImport | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -169,6 +179,68 @@ export function EnvironmentsScreen() {
         : current,
     );
   }, [creating, draft.localDirectory, draft.repository, localRepositories.data]);
+
+  useEffect(() => {
+    if (!creating || !draft.localDirectory) {
+      setEnvironmentImport(null);
+      return;
+    }
+
+    const directory = draft.localDirectory;
+    let active = true;
+    setEnvironmentImport({ directory, loading: true, count: 0, sources: [] });
+    void run(
+      Effect.flatMap(Tauri, (tauri) =>
+        tauri.invoke("environment_file_values", { cwd: directory }, S.EnvironmentFileValues),
+      ),
+    )
+      .then((imported) => {
+        if (!active) return;
+        setDraft((current) => {
+          if (current.localDirectory !== directory) return current;
+          const manualVariables = current.variables.filter((variable) => !variable.importedFrom);
+          const manualKeys = new Set(manualVariables.map((variable) => variable.key));
+          return {
+            ...current,
+            variables: [
+              ...manualVariables,
+              ...imported.variables
+                .filter((variable) => !manualKeys.has(variable.key))
+                .map((variable) => ({
+                  id: id(),
+                  key: variable.key,
+                  value: variable.value,
+                  secret: true,
+                  importedFrom: variable.source,
+                })),
+            ],
+          };
+        });
+        setEnvironmentImport({
+          directory,
+          loading: false,
+          count: imported.variables.length,
+          sources: imported.sources,
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setDraft((current) =>
+          current.localDirectory === directory
+            ? {
+                ...current,
+                variables: current.variables.filter((variable) => !variable.importedFrom),
+              }
+            : current,
+        );
+        setEnvironmentImport({ directory, loading: false, count: 0, sources: [] });
+        toast.fail("Couldn’t import the repository environment", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [creating, draft.localDirectory]);
 
   useTitleSlot(
     <>
@@ -554,7 +626,12 @@ export function EnvironmentsScreen() {
             </Tabs>
 
             {tab === "variables" ? (
-              <VariablesEditor draft={draft} setDraft={setDraft} canEdit={canEdit} />
+              <VariablesEditor
+                draft={draft}
+                setDraft={setDraft}
+                canEdit={canEdit}
+                environmentImport={environmentImport}
+              />
             ) : (
               <CommandsEditor
                 draft={draft}
@@ -639,10 +716,12 @@ function VariablesEditor({
   draft,
   setDraft,
   canEdit,
+  environmentImport,
 }: {
   draft: Draft;
   setDraft: (draft: Draft) => void;
   canEdit: boolean;
+  environmentImport: EnvironmentImport | null;
 }) {
   const add = () =>
     setDraft({
@@ -655,7 +734,13 @@ function VariablesEditor({
         <div>
           <p className="text-[13px] font-medium">Environment variables</p>
           <p className="mt-0.5 text-[11px] text-ink-3">
-            Secret values are stored in Keychain or encrypted for Teams.
+            {environmentImport?.loading
+              ? "Reading .env files from the selected repository…"
+              : environmentImport?.count
+                ? `${environmentImport.count} loaded from ${environmentImport.sources.join(", ")}. Secrets stay protected.`
+                : environmentImport
+                  ? "No .env.example, .env, or .env.local found. Add variables manually."
+                  : "Secret values are stored in Keychain or encrypted for Teams."}
           </p>
         </div>
         {canEdit ? (

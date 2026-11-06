@@ -176,6 +176,18 @@ export const CommandRunResult = S.Struct({
 });
 export type CommandRunResult = typeof CommandRunResult.Type;
 
+export const EnvironmentFileValues = S.Struct({
+  variables: S.Array(
+    S.Struct({
+      key: S.String,
+      value: S.String,
+      source: S.String,
+    }),
+  ),
+  sources: S.Array(S.String),
+});
+export type EnvironmentFileValues = typeof EnvironmentFileValues.Type;
+
 export const TeamBilling = S.Struct({
   organizationId: S.String,
   configured: S.Boolean,

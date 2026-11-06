@@ -941,6 +941,14 @@ const commands: Record<string, Handler> = {
   }),
   environment_values_save: () => ({}),
   environment_value_delete: () => ({}),
+  environment_file_values: () => ({
+    variables: [
+      { key: "DATABASE_URL", value: "postgres://localhost/reviewly", source: ".env.local" },
+      { key: "REDIS_URL", value: "redis://localhost:6379", source: ".env.example" },
+      { key: "LOG_LEVEL", value: "debug", source: ".env" },
+    ],
+    sources: [".env.example", ".env", ".env.local"],
+  }),
   environment_command_run: () => ({
     success: true,
     exitCode: 0,

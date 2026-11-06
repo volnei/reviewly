@@ -334,6 +334,7 @@ pub fn run() {
             // personal environments (available on Hobby)
             commands::environments::environment_values_save,
             commands::environments::environment_value_delete,
+            commands::environments::environment_file_values,
             commands::environments::environment_command_run,
             // search
             commands::search::gh_review_requested,
