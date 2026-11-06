@@ -92,6 +92,7 @@ export function ReadPane({
   onReply,
   onResolve,
   onComment,
+  onClosePull,
   onMarkRead,
   viewed,
   scrollRef,
@@ -149,6 +150,7 @@ export function ReadPane({
   onReply: (thread: Thread, body: string) => Promise<void>;
   onResolve: (thread: Thread, resolve: boolean) => Promise<void>;
   onComment: (body: string) => Promise<void>;
+  onClosePull?: () => void | Promise<void>;
   onMarkRead: (path: string) => void;
   viewed: ReadonlySet<string>;
   scrollRef: React.RefObject<HTMLDivElement>;
@@ -495,6 +497,8 @@ export function ReadPane({
                   placeholder="Say something to the whole pull request…"
                   submitLabel="Comment"
                   onSubmit={onComment}
+                  secondaryLabel="Close pull request"
+                  onSecondary={onClosePull}
                   autoFocus={false}
                 />
               </div>

@@ -853,6 +853,28 @@ export function PrScreen() {
     },
     [ref, pr.refresh],
   );
+  const closePull = useCallback(async () => {
+    try {
+      await run(Effect.flatMap(GitHub, (g) => g.setState(ref, false)));
+      qc.setQueryData(pullKey(ref, "detail"), (current: typeof pull) =>
+        current ? { ...current, state: "closed", auto_merge: null } : current,
+      );
+      void qc.invalidateQueries({ queryKey: ["inbox"] });
+      toast.act("Pull request closed", "Reopen", () => {
+        run(Effect.flatMap(GitHub, (g) => g.setState(ref, true)))
+          .then(async () => {
+            await pr.refresh();
+            void qc.invalidateQueries({ queryKey: ["inbox"] });
+          })
+          .catch((error) =>
+            toast.fail("Couldn’t reopen the pull request", error),
+          );
+      });
+    } catch (error) {
+      toast.fail("Couldn’t close the pull request", error);
+      throw error;
+    }
+  }, [pr.refresh, qc, ref]);
   const saveTitle = useCallback(
     async (title: string) => {
       try {
@@ -1956,6 +1978,7 @@ export function PrScreen() {
             onReply={reply}
             onResolve={resolve}
             onComment={comment}
+            onClosePull={reviewable ? closePull : undefined}
             prRef={ref}
             ops={ops}
             canEdit={canEdit}

@@ -26,6 +26,8 @@ export function Composer({
   placeholder,
   submitLabel,
   onSubmit,
+  secondaryLabel,
+  onSecondary,
   onCancel,
   initial = "",
   autoFocus = true,
@@ -33,12 +35,15 @@ export function Composer({
   placeholder: string;
   submitLabel: string;
   onSubmit: (body: string) => void | Promise<void>;
+  secondaryLabel?: string;
+  onSecondary?: () => void | Promise<void>;
   onCancel?: () => void;
   initial?: string;
   autoFocus?: boolean;
 }) {
   const [body, setBody] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [secondaryBusy, setSecondaryBusy] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (autoFocus) ref.current?.focus();
@@ -51,6 +56,15 @@ export function Composer({
       setBody("");
     } finally {
       setBusy(false);
+    }
+  };
+  const runSecondary = async () => {
+    if (!onSecondary || busy || secondaryBusy) return;
+    setSecondaryBusy(true);
+    try {
+      await onSecondary();
+    } finally {
+      setSecondaryBusy(false);
     }
   };
   return (
@@ -93,12 +107,22 @@ export function Composer({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled={!body.trim() || busy}
+          disabled={!body.trim() || busy || secondaryBusy}
           onClick={send}
           className="h-7 rounded-md border border-ink bg-ink px-2.5 text-[12.5px] font-medium text-[#141414] disabled:opacity-50"
         >
           {submitLabel} <kbd className="ml-1 font-sans text-[11px] opacity-70">⌘↵</kbd>
         </button>
+        {onSecondary && secondaryLabel ? (
+          <button
+            type="button"
+            disabled={busy || secondaryBusy}
+            onClick={() => void runSecondary()}
+            className="h-7 rounded-md px-2 text-[12.5px] text-del hover:bg-del/8 disabled:opacity-50"
+          >
+            {secondaryBusy ? "Closing…" : secondaryLabel}
+          </button>
+        ) : null}
         {onCancel ? (
           <button
             type="button"
