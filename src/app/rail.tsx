@@ -5,13 +5,13 @@ import {
   AtSign,
   Bookmark,
   Boxes,
+  Container,
   FlaskConical,
   FolderGit2,
   GitPullRequest,
   HeartPulse,
   History,
   Inbox,
-  KeyRound,
   type LucideIcon,
   MoreHorizontal,
   Pencil,
@@ -261,7 +261,7 @@ export function Rail() {
       </div>
       <div className="mt-5 space-y-1 border-t border-hair pt-3">
         <NavItem
-          item={{ to: "/environments", label: "Environments", key: "G E", icon: KeyRound }}
+          item={{ to: "/environments", label: "Environments", key: "G E", icon: Container }}
           active={active("/environments")}
         />
         <NavItem
