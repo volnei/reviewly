@@ -616,15 +616,18 @@ export function SettingsScreen() {
                   </span>
                 </div>
               </CossField>
-            </Section>
-            <Section
-              title="Review skills"
-              blurb="Focused playbooks selected automatically from the repository and changed files."
-            >
-              <ReviewSkillsEditor
-                skills={prefs.reviewSkills}
-                onChange={(reviewSkills) => set("reviewSkills", reviewSkills)}
-              />
+              <div className="grid gap-4">
+                <div>
+                  <p className="text-[12px] font-medium text-ink-2">Review skills</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
+                    Focused playbooks selected automatically from the repository and changed files.
+                  </p>
+                </div>
+                <ReviewSkillsEditor
+                  skills={prefs.reviewSkills}
+                  onChange={(reviewSkills) => set("reviewSkills", reviewSkills)}
+                />
+              </div>
             </Section>
             <p className="settings-autosave">
               <Check size={12} />
