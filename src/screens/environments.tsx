@@ -24,7 +24,6 @@ import { useTeamsWorkspace } from "@/app/teams-workspace";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { useWorkspace } from "@/app/workspace";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -822,7 +821,7 @@ function VariablesEditor({
         draft.variables.map((variable, index) => (
           <div
             key={variable.id}
-            className="grid items-center gap-3 border-b border-hair px-4 py-3 last:border-b-0 md:grid-cols-[minmax(160px,.7fr)_minmax(220px,1fr)_110px_100px_32px]"
+            className="grid items-center gap-3 border-b border-hair px-4 py-3 last:border-b-0 md:grid-cols-[minmax(160px,.7fr)_minmax(220px,1fr)_28px_100px_32px]"
           >
             <Input
               value={variable.key}
@@ -853,9 +852,16 @@ function VariablesEditor({
               }
               className="rounded-xl font-mono text-[12px]"
             />
-            <Badge
-              variant="outline"
-              className="w-fit gap-1.5 rounded-md px-1.5 font-mono font-normal text-ink-2"
+            <span
+              className="flex size-7 items-center justify-center text-ink-3"
+              role="img"
+              aria-label={
+                variable.origin === "team"
+                  ? "Defined by the team"
+                  : variable.origin === "file"
+                    ? `Loaded from ${variable.importedFrom ?? ".env"}`
+                    : "Saved on this Mac"
+              }
               title={
                 variable.origin === "team"
                   ? "Defined by the team"
@@ -865,20 +871,13 @@ function VariablesEditor({
               }
             >
               {variable.origin === "team" ? (
-                <UsersRound aria-hidden />
+                <UsersRound className="size-4" aria-hidden />
               ) : variable.origin === "file" ? (
-                <FileCode2 aria-hidden />
+                <FileCode2 className="size-4" aria-hidden />
               ) : (
-                <Laptop aria-hidden />
+                <Laptop className="size-4" aria-hidden />
               )}
-              <span>
-                {variable.origin === "team"
-                  ? "Team"
-                  : variable.origin === "file"
-                    ? (variable.importedFrom ?? ".env")
-                    : "Local"}
-              </span>
-            </Badge>
+            </span>
             <label className="flex items-center gap-2 text-[11px] text-ink-2">
               <Switch
                 checked={variable.secret}
