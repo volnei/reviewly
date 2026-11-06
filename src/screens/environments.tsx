@@ -556,14 +556,14 @@ export function EnvironmentsScreen() {
         </aside>
 
         <section className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-hair bg-panel/75">
-          <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-hair bg-panel/95 px-6 py-4 backdrop-blur">
+          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-hair bg-panel px-6 py-4">
             <div className="min-w-0 flex-1">
-              <Input
+              <input
                 aria-label="Environment name"
                 value={draft.name}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                 disabled={!canEdit}
-                className="h-auto border-0 bg-transparent p-0 text-[18px] font-semibold shadow-none focus-visible:ring-0"
+                className="block w-full max-w-[640px] truncate border-0 bg-transparent p-0 text-[18px] font-semibold leading-7 text-ink outline-none placeholder:text-ink-3 disabled:opacity-60"
               />
               <p className="mt-1 text-[12px] text-ink-3">
                 {scope === "personal"
@@ -571,29 +571,34 @@ export function EnvironmentsScreen() {
                   : "Shared with this Teams workspace"}
               </p>
             </div>
-            {!creating && canEdit ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Delete environment"
-                onClick={() => void remove()}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            ) : null}
-            {canEdit ? (
-              <Button className="rounded-xl" onClick={() => void save()} disabled={saving}>
-                <Save className="size-4" /> {saving ? "Saving…" : "Save"}
-              </Button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {!creating && canEdit ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Delete environment"
+                  onClick={() => void remove()}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button className="rounded-xl" onClick={() => void save()} disabled={saving}>
+                  <Save className="size-4" /> {saving ? "Saving…" : "Save"}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-6 p-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field
-                label="Local repository"
-                hint="Choose from repositories already added to Reviewly."
-              >
+            <div className="overflow-hidden rounded-2xl border border-hair">
+              <div className="grid gap-3 px-4 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <div>
+                  <Label className="text-[12px] text-ink">Project</Label>
+                  <p className="mt-0.5 text-[11px] text-ink-3">
+                    Choose a local repository already added to Reviewly.
+                  </p>
+                </div>
                 <Select
                   value={draft.localDirectory || "__any__"}
                   onValueChange={(path) => {
@@ -615,7 +620,7 @@ export function EnvironmentsScreen() {
                     });
                   }}
                 >
-                  <SelectTrigger className="w-full rounded-xl" aria-label="Local repository">
+                  <SelectTrigger className="w-full rounded-xl" aria-label="Project repository">
                     <SelectValue>
                       {draft.repository ??
                         (draft.localDirectory
@@ -647,18 +652,16 @@ export function EnvironmentsScreen() {
                       ))}
                   </SelectPopup>
                 </Select>
-              </Field>
-              <Field
-                label="Local directory"
-                hint="Filled from the selected repository and never shared with the team."
-              >
-                <Input
-                  value={draft.localDirectory}
-                  placeholder="Select a local repository"
-                  readOnly
-                  className="rounded-xl bg-raise/35 font-mono text-[12px] text-ink-2"
-                />
-              </Field>
+              </div>
+              <div className="grid gap-3 border-t border-hair px-4 py-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <div>
+                  <p className="text-[12px] text-ink-2">Local directory</p>
+                  <p className="mt-0.5 text-[11px] text-ink-3">Private to this Mac.</p>
+                </div>
+                <p className="min-w-0 truncate font-mono text-[11.5px] text-ink-2">
+                  {draft.localDirectory || "Choose a project above"}
+                </p>
+              </div>
             </div>
 
             <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
@@ -757,26 +760,6 @@ function ScopeSelect({
           : null}
       </SelectPopup>
     </Select>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <div>
-        <Label className="text-[12px] text-ink">{label}</Label>
-        <p className="mt-0.5 text-[11px] text-ink-3">{hint}</p>
-      </div>
-      {children}
-    </div>
   );
 }
 
