@@ -5,6 +5,7 @@ export interface PersonalEnvironmentVariable {
   readonly key: string;
   readonly value: string;
   readonly secret: boolean;
+  readonly source?: string;
 }
 
 export interface PersonalEnvironmentCommand {

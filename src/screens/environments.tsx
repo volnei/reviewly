@@ -22,6 +22,7 @@ import { useTeamsWorkspace } from "@/app/teams-workspace";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { useWorkspace } from "@/app/workspace";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +62,7 @@ type Tab = "variables" | "commands" | "skills";
 type DraftVariable = PersonalEnvironmentVariable & {
   readonly persistedId?: string;
   readonly importedFrom?: string;
+  readonly origin: "team" | "local" | "file";
 };
 type DraftCommand = PersonalEnvironmentCommand;
 type Draft = {
@@ -94,7 +96,15 @@ const blank = (repository: string | null): Draft => ({
   commands: [],
 });
 
-const fromPersonal = (environment: PersonalEnvironment): Draft => ({ ...environment });
+const fromPersonal = (environment: PersonalEnvironment): Draft => ({
+  ...environment,
+  variables: environment.variables.map((variable) => ({
+    ...variable,
+    persistedId: variable.id,
+    importedFrom: variable.source,
+    origin: variable.source ? "file" : "local",
+  })),
+});
 
 const fromTeam = (environment: TeamEnvironment, localDirectory: string): Draft => ({
   id: environment.id,
@@ -107,6 +117,7 @@ const fromTeam = (environment: TeamEnvironment, localDirectory: string): Draft =
     key: variable.key,
     value: "",
     secret: variable.secret,
+    origin: "team",
   })),
   commands: environment.commands,
 });
@@ -259,6 +270,7 @@ export function EnvironmentsScreen() {
                   value: variable.value,
                   secret: true,
                   importedFrom: variable.source,
+                  origin: "file" as const,
                 })),
             ],
           };
@@ -384,6 +396,7 @@ export function EnvironmentsScreen() {
             key: variable.key,
             secret: variable.secret,
             value: variable.secret ? "" : variable.value,
+            ...(variable.importedFrom ? { source: variable.importedFrom } : {}),
           })),
           updatedAt: new Date().toISOString(),
         });
@@ -777,7 +790,10 @@ function VariablesEditor({
   const add = () =>
     setDraft({
       ...draft,
-      variables: [...draft.variables, { id: id(), key: "", value: "", secret: true }],
+      variables: [
+        ...draft.variables,
+        { id: id(), key: "", value: "", secret: true, origin: "local" },
+      ],
     });
   return (
     <div className="overflow-hidden rounded-2xl border border-hair">
@@ -804,7 +820,7 @@ function VariablesEditor({
         draft.variables.map((variable, index) => (
           <div
             key={variable.id}
-            className="grid items-center gap-3 border-b border-hair px-4 py-3 last:border-b-0 md:grid-cols-[minmax(160px,.7fr)_minmax(220px,1fr)_100px_32px]"
+            className="grid items-center gap-3 border-b border-hair px-4 py-3 last:border-b-0 md:grid-cols-[minmax(160px,.7fr)_minmax(220px,1fr)_110px_100px_32px]"
           >
             <Input
               value={variable.key}
@@ -823,11 +839,7 @@ function VariablesEditor({
             <Input
               type={variable.secret ? "password" : "text"}
               value={variable.value}
-              placeholder={
-                variable.persistedId || (variable.secret && !variable.value)
-                  ? "Leave blank to keep current value"
-                  : "Value"
-              }
+              placeholder={variable.persistedId ? "Leave blank to keep current value" : "Value"}
               disabled={!canEdit}
               onChange={(event) =>
                 setDraft({
@@ -839,6 +851,13 @@ function VariablesEditor({
               }
               className="rounded-xl font-mono text-[12px]"
             />
+            <Badge variant="outline" className="w-fit rounded-md font-mono font-normal">
+              {variable.origin === "team"
+                ? "Team"
+                : variable.origin === "file"
+                  ? (variable.importedFrom ?? ".env")
+                  : "Local"}
+            </Badge>
             <label className="flex items-center gap-2 text-[11px] text-ink-2">
               <Switch
                 checked={variable.secret}
