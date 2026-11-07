@@ -53,10 +53,22 @@ export class Teams extends Context.Service<
     readonly repositories: (
       organizationId: string,
     ) => Effect.Effect<S.TeamRepositories, import("../errors").AppError>;
+    readonly fastLaneRepositoryPolicies: (
+      organizationId: string,
+    ) => Effect.Effect<S.FastLaneRepositoryPolicies, import("../errors").AppError>;
     readonly updateFastLanePolicy: (
       organizationId: string,
       policy: S.FastLanePolicy,
     ) => Effect.Effect<S.FastLanePolicy, import("../errors").AppError>;
+    readonly updateFastLaneRepositoryPolicy: (
+      organizationId: string,
+      repository: string,
+      policy: S.FastLanePolicy,
+    ) => Effect.Effect<S.FastLaneRepositoryPolicy, import("../errors").AppError>;
+    readonly resetFastLaneRepositoryPolicy: (
+      organizationId: string,
+      repository: string,
+    ) => Effect.Effect<S.FastLaneRepositoryPolicy, import("../errors").AppError>;
     readonly billing: (
       organizationId: string,
     ) => Effect.Effect<S.TeamBilling, import("../errors").AppError>;
@@ -137,8 +149,30 @@ export const TeamsLive = Layer.effect(
       tauri.invoke("teams_fast_lane_policy", { organizationId }, S.FastLanePolicy);
     const repositories = (organizationId: string) =>
       tauri.invoke("teams_repositories", { organizationId }, S.TeamRepositories);
+    const fastLaneRepositoryPolicies = (organizationId: string) =>
+      tauri.invoke(
+        "teams_fast_lane_repository_policies",
+        { organizationId },
+        S.FastLaneRepositoryPolicies,
+      );
     const updateFastLanePolicy = (organizationId: string, policy: S.FastLanePolicy) =>
       tauri.invoke("teams_fast_lane_policy_update", { organizationId, policy }, S.FastLanePolicy);
+    const updateFastLaneRepositoryPolicy = (
+      organizationId: string,
+      repository: string,
+      policy: S.FastLanePolicy,
+    ) =>
+      tauri.invoke(
+        "teams_fast_lane_repository_policy_update",
+        { organizationId, repository, policy },
+        S.FastLaneRepositoryPolicy,
+      );
+    const resetFastLaneRepositoryPolicy = (organizationId: string, repository: string) =>
+      tauri.invoke(
+        "teams_fast_lane_repository_policy_reset",
+        { organizationId, repository },
+        S.FastLaneRepositoryPolicy,
+      );
     const billing = (organizationId: string) =>
       tauri.invoke("teams_billing", { organizationId }, S.TeamBilling);
     const checkout = (organizationId: string) =>
@@ -207,7 +241,10 @@ export const TeamsLive = Layer.effect(
       updateQueue,
       fastLanePolicy,
       repositories,
+      fastLaneRepositoryPolicies,
       updateFastLanePolicy,
+      updateFastLaneRepositoryPolicy,
+      resetFastLaneRepositoryPolicy,
       billing,
       checkout,
       billingPortal,

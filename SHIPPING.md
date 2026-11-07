@@ -4,7 +4,7 @@ What it takes to go from "runs on my machine" to "a build people can install and
 The app code is ready; the remaining work is **credentials + infra that only you can do**
 (Apple cert, an update-signing key, hosting). This is the runway.
 
-Current: `version 1.1.4`, `identifier dev.volnei.reviewly`, target macOS (Tauri 2).
+Current: `version 1.1.5`, `identifier dev.volnei.reviewly`, target macOS (Tauri 2).
 
 Reviewly Hobby is free and open source. Reviewly Teams adds shared coordination,
 Fast lane, integrations, and shared environments through getreviewly.dev.

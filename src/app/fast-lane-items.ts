@@ -29,8 +29,8 @@ export function useFastLaneItems() {
   const connectedRepositories = useMemo(
     () =>
       new Set(
-        (policies.data ?? []).flatMap(({ repositories }) =>
-          repositories.map((repository) => repository.toLowerCase()),
+        (policies.data ?? []).flatMap(({ repositoryPolicies }) =>
+          repositoryPolicies.map(({ repository }) => repository.toLowerCase()),
         ),
       ),
     [policies.data],

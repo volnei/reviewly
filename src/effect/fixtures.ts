@@ -781,6 +781,11 @@ let fixtureFastLanePolicy = {
   requiredLabels: [],
   blockedLabels: ["security", "breaking-change"],
 };
+let fixtureFastLaneRepositoryPolicies: Record<string, typeof fixtureFastLanePolicy | null> = {
+  "volnei/reviewly": { ...fixtureFastLanePolicy, maxChangedFiles: 12 },
+  "volnei/cal": null,
+  "volnei/dotfiles": null,
+};
 const fixtureTeamPull = (
   id: string,
   repository: string,
@@ -892,6 +897,26 @@ const commands: Record<string, Handler> = {
   teams_fast_lane_policy_update: ({ policy }) => {
     fixtureFastLanePolicy = policy as typeof fixtureFastLanePolicy;
     return fixtureFastLanePolicy;
+  },
+  teams_fast_lane_repository_policies: () => ({
+    repositories: Object.entries(fixtureFastLaneRepositoryPolicies).map(([repository, policy]) => ({
+      repository,
+      policy,
+    })),
+  }),
+  teams_fast_lane_repository_policy_update: ({ repository, policy }) => {
+    fixtureFastLaneRepositoryPolicies = {
+      ...fixtureFastLaneRepositoryPolicies,
+      [String(repository)]: policy as typeof fixtureFastLanePolicy,
+    };
+    return { repository, policy };
+  },
+  teams_fast_lane_repository_policy_reset: ({ repository }) => {
+    fixtureFastLaneRepositoryPolicies = {
+      ...fixtureFastLaneRepositoryPolicies,
+      [String(repository)]: null,
+    };
+    return { repository, policy: null };
   },
   teams_repositories: () => ({
     repositories: ["volnei/reviewly", "volnei/cal", "volnei/dotfiles"],

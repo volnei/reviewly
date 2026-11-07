@@ -2,23 +2,33 @@ import { Effect } from "effect";
 
 import { useTeamsBilling } from "@/app/teams-billing";
 import { useEffectQuery } from "@/effect/runtime";
-import type { FastLanePolicy, TeamOrganization } from "@/effect/schema";
+import type { FastLanePolicy, FastLaneRepositoryPolicy, TeamOrganization } from "@/effect/schema";
 import { Teams } from "@/effect/services/Teams";
 
 export type FastLaneWorkspacePolicy = {
   readonly organization: TeamOrganization;
   readonly policy: FastLanePolicy;
-  readonly repositories: ReadonlyArray<string>;
+  readonly repositoryPolicies: ReadonlyArray<FastLaneRepositoryPolicy>;
 };
+
+export function isFastLanePolicyDraftDirty(
+  draft: FastLanePolicy,
+  persisted: FastLanePolicy,
+  options: { readonly inherited?: boolean; readonly customizing?: boolean } = {},
+): boolean {
+  if (options.inherited) return options.customizing === true;
+  return JSON.stringify(draft) !== JSON.stringify(persisted);
+}
 
 export function enabledFastLanePoliciesByRepository(
   policies: ReadonlyArray<FastLaneWorkspacePolicy> | undefined,
 ): ReadonlyMap<string, FastLanePolicy> {
   return new Map(
-    (policies ?? []).flatMap(({ policy, repositories }) =>
-      policy.enabled
-        ? repositories.map((repository) => [repository.toLowerCase(), policy] as const)
-        : [],
+    (policies ?? []).flatMap(({ policy: workspacePolicy, repositoryPolicies }) =>
+      repositoryPolicies.flatMap(({ repository, policy }) => {
+        const resolved = policy ?? workspacePolicy;
+        return resolved.enabled ? [[repository.toLowerCase(), resolved] as const] : [];
+      }),
     ),
   );
 }
@@ -49,12 +59,12 @@ export function useFastLanePolicies(organizationId?: string | null) {
         }): Effect.Effect<FastLaneWorkspacePolicy, import("@/effect/errors").AppError> =>
           Effect.all({
             policy: service.fastLanePolicy(organization.id),
-            repositories: service.repositories(organization.id),
+            repositoryPolicies: service.fastLaneRepositoryPolicies(organization.id),
           }).pipe(
-            Effect.map(({ policy, repositories }) => ({
+            Effect.map(({ policy, repositoryPolicies }) => ({
               organization,
               policy,
-              repositories: repositories.repositories,
+              repositoryPolicies: repositoryPolicies.repositories,
             })),
           ),
         { concurrency: 3 },

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { enabledFastLanePoliciesByRepository } from "../src/app/fast-lane";
+import {
+  enabledFastLanePoliciesByRepository,
+  isFastLanePolicyDraftDirty,
+} from "../src/app/fast-lane";
 import type { Ranked } from "../src/effect/services/Triage";
 import { fastLaneReason, isFastLane, matchesFastLanePath } from "../src/features/fast-lane";
 
@@ -52,12 +55,44 @@ describe("Teams Fast lane", () => {
       {
         organization: { id: "org-1", login: "volnei", displayName: null, role: "owner" },
         policy,
-        repositories: ["volnei/reviewly"],
+        repositoryPolicies: [{ repository: "volnei/reviewly", policy: null }],
       },
     ]);
 
     expect(policies.get("volnei/reviewly")).toEqual(policy);
     expect(policies.has("volnei/cal")).toBe(false);
+  });
+
+  test("uses repository overrides before the workspace default", () => {
+    const disabled = { ...policy, enabled: false };
+    const policies = enabledFastLanePoliciesByRepository([
+      {
+        organization: { id: "org-1", login: "volnei", displayName: null, role: "owner" },
+        policy,
+        repositoryPolicies: [
+          { repository: "volnei/reviewly", policy: disabled },
+          { repository: "volnei/cal", policy: null },
+        ],
+      },
+    ]);
+
+    expect(policies.has("volnei/reviewly")).toBe(false);
+    expect(policies.get("volnei/cal")).toEqual(policy);
+  });
+
+  test("does not lock repository scope while a workspace policy is only inherited", () => {
+    expect(
+      isFastLanePolicyDraftDirty(policy, policy, {
+        inherited: true,
+        customizing: false,
+      }),
+    ).toBe(false);
+    expect(
+      isFastLanePolicyDraftDirty(policy, policy, {
+        inherited: true,
+        customizing: true,
+      }),
+    ).toBe(true);
   });
 
   test("accepts a clean dependency-bot update and explains the placement", () => {

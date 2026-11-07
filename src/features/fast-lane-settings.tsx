@@ -1,11 +1,22 @@
 import { Effect } from "effect";
 import { useEffect, useState } from "react";
 
-import { type FastLaneWorkspacePolicy, useFastLanePolicies } from "@/app/fast-lane";
+import {
+  type FastLaneWorkspacePolicy,
+  isFastLanePolicyDraftDirty,
+  useFastLanePolicies,
+} from "@/app/fast-lane";
 import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,13 +160,26 @@ function WorkspacePolicy({
   value: FastLaneWorkspacePolicy;
   refresh: () => Promise<unknown>;
 }) {
-  const { organization, policy } = value;
-  const [draft, setDraft] = useState(policy);
+  const { organization, policy, repositoryPolicies } = value;
+  const [scope, setScope] = useState("workspace");
+  const selectedRepository = repositoryPolicies.find(({ repository }) => repository === scope);
+  const inherited = scope !== "workspace" && selectedRepository?.policy === null;
+  const persistedPolicy = scope === "workspace" ? policy : (selectedRepository?.policy ?? policy);
+  const [draft, setDraft] = useState(persistedPolicy);
+  const [customizing, setCustomizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const canEdit = organization.role === "owner" || organization.role === "admin";
-  const dirty = JSON.stringify(draft) !== JSON.stringify(policy);
+  const repositoryIsInherited = inherited && !customizing;
+  const dirty = isFastLanePolicyDraftDirty(
+    draft,
+    scope === "workspace" ? policy : (selectedRepository?.policy ?? policy),
+    { inherited, customizing },
+  );
 
-  useEffect(() => setDraft(policy), [policy]);
+  useEffect(() => {
+    setDraft(persistedPolicy);
+    setCustomizing(false);
+  }, [persistedPolicy, scope]);
 
   const save = async () => {
     if (!canEdit || !dirty || saving) return;
@@ -170,10 +194,20 @@ function WorkspacePolicy({
         blockedLabels: normalizePaths(draft.blockedLabels),
       };
       await run(
-        Effect.flatMap(Teams, (service) => service.updateFastLanePolicy(organization.id, next)),
+        Effect.flatMap(Teams, (service) =>
+          scope === "workspace"
+            ? service.updateFastLanePolicy(organization.id, next).pipe(Effect.asVoid)
+            : service
+                .updateFastLaneRepositoryPolicy(organization.id, scope, next)
+                .pipe(Effect.asVoid),
+        ),
       );
       await refresh();
-      toast.done("Fast lane policy saved", `@${organization.login}`);
+      setCustomizing(false);
+      toast.done(
+        "Fast lane policy saved",
+        scope === "workspace" ? `@${organization.login}` : scope,
+      );
     } catch (error) {
       toast.fail("Couldn’t save Fast lane", error);
     } finally {
@@ -181,9 +215,35 @@ function WorkspacePolicy({
     }
   };
 
+  const resetRepository = async () => {
+    if (!canEdit || scope === "workspace" || saving) return;
+    setSaving(true);
+    try {
+      await run(
+        Effect.flatMap(Teams, (service) =>
+          service.resetFastLaneRepositoryPolicy(organization.id, scope),
+        ),
+      );
+      await refresh();
+      setCustomizing(false);
+      toast.done("Repository now inherits the workspace policy", scope);
+    } catch (error) {
+      toast.fail("Couldn’t reset Fast lane", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelChanges = () => {
+    setDraft(persistedPolicy);
+    setCustomizing(false);
+  };
+
+  const controlsDisabled = !canEdit || saving || repositoryIsInherited;
+
   return (
     <article className="border-b border-hair last:border-b-0">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex flex-wrap items-center gap-4 px-5 py-4">
         <div className="grid size-8 shrink-0 place-items-center rounded-md bg-raise text-[12px] font-medium text-ink-2">
           {organization.login.slice(0, 1).toUpperCase()}
         </div>
@@ -195,16 +255,72 @@ function WorkspacePolicy({
             @{organization.login} · {canEdit ? "team policy" : "managed by an admin"}
           </span>
         </div>
+        <Select
+          value={scope}
+          disabled={dirty || saving}
+          onValueChange={(next) => next && setScope(next)}
+        >
+          <SelectTrigger
+            className="w-full min-w-52 sm:w-72"
+            aria-label={`Fast lane policy scope for ${organization.login}`}
+          >
+            <SelectValue>{scope === "workspace" ? "Workspace default" : scope}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            <SelectItem value="workspace">Workspace default</SelectItem>
+            {repositoryPolicies.map(({ repository }) => (
+              <SelectItem key={repository} value={repository}>
+                {repository}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
         <label className="flex items-center gap-3 text-[12px] text-ink-2">
           Enable Fast lane
           <Switch
             checked={draft.enabled}
-            disabled={!canEdit || saving}
+            disabled={controlsDisabled}
             onCheckedChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
             aria-label={`Enable Fast lane for ${organization.login}`}
           />
         </label>
       </div>
+
+      {scope !== "workspace" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair bg-raise/15 px-5 py-4">
+          <div>
+            <p className="text-[12px] font-medium text-ink">
+              {repositoryIsInherited ? "Inheriting workspace policy" : "Custom repository policy"}
+            </p>
+            <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">
+              {repositoryIsInherited
+                ? "Changes to the workspace default apply here automatically."
+                : "This repository can use different authors, limits, paths and labels."}
+            </span>
+          </div>
+          {canEdit ? (
+            repositoryIsInherited ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={() => setCustomizing(true)}
+              >
+                Customize repository
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={saving}
+                onClick={() => void resetRepository()}
+              >
+                Use workspace default
+              </Button>
+            )
+          ) : null}
+        </div>
+      ) : null}
 
       {draft.enabled ? (
         <div className="border-t border-hair bg-raise/15 px-5 py-5">
@@ -216,7 +332,7 @@ function WorkspacePolicy({
                   <label key={key} className="flex items-center gap-3 text-[12px] text-ink-2">
                     <Checkbox
                       checked={draft[key]}
-                      disabled={!canEdit || saving}
+                      disabled={controlsDisabled}
                       onCheckedChange={(checked) =>
                         setDraft((current) => ({ ...current, [key]: checked === true }))
                       }
@@ -234,7 +350,7 @@ function WorkspacePolicy({
                 detail="GitHub login, bot or internal automation. One per line."
                 value={draft.trustedAuthors}
                 placeholder={"github-actions\nrelease-bot\nacme-automation"}
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(trustedAuthors) =>
                   setDraft((current) => ({ ...current, trustedAuthors }))
                 }
@@ -252,7 +368,7 @@ function WorkspacePolicy({
                 max={100}
                 step={1}
                 unit="files"
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(maxChangedFiles) =>
                   setDraft((current) => ({ ...current, maxChangedFiles }))
                 }
@@ -264,7 +380,7 @@ function WorkspacePolicy({
                 max={5000}
                 step={50}
                 unit="lines"
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(maxChangedLines) =>
                   setDraft((current) => ({ ...current, maxChangedLines }))
                 }
@@ -279,7 +395,7 @@ function WorkspacePolicy({
                 <label key={option.key} className="flex items-start gap-3">
                   <Checkbox
                     checked={draft[option.key]}
-                    disabled={!canEdit || saving}
+                    disabled={controlsDisabled}
                     onCheckedChange={(checked) =>
                       setDraft((current) => ({ ...current, [option.key]: checked === true }))
                     }
@@ -305,7 +421,7 @@ function WorkspacePolicy({
                 detail="Every changed file must match a glob. Empty allows any path."
                 value={draft.allowedPaths}
                 placeholder={"docs/**\n**/*.md\nconfig/safe/**"}
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(allowedPaths) => setDraft((current) => ({ ...current, allowedPaths }))}
               />
               <PolicyList
@@ -314,7 +430,7 @@ function WorkspacePolicy({
                 detail="One matching file keeps the PR in Review requested."
                 value={draft.blockedPaths}
                 placeholder={"src/auth/**\ndb/migrations/**\n.github/workflows/**"}
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(blockedPaths) => setDraft((current) => ({ ...current, blockedPaths }))}
               />
               <PolicyList
@@ -323,7 +439,7 @@ function WorkspacePolicy({
                 detail="Every listed label must be present. Empty requires none."
                 value={draft.requiredLabels}
                 placeholder={"automation\nsafe-change"}
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(requiredLabels) =>
                   setDraft((current) => ({ ...current, requiredLabels }))
                 }
@@ -334,21 +450,28 @@ function WorkspacePolicy({
                 detail="One matching label keeps the PR in Review requested."
                 value={draft.blockedLabels}
                 placeholder={"security\nbreaking-change\nneeds-design"}
-                disabled={!canEdit || saving}
+                disabled={controlsDisabled}
                 onChange={(blockedLabels) => setDraft((current) => ({ ...current, blockedLabels }))}
               />
             </div>
           </section>
-          {canEdit ? (
-            <div className="mt-5 flex items-center justify-between border-t border-hair pt-4">
-              <p className="text-[11.5px] text-ink-3">
-                Matching PRs move sections only. Reviewly never approves or merges them.
-              </p>
-              <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
-                {saving ? "Saving…" : "Save policy"}
+        </div>
+      ) : null}
+      {canEdit && !repositoryIsInherited ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair px-5 py-4">
+          <p className="text-[11.5px] text-ink-3">
+            Matching PRs move sections only. Reviewly never approves or merges them.
+          </p>
+          <div className="flex items-center gap-2">
+            {dirty ? (
+              <Button variant="ghost" size="sm" disabled={saving} onClick={cancelChanges}>
+                Cancel changes
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+            <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save policy"}
+            </Button>
+          </div>
         </div>
       ) : null}
     </article>

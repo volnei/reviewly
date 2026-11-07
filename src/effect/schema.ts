@@ -136,6 +136,17 @@ export type FastLanePolicy = typeof FastLanePolicy.Type;
 export const TeamRepositories = S.Struct({ repositories: S.Array(S.String) });
 export type TeamRepositories = typeof TeamRepositories.Type;
 
+export const FastLaneRepositoryPolicy = S.Struct({
+  repository: S.String,
+  policy: S.NullOr(FastLanePolicy),
+});
+export type FastLaneRepositoryPolicy = typeof FastLaneRepositoryPolicy.Type;
+
+export const FastLaneRepositoryPolicies = S.Struct({
+  repositories: S.Array(FastLaneRepositoryPolicy),
+});
+export type FastLaneRepositoryPolicies = typeof FastLaneRepositoryPolicies.Type;
+
 export const EnvironmentCommand = S.Struct({
   id: S.String,
   name: S.String,

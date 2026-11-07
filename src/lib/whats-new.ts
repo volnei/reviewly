@@ -17,6 +17,22 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.1.5",
+    date: "2026-11-07",
+    items: [
+      {
+        title: "Fast lane, tuned for each repository",
+        detail:
+          "Start from one workspace policy, then give individual repositories their own trusted authors, limits, safety checks, paths, and labels. Repositories can return to the shared default at any time.",
+      },
+      {
+        title: "Repository access stays current",
+        detail:
+          "Only repositories selected in the GitHub App can use a Fast lane override, and stale policies are removed when a repository leaves the installation.",
+      },
+    ],
+  },
+  {
     version: "1.1.4",
     date: "2026-11-07",
     items: [

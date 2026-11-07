@@ -113,6 +113,19 @@ pub struct FastLanePolicy {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FastLaneRepositoryPolicy {
+    pub repository: String,
+    pub policy: Option<FastLanePolicy>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FastLaneRepositoryPolicies {
+    pub repositories: Vec<FastLaneRepositoryPolicy>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamBillingPrice {
     pub currency: String,
     pub unit_amount: u64,
@@ -503,6 +516,54 @@ pub async fn teams_fast_lane_policy_update(
         "fast-lane",
         reqwest::Method::PATCH,
         Some(serde_json::to_value(policy)?),
+    )
+    .await?
+    .json()
+    .await?)
+}
+
+#[tauri::command]
+pub async fn teams_fast_lane_repository_policies(
+    organization_id: String,
+) -> AppResult<FastLaneRepositoryPolicies> {
+    Ok(teams_api_request(
+        &organization_id,
+        "fast-lane/repositories",
+        reqwest::Method::GET,
+        None,
+    )
+    .await?
+    .json()
+    .await?)
+}
+
+#[tauri::command]
+pub async fn teams_fast_lane_repository_policy_update(
+    organization_id: String,
+    repository: String,
+    policy: FastLanePolicy,
+) -> AppResult<FastLaneRepositoryPolicy> {
+    Ok(teams_api_request(
+        &organization_id,
+        "fast-lane/repositories",
+        reqwest::Method::PATCH,
+        Some(serde_json::json!({ "repository": repository, "policy": policy })),
+    )
+    .await?
+    .json()
+    .await?)
+}
+
+#[tauri::command]
+pub async fn teams_fast_lane_repository_policy_reset(
+    organization_id: String,
+    repository: String,
+) -> AppResult<FastLaneRepositoryPolicy> {
+    Ok(teams_api_request(
+        &organization_id,
+        "fast-lane/repositories",
+        reqwest::Method::DELETE,
+        Some(serde_json::json!({ "repository": repository })),
     )
     .await?
     .json()
