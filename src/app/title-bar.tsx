@@ -1,10 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { CloudOff, LoaderCircle } from "lucide-react";
+import { CloudOff, Download, LoaderCircle } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import { useOnline } from "@/app/online";
 import { useTeamsPlan } from "@/app/teams-billing";
 import { useTitleSlotValue } from "@/app/title-slot";
+import { downloadAvailableUpdate, useUpdaterState } from "@/app/updater";
 import { WorkspacePicker } from "@/app/workspace-picker";
 import { isNative } from "@/effect/Tauri";
 import { useAiActivity } from "@/features/pr/ai";
@@ -25,6 +26,7 @@ export function TitleBar() {
   const navigate = useNavigate();
   const activities = useAiActivity();
   const teamsPlan = useTeamsPlan();
+  const updater = useUpdaterState();
   const currentActivity =
     [...activities].reverse().find((activity) => activity.returnTo) ?? activities.at(-1);
   const mac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
@@ -93,6 +95,32 @@ export function TitleBar() {
             <span className="truncate">{currentActivity.label}</span>
           </span>
         )
+      ) : null}
+      {updater.status !== "idle" ? (
+        <button
+          type="button"
+          onClick={() => void downloadAvailableUpdate()}
+          disabled={updater.status === "installing"}
+          className="mr-3 flex h-7 shrink-0 items-center gap-2 rounded-md border border-workspace/30 bg-workspace/10 px-2.5 text-[11.5px] font-medium text-ink transition-colors hover:border-workspace/55 hover:bg-workspace/16 disabled:cursor-wait disabled:opacity-75"
+          title={
+            updater.status === "installing"
+              ? `Downloading Reviewly ${updater.version}`
+              : `Download Reviewly ${updater.version}`
+          }
+          aria-label={
+            updater.status === "installing"
+              ? `Downloading Reviewly ${updater.version}`
+              : `Download Reviewly ${updater.version}`
+          }
+        >
+          {updater.status === "installing" ? (
+            <LoaderCircle className="size-3.5 animate-spin text-workspace" aria-hidden="true" />
+          ) : (
+            <Download className="size-3.5 text-workspace" strokeWidth={1.75} aria-hidden="true" />
+          )}
+          <span>{updater.status === "installing" ? "Downloading…" : "Download update"}</span>
+          <span className="font-mono text-[9.5px] text-ink-3">v{updater.version}</span>
+        </button>
       ) : null}
       {!online ? (
         <span

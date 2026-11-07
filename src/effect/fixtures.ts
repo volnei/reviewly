@@ -1378,6 +1378,84 @@ const commands: Record<string, Handler> = {
       "openspec/specs/organizations/spec.md",
       "openspec/specs/sessions/spec.md",
     ],
+    source_spec_details: [
+      {
+        capability: "authentication",
+        title: "Authentication",
+        summary: "Sign-in, passkeys, challenges, and credential verification.",
+        file: "openspec/specs/authentication/spec.md",
+        requirements: [
+          {
+            name: "Password sign-in",
+            kind: "specified",
+            capability: "authentication",
+            file: "openspec/specs/authentication/spec.md",
+            scenarios: ["Valid credentials", "Invalid credentials"],
+          },
+          {
+            name: "Passkey sign-in",
+            kind: "specified",
+            capability: "authentication",
+            file: "openspec/specs/authentication/spec.md",
+            scenarios: ["Known credential"],
+          },
+        ],
+        scenarios: 3,
+      },
+      {
+        capability: "account-recovery",
+        title: "Account recovery",
+        summary:
+          "Recovery paths and identity verification when primary credentials are unavailable.",
+        file: "openspec/specs/account-recovery/spec.md",
+        requirements: [
+          {
+            name: "Recovery fallback",
+            kind: "specified",
+            capability: "account-recovery",
+            file: "openspec/specs/account-recovery/spec.md",
+            scenarios: ["Primary credential unavailable"],
+          },
+        ],
+        scenarios: 1,
+      },
+      {
+        capability: "admin-api",
+        title: "Admin API",
+        summary: "Organization-wide administrative mutations and their safety boundaries.",
+        file: "openspec/specs/admin-api/spec.md",
+        requirements: [
+          {
+            name: "Administrative mutation",
+            kind: "specified",
+            capability: "admin-api",
+            file: "openspec/specs/admin-api/spec.md",
+            scenarios: ["Authorized administrator"],
+          },
+        ],
+        scenarios: 1,
+      },
+      ...["audit-log", "billing", "organizations", "sessions"].map((capability) => ({
+        capability,
+        title: capability
+          .split("-")
+          .map((part) => part[0].toUpperCase() + part.slice(1))
+          .join(" "),
+        summary: `Current ${capability.replace("-", " ")} product behavior.`,
+        file: `openspec/specs/${capability}/spec.md`,
+        requirements: [
+          {
+            name: "Current behavior",
+            kind: "specified",
+            capability,
+            file: `openspec/specs/${capability}/spec.md`,
+            scenarios: ["Expected behavior"],
+          },
+        ],
+        scenarios: 1,
+      })),
+    ],
+    archived_changes: 12,
     changes: [
       ...(fixtureSpecCreated && String(path) === fixtureWorktreePath
         ? [
@@ -1407,6 +1485,7 @@ const commands: Record<string, Handler> = {
               ],
               issues: [],
               ready_to_archive: false,
+              pull_requests: [],
             },
           ]
         : []),
@@ -1469,6 +1548,10 @@ const commands: Record<string, Handler> = {
           },
         ],
         ready_to_archive: false,
+        pull_requests: [
+          { label: "PR #42", url: "https://github.com/volnei/reviewly/pull/42" },
+          { label: "PR #43", url: "https://github.com/volnei/reviewly/pull/43" },
+        ],
       },
       {
         id: "rate-limit-admin-api",
@@ -1498,9 +1581,11 @@ const commands: Record<string, Handler> = {
         ],
         issues: [],
         ready_to_archive: true,
+        pull_requests: [{ label: "PR #39", url: "https://github.com/volnei/reviewly/pull/39" }],
       },
     ],
   }),
+  openspec_setup: () => ({}),
   openspec_create_change: () => {
     fixtureSpecCreated = true;
     localTree.unstaged.push({
@@ -1719,6 +1804,9 @@ const commands: Record<string, Handler> = {
   ],
   open_local_editor: () => ({}),
   gh_resolve_conflicts_ai: () => "resolved",
+  gh_prepare_pr_autofix: () => undefined,
+  git_unmerged_files: () => [],
+  git_abort_merge: () => undefined,
   gh_fetch_attachment: ({ url }) => {
     // A graphite card with the file name on it — enough to see the media path work.
     const name = String(url).split("/").pop() ?? "attachment";

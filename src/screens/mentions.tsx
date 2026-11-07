@@ -39,7 +39,7 @@ export function MentionsScreen() {
   const qc = useQueryClient();
   const inbox = useWorkspaceInbox();
   useKeepScroll("mentions", root, !!inbox.data);
-  const open = useOpenItem();
+  const open = useOpenItem("mentions");
   const { done, snooze, snoozeFor, unsnooze, checkout } = useItemActions();
   const view = useStore(mentionsView);
   const pick = useCallback((v: View) => {
@@ -144,7 +144,9 @@ export function MentionsScreen() {
           sections={[{ key: view, items }]}
           actions={{ open, done, snooze, snoozeFor, unsnooze, checkout }}
           renderPeek={(it) =>
-            it.kind === "pr" || it.kind === "mention" ? <PrPeek item={it} /> : null
+            it.kind === "pr" || it.kind === "mention" ? (
+              <PrPeek item={it} origin="mentions" />
+            ) : null
           }
           empty={
             isFiltering(filter) ? (

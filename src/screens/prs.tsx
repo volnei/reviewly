@@ -102,7 +102,7 @@ export function PrsScreen() {
     }),
     { enabled: watched.length > 0, staleTime: 60_000 },
   );
-  const open = useOpenItem();
+  const open = useOpenItem("prs");
   const { snooze, snoozeFor, unsnooze, checkout } = useItemActions();
 
   // The cache knows every PR; the Inbox knows more about the ones that involve you.
@@ -252,7 +252,9 @@ export function PrsScreen() {
           pageSize={120}
           actions={{ open, snooze, snoozeFor, unsnooze, checkout }}
           renderPeek={(it) =>
-            it.kind === "pr" || it.kind === "mention" ? <PrPeek item={it} /> : null
+            it.kind === "pr" || it.kind === "mention" ? (
+              <PrPeek item={it} origin="prs" />
+            ) : null
           }
           empty={
             isFiltering(filter) ? (

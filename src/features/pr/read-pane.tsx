@@ -328,7 +328,7 @@ export function ReadPane({
       <div
         ref={scrollRef}
         onScroll={(e) => positions.current.set(scrollKey, e.currentTarget.scrollTop)}
-        className="min-h-0 flex-1 overflow-y-auto bg-page scrollbar-thin"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-page scrollbar-thin"
       >
         <div
           className={cn(

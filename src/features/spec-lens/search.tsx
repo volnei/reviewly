@@ -1,5 +1,25 @@
+import { useNavigate } from "@tanstack/react-router";
+import { Effect } from "effect";
+import {
+  ChevronRight,
+  FileText,
+  FolderGit2,
+  Search,
+  Sparkles,
+  WandSparkles,
+  X,
+} from "lucide-react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { runtime } from "@/effect/runtime";
 import { providerName } from "@/effect/services/Ai";
 import { Git } from "@/effect/services/Git";
@@ -8,21 +28,11 @@ import { useAiRun } from "@/features/pr/ai";
 import { Markdown } from "@/features/pr/markdown";
 import { toLocalId } from "@/lib/local-id";
 import { recoveryHint } from "@/lib/reliability";
-import { useNavigate } from "@tanstack/react-router";
-import { Effect } from "effect";
+
 import {
-  ChevronRight,
-  FileText,
-  Search,
-  Sparkles,
-  WandSparkles,
-  X,
-} from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
-import {
-  type SpecSource,
   buildSpecSearchPrompt,
   parseSpecSearchAnswer,
+  type SpecSource,
   specSourceFiles,
 } from "./ai";
 import { SpecComposer } from "./composer";
@@ -33,24 +43,43 @@ const STARTERS = [
   "Where do our current specs contradict each other?",
 ];
 
-export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
+export function SpecSearch({
+  workspace,
+  workspaces,
+  initialRequest,
+}: {
+  workspace: SpecWorkspace;
+  workspaces: ReadonlyArray<SpecWorkspace>;
+  initialRequest?: string;
+}) {
+  const [workspacePath, setWorkspacePath] = useState(workspace.path);
   const [question, setQuestion] = useState("");
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [mode, setMode] = useState<"create" | "search">("create");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [resultWorkspacePath, setResultWorkspacePath] = useState<string | null>(null);
   const ai = useAiRun();
   const navigate = useNavigate();
   const provider = usePrefs((prefs) => prefs.ai.provider);
-  const files = useMemo(() => specSourceFiles(workspace), [workspace]);
+  const activeWorkspace =
+    workspaces.find((item) => item.path === workspacePath) ?? workspace;
+  const files = useMemo(() => specSourceFiles(activeWorkspace), [activeWorkspace]);
   const result =
-    ai.text && !ai.running ? parseSpecSearchAnswer(ai.text, files) : null;
+    ai.text && !ai.running && resultWorkspacePath === activeWorkspace.path
+      ? parseSpecSearchAnswer(ai.text, files)
+      : null;
   const creating = mode === "create";
+
+  useEffect(() => {
+    setWorkspacePath(workspace.path);
+  }, [workspace.path]);
 
   const ask = async (value = question) => {
     const query = value.trim();
     if (!query || ai.running || loadingFiles) return;
     setQuestion(query);
     setLoadError(null);
+    setResultWorkspacePath(activeWorkspace.path);
     setLoadingFiles(true);
     try {
       const sources = await runtime.runPromise(
@@ -58,36 +87,28 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
           Effect.forEach(
             files,
             (file) =>
-              git.readFile(`${workspace.path}/${file}`).pipe(
-                Effect.map(
-                  (content) => ({ path: file, content }) satisfies SpecSource,
-                ),
+              git.readFile(`${activeWorkspace.path}/${file}`).pipe(
+                Effect.map((content) => ({ path: file, content }) satisfies SpecSource),
                 Effect.orElseSucceed(() => null),
               ),
             { concurrency: 4 },
           ),
         ),
       );
-      const readable = sources.filter(
-        (source): source is SpecSource => source !== null,
-      );
+      const readable = sources.filter((source): source is SpecSource => source !== null);
       if (!readable.length) {
         setLoadError("Reviewly couldn’t read this change’s OpenSpec files.");
         return;
       }
       ai.start(
-        `spec-lens:${workspace.path}:app-specs`,
-        buildSpecSearchPrompt(workspace, query, readable),
+        `spec-lens:${activeWorkspace.path}:app-specs`,
+        buildSpecSearchPrompt(activeWorkspace, query, readable),
         undefined,
-        `Searching ${workspace.repo} specs`,
-        workspace.path,
+        `Searching ${activeWorkspace.repo} specs`,
+        activeWorkspace.path,
       );
     } catch (error) {
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Couldn’t read the OpenSpec files.",
-      );
+      setLoadError(error instanceof Error ? error.message : "Couldn’t read the OpenSpec files.");
     } finally {
       setLoadingFiles(false);
     }
@@ -101,16 +122,13 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
   const openFile = (file: string) => {
     void navigate({
       to: "/local/$id",
-      params: { id: toLocalId(workspace.path) },
+      params: { id: toLocalId(activeWorkspace.path) },
       search: { file, from: "spec-lens" },
     });
   };
 
   return (
-    <section
-      className="mb-5 border-y border-hair bg-sink/35 px-5 py-4"
-      aria-labelledby="spec-ai-title"
-    >
+    <section className="mb-6 bg-sink/25 px-5 py-4" aria-labelledby="spec-ai-title">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {creating ? (
@@ -121,10 +139,7 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
           <h3 id="spec-ai-title" className="text-[12px] font-medium text-ink">
             {creating ? "Create app spec" : "Search app specs"}
           </h3>
-          <span className="text-[10.5px] text-ink-3">
-            {providerName(provider)} · {files.length} current spec
-            {files.length === 1 ? "" : "s"}
-          </span>
+          <span className="text-[10.5px] text-ink-3">with {providerName(provider)}</span>
         </div>
         {ai.running ? (
           <button
@@ -135,11 +150,7 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
             <X className="size-3" /> Stop
           </button>
         ) : (
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => setMode(creating ? "search" : "create")}
-          >
+          <Button size="xs" variant="ghost" onClick={() => setMode(creating ? "search" : "create")}>
             {creating ? (
               <>
                 <Search className="size-3.5" /> Search app specs
@@ -153,8 +164,58 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
         )}
       </div>
 
+      {workspaces.length ? (
+        <div className="mt-3 flex max-w-[520px] items-center gap-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] text-ink-3">
+            <FolderGit2 className="size-3.5" strokeWidth={1.75} /> Project
+          </span>
+          <Select
+            value={activeWorkspace.path}
+            onValueChange={(path) => {
+              if (!path || path === activeWorkspace.path) return;
+              ai.cancel();
+              setQuestion("");
+              setLoadError(null);
+              setResultWorkspacePath(null);
+              setWorkspacePath(path);
+            }}
+          >
+            <SelectTrigger className="h-8 min-w-0 flex-1 rounded-md bg-page" aria-label="Spec project">
+              <SelectValue>
+                <span className="flex min-w-0 items-center justify-between gap-3">
+                  <span className="truncate font-medium text-ink">
+                    {activeWorkspace.owner}/{activeWorkspace.repo}
+                  </span>
+                </span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup alignItemWithTrigger={false} className="min-w-[360px]">
+              {workspaces.map((item) => {
+                const ruleCount = specSourceFiles(item).length;
+                return (
+                  <SelectItem key={item.path} value={item.path}>
+                    <span className="flex min-w-0 flex-col py-0.5">
+                      <span className="truncate text-[12px] font-medium text-ink">
+                        {item.owner}/{item.repo}
+                      </span>
+                      <span className="truncate text-[10px] text-ink-3">
+                        {ruleCount} OpenSpec rule{ruleCount === 1 ? "" : "s"} · {item.path}
+                      </span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectPopup>
+          </Select>
+        </div>
+      ) : null}
+
       {creating ? (
-        <SpecComposer workspace={workspace} onClose={() => setMode("search")} />
+        <SpecComposer
+          key={activeWorkspace.path}
+          workspace={activeWorkspace}
+          initialRequest={initialRequest}
+        />
       ) : null}
 
       {!creating ? (
@@ -197,10 +258,7 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
       ) : null}
 
       {!creating && (loadingFiles || ai.running) ? (
-        <p
-          className="mt-3 flex items-center gap-2 text-[11.5px] text-ink-3"
-          aria-live="polite"
-        >
+        <p className="mt-3 flex items-center gap-2 text-[11.5px] text-ink-3" aria-live="polite">
           <span className="ai-dot size-1.5 animate-pulse rounded-full" />
           {loadingFiles
             ? "Reading OpenSpec artifacts…"
@@ -212,9 +270,7 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
         <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(190px,280px)] gap-6 border-t border-hair pt-4 max-[880px]:grid-cols-1">
           <Markdown className="text-[12.5px]">{result.answer}</Markdown>
           <div>
-            <p className="mb-1.5 text-[10.5px] font-medium text-ink-3">
-              Evidence
-            </p>
+            <p className="mb-1.5 text-[10.5px] font-medium text-ink-3">Evidence</p>
             {result.sources.length ? (
               <div className="border-y border-hair">
                 {result.sources.map((source) => (
@@ -239,8 +295,8 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
               </div>
             ) : (
               <p className="text-[10.5px] leading-4 text-ink-3">
-                The model returned no valid file references. Its answer is
-                shown, but not treated as grounded evidence.
+                The model returned no valid file references. Its answer is shown, but not treated as
+                grounded evidence.
               </p>
             )}
           </div>
@@ -250,9 +306,7 @@ export function SpecSearch({ workspace }: { workspace: SpecWorkspace }) {
       {!creating && (loadError || ai.error) ? (
         <div className="mt-3 text-[11.5px]">
           <p className="text-del">{loadError ?? ai.error}</p>
-          {ai.error ? (
-            <p className="mt-1 text-ink-3">{recoveryHint(ai.error)}</p>
-          ) : null}
+          {ai.error ? <p className="mt-1 text-ink-3">{recoveryHint(ai.error)}</p> : null}
         </div>
       ) : null}
     </section>

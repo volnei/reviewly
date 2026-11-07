@@ -17,6 +17,7 @@ pub async fn gh_list_reviews(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn gh_submit_review(
     state: State<'_, AppState>,
     owner: String,

@@ -26,6 +26,22 @@ pub struct SpecTask {
 }
 
 #[derive(Serialize, Clone)]
+pub struct SpecPullRequest {
+    pub url: String,
+    pub label: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct SourceSpec {
+    pub capability: String,
+    pub title: String,
+    pub summary: String,
+    pub file: String,
+    pub requirements: Vec<SpecRequirement>,
+    pub scenarios: usize,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SpecChange {
     pub id: String,
     pub title: String,
@@ -40,6 +56,7 @@ pub struct SpecChange {
     pub requirements: Vec<SpecRequirement>,
     pub issues: Vec<SpecIssue>,
     pub ready_to_archive: bool,
+    pub pull_requests: Vec<SpecPullRequest>,
 }
 
 #[derive(Serialize, Clone)]
@@ -48,6 +65,8 @@ pub struct OpenSpecScan {
     pub config_file: Option<String>,
     pub source_specs: usize,
     pub source_spec_files: Vec<String>,
+    pub source_spec_details: Vec<SourceSpec>,
+    pub archived_changes: usize,
     pub changes: Vec<SpecChange>,
 }
 
@@ -60,6 +79,35 @@ pub async fn openspec_scan(path: String) -> AppResult<Option<OpenSpecScan>> {
         .await
         .map_err(|e| crate::error::AppError::Other(format!("OpenSpec scan task failed: {e}")))?;
     Ok(out)
+}
+
+/// Bootstrap the standard OpenSpec workspace without introducing any
+/// Reviewly-only metadata. Existing files are never overwritten.
+#[tauri::command]
+pub async fn openspec_setup(path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || setup_sync(Path::new(&path)))
+        .await
+        .map_err(|e| crate::error::AppError::Other(format!("OpenSpec setup task failed: {e}")))?
+}
+
+fn setup_sync(root: &Path) -> AppResult<()> {
+    if !root.is_dir() {
+        return Err(crate::error::AppError::Other(
+            "the selected repository is not available on this Mac".into(),
+        ));
+    }
+    let openspec = root.join("openspec");
+    std::fs::create_dir_all(openspec.join("specs"))
+        .map_err(|e| crate::error::AppError::Other(format!("create openspec/specs: {e}")))?;
+    std::fs::create_dir_all(openspec.join("changes").join("archive"))
+        .map_err(|e| crate::error::AppError::Other(format!("create openspec/changes: {e}")))?;
+    let config = openspec.join("config.yaml");
+    if !config.exists() {
+        std::fs::write(&config, "schema: spec-driven\n").map_err(|e| {
+            crate::error::AppError::Other(format!("write openspec/config.yaml: {e}"))
+        })?;
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -172,11 +220,24 @@ fn scan_sync(root: &Path) -> Option<OpenSpecScan> {
         .iter()
         .find(|name| openspec.join(name).is_file())
         .map(|name| format!("openspec/{name}"));
-    let source_spec_files = spec_files(&openspec.join("specs"))
+    let source_files = spec_files(&openspec.join("specs"));
+    let source_spec_files = source_files
         .iter()
         .map(|file| relative(root, file))
         .collect::<Vec<_>>();
+    let source_spec_details = source_files
+        .iter()
+        .map(|file| scan_source_spec(root, file))
+        .collect::<Vec<_>>();
     let source_specs = source_spec_files.len();
+    let archived_changes = std::fs::read_dir(openspec.join("changes").join("archive"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .count()
+        })
+        .unwrap_or(0);
     let mut changes = Vec::new();
     if let Ok(entries) = std::fs::read_dir(openspec.join("changes")) {
         for entry in entries.flatten() {
@@ -199,8 +260,35 @@ fn scan_sync(root: &Path) -> Option<OpenSpecScan> {
         config_file,
         source_specs,
         source_spec_files,
+        source_spec_details,
+        archived_changes,
         changes,
     })
+}
+
+fn scan_source_spec(root: &Path, file: &Path) -> SourceSpec {
+    let raw = std::fs::read_to_string(file).unwrap_or_default();
+    let capability = file
+        .parent()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "spec".into());
+    let requirements = parse_requirements(root, file);
+    let scenarios = requirements.iter().map(|item| item.scenarios.len()).sum();
+    SourceSpec {
+        capability: capability.clone(),
+        title: first_heading(&raw).unwrap_or_else(|| humanize(&capability)),
+        summary: first_paragraph(&raw).unwrap_or_else(|| {
+            format!(
+                "{} current requirement{}.",
+                requirements.len(),
+                if requirements.len() == 1 { "" } else { "s" }
+            )
+        }),
+        file: relative(root, file),
+        requirements,
+        scenarios,
+    }
 }
 
 fn scan_change(root: &Path, dir: &Path) -> SpecChange {
@@ -211,6 +299,16 @@ fn scan_change(root: &Path, dir: &Path) -> SpecChange {
     let proposal = read_optional(&dir.join("proposal.md"));
     let design = read_optional(&dir.join("design.md"));
     let tasks = read_optional(&dir.join("tasks.md"));
+    let pull_requests = [&proposal, &design, &tasks]
+        .into_iter()
+        .flatten()
+        .flat_map(|raw| pull_request_urls(raw))
+        .fold(Vec::<SpecPullRequest>::new(), |mut out, item| {
+            if !out.iter().any(|known| known.url == item.url) {
+                out.push(item);
+            }
+            out
+        });
     let mut requirements = Vec::new();
     for file in spec_files(&dir.join("specs")) {
         requirements.extend(parse_requirements(root, &file));
@@ -314,7 +412,29 @@ fn scan_change(root: &Path, dir: &Path) -> SpecChange {
         requirements,
         issues,
         ready_to_archive,
+        pull_requests,
     }
+}
+
+fn pull_request_urls(raw: &str) -> Vec<SpecPullRequest> {
+    raw.split_whitespace()
+        .filter_map(|token| {
+            let url = token
+                .trim_matches(|c: char| matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | ',' | '.'));
+            let is_pull = url.starts_with("https://")
+                && (url.contains("/pull/") || url.contains("/-/merge_requests/"));
+            if !is_pull {
+                return None;
+            }
+            let number = url.rsplit('/').next().filter(|value| !value.is_empty());
+            Some(SpecPullRequest {
+                url: url.to_string(),
+                label: number
+                    .map(|value| format!("PR #{value}"))
+                    .unwrap_or_else(|| "Pull request".into()),
+            })
+        })
+        .collect()
 }
 
 fn issue(severity: &str, title: &str, detail: &str, file: Option<String>) -> SpecIssue {
@@ -491,6 +611,7 @@ mod tests {
         let scan = scan_sync(&dir).expect("OpenSpec detected");
         assert_eq!(scan.source_specs, 1);
         assert_eq!(scan.source_spec_files, ["openspec/specs/auth/spec.md"]);
+        assert_eq!(scan.source_spec_details[0].title, "Auth");
         assert_eq!(scan.changes.len(), 1);
         let change = &scan.changes[0];
         assert_eq!(change.title, "Add passkey login");
@@ -502,6 +623,54 @@ mod tests {
             .iter()
             .any(|issue| issue.title.contains("Replay protection")));
         assert!(!change.ready_to_archive);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sets_up_standard_openspec_without_overwriting_configuration() {
+        let dir =
+            std::env::temp_dir().join(format!("reviewly-setup-openspec-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        setup_sync(&dir).unwrap();
+        assert!(dir.join("openspec/specs").is_dir());
+        assert!(dir.join("openspec/changes/archive").is_dir());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("openspec/config.yaml")).unwrap(),
+            "schema: spec-driven\n"
+        );
+        std::fs::write(dir.join("openspec/config.yaml"), "schema: custom\n").unwrap();
+        setup_sync(&dir).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("openspec/config.yaml")).unwrap(),
+            "schema: custom\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discovers_attached_pull_requests_and_archives() {
+        let dir = std::env::temp_dir().join(format!("reviewly-pr-openspec-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write(&dir.join("openspec/specs/auth/spec.md"), "# Auth\n\n## Requirements\n\n### Requirement: Sign in\n\n#### Scenario: Valid credentials\n");
+        write(
+            &dir.join("openspec/changes/archive/old/proposal.md"),
+            "# Old\n",
+        );
+        write(
+            &dir.join("openspec/changes/passkeys/proposal.md"),
+            "# Passkeys\n\nTrack https://github.com/volnei/reviewly/pull/42.\n",
+        );
+        write(
+            &dir.join("openspec/changes/passkeys/tasks.md"),
+            "- [ ] Land https://gitlab.com/acme/app/-/merge_requests/7\n",
+        );
+        write(&dir.join("openspec/changes/passkeys/specs/auth/spec.md"), "## ADDED Requirements\n\n### Requirement: Passkey\n\n#### Scenario: Known credential\n");
+        let scan = scan_sync(&dir).unwrap();
+        assert_eq!(scan.archived_changes, 1);
+        assert_eq!(scan.changes[0].pull_requests.len(), 2);
+        assert_eq!(scan.changes[0].pull_requests[0].label, "PR #42");
+        assert_eq!(scan.changes[0].pull_requests[1].label, "PR #7");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

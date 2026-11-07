@@ -1,3 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { Effect } from "effect";
+import { ArrowUpRight, Check, ChevronRight, CircleAlert, Play, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import { settingsCategoryStore } from "@/app/settings-navigation";
 import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
@@ -6,26 +12,10 @@ import { runtime } from "@/effect/runtime";
 import { Ai, providerName } from "@/effect/services/Ai";
 import { Git } from "@/effect/services/Git";
 import { usePrefs } from "@/effect/services/Prefs";
-import {
-  cancelBackground,
-  startBackground,
-  useBackgroundRun,
-} from "@/features/pr/ai";
+import { cancelBackground, startBackground, useBackgroundRun } from "@/features/pr/ai";
 import { Markdown } from "@/features/pr/markdown";
 import { safeOpenUrl } from "@/lib/ui";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Effect } from "effect";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  Play,
-  RotateCcw,
-  X,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+
 import {
   buildSpecDraftPrompt,
   buildSpecImplementationPrompt,
@@ -50,18 +40,16 @@ const EMPTY_RUN = {
 
 export function SpecComposer({
   workspace,
-  onClose,
+  initialRequest = "",
 }: {
   workspace: SpecWorkspace;
-  onClose: () => void;
+  initialRequest?: string;
 }) {
   const draftKey = `spec-draft:${workspace.path}`;
   const [request, setRequest] = useState(
-    () => draftRequests.get(workspace.path) ?? "",
+    () => initialRequest || draftRequests.get(workspace.path) || "",
   );
-  const [draftCanceled, setDraftCanceled] = useState(() =>
-    canceledDrafts.has(workspace.path),
-  );
+  const [draftCanceled, setDraftCanceled] = useState(() => canceledDrafts.has(workspace.path));
   const [draftStartedAt, setDraftStartedAt] = useState<number | null>(
     () => draftStartTimes.get(workspace.path) ?? null,
   );
@@ -88,33 +76,14 @@ export function SpecComposer({
   const draft = ai.text && !ai.running ? parseSpecDraft(ai.text) : null;
   const deliveryCount = draft?.delivery.pullRequests.length ?? 1;
   const isStack = deliveryCount > 1;
-  const deliveryComplete = draft
-    ? prUrls.length === draft.delivery.pullRequests.length
-    : false;
+  const deliveryComplete = draft ? prUrls.length === draft.delivery.pullRequests.length : false;
   const generatingDraft = ai.running;
   const draftFailure =
     ai.error && !generatingDraft
       ? describeSpecDraftFailure(ai.error, providerName(provider))
       : null;
-  const draftIdleTimeoutSeconds =
-    aiPrefs.timeoutSecs > 0 ? aiPrefs.timeoutSecs : 900;
+  const draftIdleTimeoutSeconds = aiPrefs.timeoutSecs > 0 ? aiPrefs.timeoutSecs : 900;
   const telemetry = ai.progress;
-  const activeStep = created
-    ? 3
-    : draft || (ai.running && telemetry?.phase === "writing")
-      ? 2
-      : ai.running
-        ? 1
-        : 0;
-  const journey = [
-    { label: "Your idea", detail: "Describe the behavior" },
-    { label: `${files.length} app rules`, detail: "Read as constraints" },
-    { label: "Spec review", detail: "Proposal, scenarios, tasks" },
-    {
-      label: isStack ? `${deliveryCount}-PR stack` : "Pull request",
-      detail: isStack ? "Ordered by dependency" : "Only after approval",
-    },
-  ];
   const telemetryItems = [
     telemetry?.model ? { label: "Model", value: telemetry.model } : null,
     telemetry?.inputTokens != null
@@ -138,15 +107,12 @@ export function SpecComposer({
     telemetry?.costUsd != null
       ? { label: "Cost", value: `$${telemetry.costUsd.toFixed(4)}` }
       : null,
-    telemetry?.turns != null
-      ? { label: "Turns", value: telemetry.turns.toLocaleString() }
-      : null,
+    telemetry?.turns != null ? { label: "Turns", value: telemetry.turns.toLocaleString() } : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
 
   useEffect(() => {
     if (!generatingDraft || draftStartedAt === null) return;
-    const update = () =>
-      setElapsedSeconds(Math.floor((Date.now() - draftStartedAt) / 1000));
+    const update = () => setElapsedSeconds(Math.floor((Date.now() - draftStartedAt) / 1000));
     update();
     const timer = window.setInterval(update, 1_000);
     return () => window.clearInterval(timer);
@@ -167,11 +133,7 @@ export function SpecComposer({
       buildSpecDraftPrompt(workspace, intent, files),
       workspace.path,
       `Drafting ${workspace.repo} spec`,
-      () =>
-        toast.say(
-          "Spec draft ready",
-          "Review the proposal before creating its branch.",
-        ),
+      () => toast.say("Spec draft ready", "Review the proposal before creating its branch."),
       "/spec-lens",
     );
   };
@@ -185,9 +147,7 @@ export function SpecComposer({
         Effect.flatMap(Git, (git) => git.repoInfo(workspace.path)),
       );
       const isolatedPath = await runtime.runPromise(
-        Effect.flatMap(Git, (git) =>
-          git.createWorktree(workspace.path, `spec/${draft.id}`),
-        ),
+        Effect.flatMap(Git, (git) => git.createWorktree(workspace.path, `spec/${draft.id}`)),
       );
       await runtime.runPromise(
         Effect.flatMap(Git, (git) =>
@@ -212,11 +172,7 @@ export function SpecComposer({
         `spec/${draft.id} was created without touching your checkout.`,
       );
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Couldn’t create the spec branch.",
-      );
+      setError(cause instanceof Error ? cause.message : "Couldn’t create the spec branch.");
     } finally {
       setBusy(null);
     }
@@ -234,18 +190,14 @@ export function SpecComposer({
           : `spec/${draft.id}/${String(index + 1).padStart(2, "0")}-${pullRequest.id}`;
       };
       const startIndex = prUrls.length;
-      let parentBranch =
-        startIndex === 0 ? baseBranch : branchFor(startIndex - 1);
+      let parentBranch = startIndex === 0 ? baseBranch : branchFor(startIndex - 1);
       const urls = [...prUrls];
       const completed: Array<{
         title: string;
         summary: string;
         tests: string;
       }> = [...execution];
-      for (const [
-        index,
-        pullRequest,
-      ] of draft.delivery.pullRequests.entries()) {
+      for (const [index, pullRequest] of draft.delivery.pullRequests.entries()) {
         if (index < startIndex) continue;
         const branch = branchFor(index);
         if (index > 0) {
@@ -254,25 +206,17 @@ export function SpecComposer({
           );
           if (info.current_branch !== branch) {
             await runtime.runPromise(
-              Effect.flatMap(Git, (git) =>
-                git.createBranch(worktreePath, branch),
-              ),
+              Effect.flatMap(Git, (git) => git.createBranch(worktreePath, branch)),
             );
           }
         }
         const output = await runtime.runPromise(
           Effect.flatMap(Ai, (service) =>
-            service.apply(
-              buildSpecImplementationPrompt(draft, pullRequest, index),
-              worktreePath,
-            ),
+            service.apply(buildSpecImplementationPrompt(draft, pullRequest, index), worktreePath),
           ),
         );
         const result = parseSpecExecutionResult(output);
-        if (!result)
-          throw new Error(
-            `PR ${index + 1} finished without a verifiable result.`,
-          );
+        if (!result) throw new Error(`PR ${index + 1} finished without a verifiable result.`);
         completed.push({
           title: pullRequest.title,
           summary: result.summary,
@@ -281,25 +225,18 @@ export function SpecComposer({
         setExecution([...completed]);
         if (!result.ok) {
           throw new Error(
-            result.summary ||
-              `PR ${index + 1} implementation or validation did not finish.`,
+            result.summary || `PR ${index + 1} implementation or validation did not finish.`,
           );
         }
         const status = await runtime.runPromise(
           Effect.flatMap(Git, (git) => git.status(worktreePath)),
         );
         if (!status.staged.length && !status.unstaged.length) {
-          throw new Error(
-            `PR ${index + 1} reported success but left no changes to publish.`,
-          );
+          throw new Error(`PR ${index + 1} reported success but left no changes to publish.`);
         }
+        await runtime.runPromise(Effect.flatMap(Git, (git) => git.stage(worktreePath, null)));
         await runtime.runPromise(
-          Effect.flatMap(Git, (git) => git.stage(worktreePath, null)),
-        );
-        await runtime.runPromise(
-          Effect.flatMap(Git, (git) =>
-            git.commit(worktreePath, `feat: ${pullRequest.title}`),
-          ),
+          Effect.flatMap(Git, (git) => git.commit(worktreePath, `feat: ${pullRequest.title}`)),
         );
         const url = await runtime.runPromise(
           Effect.flatMap(Git, (git) =>
@@ -336,16 +273,10 @@ export function SpecComposer({
       });
       toast.say(
         isStack ? "Pull request stack opened" : "Pull request opened",
-        isStack
-          ? `${deliveryCount} dependent PRs are ready for review.`
-          : draft.title,
+        isStack ? `${deliveryCount} dependent PRs are ready for review.` : draft.title,
       );
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "The implementation didn’t finish.",
-      );
+      setError(cause instanceof Error ? cause.message : "The implementation didn’t finish.");
     } finally {
       setBusy(null);
     }
@@ -357,69 +288,10 @@ export function SpecComposer({
   };
 
   return (
-    <section
-      className="mt-3 overflow-hidden rounded-xl bg-card p-4 ring-1 ring-edge/70 shadow-[0_12px_32px_rgba(0,0,0,0.08)]"
-      data-ui
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-[16px] font-medium tracking-[-0.01em] text-ink">
-            Build the change from intent
-          </h3>
-          <p className="mt-1 text-[11.5px] leading-4 text-ink-3">
-            {providerName(provider)} grounds the draft in your current product
-            rules. Nothing is written until you review it.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-ink-3 hover:text-ink"
-          aria-label="Close spec creator"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      <ol
-        className="mt-4 grid grid-cols-4 overflow-hidden rounded-lg bg-page/65 max-[1100px]:grid-cols-2"
-        aria-label="Spec delivery flow"
-      >
-        {journey.map((step, index) => (
-          <li
-            key={step.label}
-            className="flex min-w-0 items-center gap-2.5 border-l border-hair px-3 py-2.5 first:border-l-0 max-[1100px]:nth-3:border-t max-[1100px]:nth-3:border-l-0 max-[1100px]:nth-4:border-t"
-            aria-current={index === activeStep ? "step" : undefined}
-          >
-            <span
-              className={`size-1.5 shrink-0 rounded-full ${
-                index < activeStep
-                  ? "bg-add"
-                  : index === activeStep
-                    ? "bg-ink"
-                    : "bg-ink-3/35"
-              }`}
-              aria-hidden="true"
-            />
-            <span className="min-w-0">
-              <span
-                className={`block truncate text-[11px] font-medium ${
-                  index <= activeStep ? "text-ink" : "text-ink-3"
-                }`}
-              >
-                {step.label}
-              </span>
-              <span className="mt-0.5 block truncate text-[10.5px] text-ink-3">
-                {step.detail}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
-
+    <section className="mt-3 pb-1" data-ui>
       {!draft ? (
         <div
-          className="mt-4 overflow-hidden rounded-lg bg-page ring-1 ring-input transition-shadow focus-within:ring-2 focus-within:ring-ring/70"
+          className="overflow-hidden rounded-lg bg-page ring-1 ring-input transition-shadow focus-within:ring-2 focus-within:ring-ring/70"
           aria-busy={generatingDraft}
         >
           <label
@@ -453,14 +325,8 @@ export function SpecComposer({
           <div className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-hair bg-raise/30 px-3 py-2">
             <div className="flex min-w-0 items-center gap-x-4 text-[10.5px] text-ink-3">
               <span className="inline-flex items-center gap-1.5">
-                <span
-                  className="size-1.5 rounded-full bg-add"
-                  aria-hidden="true"
-                />
-                {files.length} current rules ready
-              </span>
-              <span className="truncate max-[1100px]:hidden">
-                Proposal, scenarios and implementation plan
+                <span className="size-1.5 rounded-full bg-add" aria-hidden="true" />
+                {files.length} OpenSpec rule{files.length === 1 ? "" : "s"}
               </span>
             </div>
             <Button
@@ -523,10 +389,7 @@ export function SpecComposer({
           {telemetryItems.length ? (
             <dl className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 border-t border-hair/70 pt-2">
               {telemetryItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-baseline gap-1.5 text-[10.5px]"
-                >
+                <div key={item.label} className="flex items-baseline gap-1.5 text-[10.5px]">
                   <dt className="text-ink-3">{item.label}</dt>
                   <dd className="font-mono text-ink-2">{item.value}</dd>
                 </div>
@@ -534,9 +397,7 @@ export function SpecComposer({
               {telemetry?.sessionId ? (
                 <div className="flex items-baseline gap-1.5 text-[10.5px]">
                   <dt className="text-ink-3">Session</dt>
-                  <dd className="font-mono text-ink-2">
-                    …{telemetry.sessionId.slice(-8)}
-                  </dd>
+                  <dd className="font-mono text-ink-2">…{telemetry.sessionId.slice(-8)}</dd>
                 </div>
               ) : null}
             </dl>
@@ -549,13 +410,9 @@ export function SpecComposer({
                   ? "Repository discovery"
                   : "Model working"}
             </span>
-            <span
-              className="tabular-nums"
-              aria-label="Elapsed time and inactivity protection"
-            >
-              {Math.floor(elapsedSeconds / 60)}:
-              {String(elapsedSeconds % 60).padStart(2, "0")} elapsed ·{" "}
-              {Math.floor(draftIdleTimeoutSeconds / 60)}:
+            <span className="tabular-nums" aria-label="Elapsed time and inactivity protection">
+              {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}{" "}
+              elapsed · {Math.floor(draftIdleTimeoutSeconds / 60)}:
               {String(draftIdleTimeoutSeconds % 60).padStart(2, "0")} idle guard
             </span>
           </div>
@@ -563,9 +420,7 @@ export function SpecComposer({
       ) : null}
 
       {draftCanceled && !ai.running ? (
-        <p className="mt-3 text-[11.5px] text-ink-3">
-          Draft canceled. Your prompt is still here.
-        </p>
+        <p className="mt-3 text-[11.5px] text-ink-3">Draft canceled. Your prompt is still here.</p>
       ) : null}
 
       {ai.text && !ai.running && !draft && !draftCanceled && !ai.error ? (
@@ -578,21 +433,15 @@ export function SpecComposer({
         <div className="mt-4 grid grid-cols-[minmax(0,1fr)_260px] gap-6 max-[860px]:grid-cols-1">
           <div>
             <p className="font-mono text-[10px] text-ink-3">{draft.id}</p>
-            <h4 className="mt-1 text-[15px] font-medium text-ink">
-              {draft.title}
-            </h4>
-            <p className="mt-1 text-[11.5px] leading-[18px] text-ink-2">
-              {draft.summary}
-            </p>
+            <h4 className="mt-1 text-[15px] font-medium text-ink">{draft.title}</h4>
+            <p className="mt-1 text-[11.5px] leading-[18px] text-ink-2">{draft.summary}</p>
             {telemetry?.phase === "complete" ? (
               <p className="mt-2 font-mono text-[9.5px] text-ink-3">
                 Generated{telemetry.model ? ` by ${telemetry.model}` : ""}
                 {telemetry.outputTokens != null
                   ? ` · ${telemetry.outputTokens.toLocaleString()} output tokens`
                   : ""}
-                {telemetry.costUsd != null
-                  ? ` · $${telemetry.costUsd.toFixed(4)}`
-                  : ""}
+                {telemetry.costUsd != null ? ` · $${telemetry.costUsd.toFixed(4)}` : ""}
                 {telemetry.durationMs != null
                   ? ` · ${(telemetry.durationMs / 1000).toFixed(1)}s`
                   : ""}
@@ -603,13 +452,8 @@ export function SpecComposer({
                 {draft.specs.length} capability delta
                 {draft.specs.length === 1 ? "" : "s"}
               </span>
-              <span>
-                {(draft.tasks.match(/^- \[ \]/gm) ?? []).length} implementation
-                tasks
-              </span>
-              <span>
-                {isStack ? `${deliveryCount}-PR stack` : "1 pull request"}
-              </span>
+              <span>{(draft.tasks.match(/^- \[ \]/gm) ?? []).length} implementation tasks</span>
+              <span>{isStack ? `${deliveryCount}-PR stack` : "1 pull request"}</span>
             </div>
             <div className="mt-3 border-y border-hair">
               <div className="py-2.5">
@@ -657,18 +501,14 @@ export function SpecComposer({
                   <p className="mb-1 text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-3">
                     Proposal
                   </p>
-                  <Markdown className="spec-document">
-                    {draft.proposal}
-                  </Markdown>
+                  <Markdown className="spec-document">{draft.proposal}</Markdown>
                 </div>
                 {draft.design ? (
                   <div>
                     <p className="mb-1 text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-3">
                       Design
                     </p>
-                    <Markdown className="spec-document">
-                      {draft.design}
-                    </Markdown>
+                    <Markdown className="spec-document">{draft.design}</Markdown>
                   </div>
                 ) : null}
                 {draft.specs.map((spec) => (
@@ -676,9 +516,7 @@ export function SpecComposer({
                     <p className="mb-1 font-mono text-[9.5px] text-ink-3">
                       specs/{spec.capability}/spec.md
                     </p>
-                    <Markdown className="spec-document">
-                      {spec.content}
-                    </Markdown>
+                    <Markdown className="spec-document">{spec.content}</Markdown>
                   </div>
                 ))}
                 <div>
@@ -702,18 +540,15 @@ export function SpecComposer({
                   Create isolated worktree <ChevronRight className="size-3.5" />
                 </Button>
                 <p className="mt-2 text-[10px] leading-4 text-ink-3">
-                  Creates <span className="font-mono">spec/{draft.id}</span>{" "}
-                  beside your checkout. Your current files and branch stay
-                  untouched.
+                  Creates <span className="font-mono">spec/{draft.id}</span> beside your checkout.
+                  Your current files and branch stay untouched.
                 </p>
               </>
             ) : deliveryComplete ? (
               <>
                 <p className="flex items-center gap-1.5 text-[11.5px] text-add">
                   <Check className="size-3.5" />
-                  {isStack
-                    ? `${deliveryCount}-PR stack published`
-                    : "Implementation published"}
+                  {isStack ? `${deliveryCount}-PR stack published` : "Implementation published"}
                 </p>
                 <div className="mt-2 divide-y divide-hair border-y border-hair">
                   {prUrls.map((url, index) => (
@@ -747,9 +582,7 @@ export function SpecComposer({
                       : "Implement & open PR"}
                 </Button>
                 {worktreePath ? (
-                  <p className="mt-2 truncate font-mono text-[9.5px] text-ink-3">
-                    {worktreePath}
-                  </p>
+                  <p className="mt-2 truncate font-mono text-[9.5px] text-ink-3">{worktreePath}</p>
                 ) : null}
                 <p className="mt-2 text-[10px] leading-4 text-ink-3">
                   {isStack
@@ -779,10 +612,7 @@ export function SpecComposer({
           className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-hair pt-3"
           role="alert"
         >
-          <CircleAlert
-            className="size-3.5 shrink-0 text-del"
-            aria-hidden="true"
-          />
+          <CircleAlert className="size-3.5 shrink-0 text-del" aria-hidden="true" />
           <p className="min-w-56 flex-1 text-[10.5px] leading-4">
             <span className="font-medium text-ink">{draftFailure.title}.</span>{" "}
             <span className="text-ink-3">{draftFailure.detail}</span>
@@ -791,8 +621,7 @@ export function SpecComposer({
             {draftFailure.durationSeconds ? (
               <span className="font-mono text-[10px] tabular-nums text-ink-3">
                 {Math.floor(draftFailure.durationSeconds / 60)}:
-                {String(draftFailure.durationSeconds % 60).padStart(2, "0")}{" "}
-                without activity
+                {String(draftFailure.durationSeconds % 60).padStart(2, "0")} without activity
               </span>
             ) : null}
             {draftFailure.timeout ? (

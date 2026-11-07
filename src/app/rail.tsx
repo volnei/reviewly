@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Pencil,
   ScanSearch,
+  Sparkles,
   Settings2,
   Trash2,
   UsersRound,
@@ -146,6 +147,21 @@ export function Rail() {
         >
           {workspace?.split("/").pop() ?? "All repositories"}
         </p>
+        {APP_STORE ? null : (
+          <Link
+            to="/spec-lens"
+            search={{ compose: true }}
+            aria-label="What's your next idea?"
+            className="workspace-idea-link group mb-2"
+          >
+            <span className="workspace-idea-icon" aria-hidden>
+              <Sparkles className="size-4" strokeWidth={1.9} />
+            </span>
+            <span className="workspace-idea-label">
+              What&apos;s your next idea?
+            </span>
+          </Link>
+        )}
         <ul className="space-y-1">
           {items.map((item) => (
             <li key={item.to}>

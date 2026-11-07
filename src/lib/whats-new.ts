@@ -17,9 +17,24 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
-    version: "1.1.3",
-    date: "2026-11-06",
+    version: "1.1.4",
+    date: "2026-11-07",
     items: [
+      {
+        title: "OpenSpec becomes the product delivery system",
+        detail:
+          "Turn an idea into a grounded OpenSpec proposal, inspect system specs, track scenarios and implementation tasks, attach stacked pull requests, revise active changes, and follow verified delivery progress per project.",
+      },
+      {
+        title: "Live CI, without leaving the pull request",
+        detail:
+          "Watch checks move through queued, running, passed, failed, skipped, and cancelled states, with grouped shards, durations, annotations, and clearer failure evidence.",
+      },
+      {
+        title: "Auto-fix review feedback, CI, and conflicts",
+        detail:
+          "Use a local AI provider to inspect unresolved review comments, failing checks, and merge conflicts together, apply the fixes in a clean local clone, and validate the result without committing or pushing.",
+      },
       {
         title: "Environments, from local to shared",
         detail:
@@ -39,6 +54,16 @@ export const WHATS_NEW: WhatsNewEntry[] = [
         title: "Close a pull request from the conversation",
         detail:
           "Close an open pull request beside the main comment composer, with confirmation and a quick Reopen action.",
+      },
+      {
+        title: "Return to the work you came from",
+        detail:
+          "Opening a pull request from Inbox, Pull requests, Review queue, Fast lane, Health, Mentions, History, or Merge Lab now takes you back to that exact workflow.",
+      },
+      {
+        title: "Updates are ready when you are",
+        detail:
+          "When a desktop update is available, the title bar exposes a direct download and install action instead of hiding it behind Settings.",
       },
       {
         title: "Safer shared commands",

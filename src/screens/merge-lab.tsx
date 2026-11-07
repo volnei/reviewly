@@ -302,6 +302,7 @@ export function MergeLabScreen() {
                   void navigate({
                     to: "/pr/$owner/$repo/$number",
                     params: { owner: repo.owner, repo: repo.repo, number: String(pull.number) },
+                    search: { from: "merge-lab" },
                   });
               }}
               onArchitecture={() => void navigate({ to: "/turbo" })}

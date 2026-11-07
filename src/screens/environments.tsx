@@ -177,6 +177,7 @@ export function EnvironmentsScreen() {
     environments.find((environment) => environment.id === selectedId) ?? environments[0];
   const [draft, setDraft] = useState<Draft>(() => blank(repository));
   const [creating, setCreating] = useState(personal.length === 0);
+  const isNew = creating || !selected;
   const [tab, setTab] = useState<Tab>("variables");
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
@@ -228,7 +229,7 @@ export function EnvironmentsScreen() {
   };
 
   useEffect(() => {
-    if (!creating || draft.localDirectory || !draft.repository) return;
+    if (!isNew || draft.localDirectory || !draft.repository) return;
     const localRepository = localRepositories.data?.find(
       (item) => item.repository === draft.repository,
     );
@@ -238,10 +239,10 @@ export function EnvironmentsScreen() {
         ? { ...current, localDirectory: localRepository.path }
         : current,
     );
-  }, [creating, draft.localDirectory, draft.repository, localRepositories.data]);
+  }, [isNew, draft.localDirectory, draft.repository, localRepositories.data]);
 
   useEffect(() => {
-    if (!creating || !draft.localDirectory) {
+    if (!isNew || !draft.localDirectory) {
       setEnvironmentImport(null);
       return;
     }
@@ -301,32 +302,21 @@ export function EnvironmentsScreen() {
     return () => {
       active = false;
     };
-  }, [creating, draft.localDirectory]);
+  }, [isNew, draft.localDirectory]);
 
-  useTitleSlot(
-    <>
-      <span className="text-[12px] text-ink-3">
-        {repository ? `Scoped to ${repository}` : "Reusable command environments"}
-      </span>
-      <span className="flex-1" />
-      <ScopeSelect
-        scope={scope}
-        onScopeChange={(next) => {
-          setScope(next);
-          setSelectedId(null);
-          setCreating(false);
-          setDraft(blank(repository));
-          setResult(null);
-        }}
-        organizations={teamsWorkspace.organizations}
-        teamsEnabled={teamsPlan === "teams"}
-      />
-    </>,
-    "desk",
-  );
+  useTitleSlot(<span className="text-[12px] text-ink-3">Environments</span>, "desk");
+
+  const changeScope = (next: Scope) => {
+    setScope(next);
+    if (next !== "personal") teamsWorkspace.setOrganizationId(next);
+    setSelectedId(null);
+    setCreating(false);
+    setDraft(blank(repository));
+    setResult(null);
+  };
 
   useEffect(() => {
-    if (creating || !selected) return;
+    if (isNew || !selected) return;
     setSelectedId(selected.id);
     setDraft(
       scope === "personal"
@@ -337,7 +327,7 @@ export function EnvironmentsScreen() {
           ),
     );
     setResult(null);
-  }, [creating, scope, selected]);
+  }, [isNew, scope, selected]);
 
   const canEdit = scope === "personal" || teamQuery.data?.canEdit === true;
   const save = async () => {
@@ -421,7 +411,7 @@ export function EnvironmentsScreen() {
         };
         const savedId = await run(
           Effect.flatMap(Teams, (service) =>
-            creating
+            isNew
               ? service.createEnvironment(scope, payload)
               : service.updateEnvironment(scope, draft.id, payload).pipe(Effect.as(draft.id)),
           ),
@@ -516,8 +506,26 @@ export function EnvironmentsScreen() {
 
   return (
     <main className="h-full min-h-0 bg-desk text-ink">
-      <div className="mx-auto flex h-full min-h-0 max-w-[1440px] gap-4 p-5">
-        <aside className="flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-hair bg-panel/75">
+      <div className="mx-auto flex h-full min-h-0 max-w-[1440px] flex-col p-5">
+        <header className="flex shrink-0 items-start justify-between gap-5">
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold tracking-tight text-ink">Environments</h1>
+            <p className="mt-1 truncate text-[12px] text-ink-3">
+              {repository
+                ? `Variables, commands, and review skills for ${repository}.`
+                : "Reusable variables and commands across your projects."}
+            </p>
+          </div>
+          <ScopeSelect
+            scope={scope}
+            onScopeChange={changeScope}
+            organizations={teamsWorkspace.organizations}
+            teamsEnabled={teamsPlan === "teams"}
+          />
+        </header>
+
+        <div className="mt-5 flex min-h-0 flex-1 gap-4">
+          <aside className="flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-hair bg-panel/75">
           <div className="border-b border-hair p-3">
             <Button
               className="w-full justify-start rounded-xl"
@@ -574,9 +582,9 @@ export function EnvironmentsScreen() {
               </div>
             )}
           </div>
-        </aside>
+          </aside>
 
-        <section className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-hair bg-panel/75">
+          <section className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-hair bg-panel/75">
           <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-hair bg-panel px-6 py-4">
             <div className="min-w-0 flex-1">
               <input
@@ -593,7 +601,7 @@ export function EnvironmentsScreen() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {!creating && canEdit ? (
+              {!isNew && canEdit ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -743,7 +751,8 @@ export function EnvironmentsScreen() {
 
             {result ? <RunOutput result={result} /> : null}
           </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   );
@@ -766,21 +775,28 @@ function ScopeSelect({
       ? "Personal · Hobby"
       : `${selectedOrganization?.displayName ?? selectedOrganization?.login ?? "Teams"} · Teams`;
   return (
-    <Select value={scope} onValueChange={(value) => value && onScopeChange(value)}>
-      <SelectTrigger size="sm" className="min-w-40 rounded-xl" aria-label="Environment workspace">
-        <SelectValue>{label}</SelectValue>
-      </SelectTrigger>
-      <SelectPopup alignItemWithTrigger={false}>
-        <SelectItem value="personal">Personal · Hobby</SelectItem>
-        {teamsEnabled
-          ? organizations.map((organization) => (
-              <SelectItem key={organization.id} value={organization.id}>
-                {organization.displayName ?? organization.login} · Teams
-              </SelectItem>
-            ))
-          : null}
-      </SelectPopup>
-    </Select>
+    <div className="flex shrink-0 items-center gap-2 text-[12px] text-ink-3">
+      <span>Workspace</span>
+      <Select value={scope} onValueChange={(value) => value && onScopeChange(value)}>
+        <SelectTrigger
+          size="sm"
+          className="w-auto min-w-[176px] max-w-[280px] border-0 bg-transparent px-2 text-ink shadow-none hover:bg-raise/55 dark:bg-transparent"
+          aria-label="Environment workspace"
+        >
+          <SelectValue className="min-w-0">{label}</SelectValue>
+        </SelectTrigger>
+        <SelectPopup alignItemWithTrigger={false}>
+          <SelectItem value="personal">Personal · Hobby</SelectItem>
+          {teamsEnabled
+            ? organizations.map((organization) => (
+                <SelectItem key={organization.id} value={organization.id}>
+                  {organization.displayName ?? organization.login} · Teams
+                </SelectItem>
+              ))
+            : null}
+        </SelectPopup>
+      </Select>
+    </div>
   );
 }
 

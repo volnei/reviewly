@@ -25,6 +25,7 @@ import { age } from "@/features/list/row";
 import { MoreMenu } from "@/features/pr/actions";
 import { prContext } from "@/features/pr/ai";
 import { AskDrawer } from "@/features/pr/ask";
+import { AutoFixButton } from "@/features/pr/autofix";
 import { useLocalClone } from "@/features/pr/clone";
 import { SubmitDialog, SubmitReviewButton } from "@/features/pr/decide";
 import { lineId } from "@/features/pr/diff";
@@ -61,11 +62,12 @@ import { readingMinutes } from "@/lib/estimate";
 import type { GuidedPlan, GuidedStep } from "@/lib/guided";
 import { boundaryCrossings, dependentsOf, ownerOf } from "@/lib/monorepo";
 import { previewLinks } from "@/lib/pr-links";
+import { PR_ORIGINS, type PrOrigin } from "@/lib/pr-navigation";
 import { reviewInstructions, selectReviewSkills } from "@/lib/review-skills";
 import type { PullFile } from "@/lib/tauri";
 import { safeOpenUrl } from "@/lib/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Effect } from "effect";
 import {
   ArrowLeft,
@@ -101,6 +103,9 @@ export function PrScreen() {
     [params.owner, params.repo, params.number],
   );
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { from?: PrOrigin };
+  const origin = search.from ?? "inbox";
+  const originMeta = PR_ORIGINS[origin];
   const qc = useQueryClient();
   const auth = useAuth();
   const pr = usePullRequest(ref);
@@ -127,14 +132,27 @@ export function PrScreen() {
             repo: next.repoName,
             number: String(next.number),
           },
+          search: { from: origin },
         });
     },
-    [list, position, navigate],
+    [list, position, navigate, origin],
   );
   const back = useCallback(() => {
-    rememberSelection(`Inbox:${workspaceStore.get() ?? "all"}`, id);
-    return navigate({ to: "/inbox" });
-  }, [navigate, id]);
+    const selectionList =
+      origin === "inbox"
+        ? `Inbox:${workspaceStore.get() ?? "all"}`
+        : origin === "prs"
+          ? "Pull requests"
+          : origin === "mentions"
+            ? "Mentions"
+            : origin === "health"
+              ? "Health"
+              : origin === "fast-lane"
+                ? "Fast lane"
+                : null;
+    if (selectionList) rememberSelection(selectionList, id);
+    return navigate({ to: originMeta.to });
+  }, [navigate, id, origin, originMeta.to]);
 
   // the reviewer's own state on this page
   const [view, setView] = useState<PrView>("overview");
@@ -178,7 +196,7 @@ export function PrScreen() {
   const pull = pr.pull.data;
   const files = pr.files.data ?? [];
   const clone = useLocalClone(ref.owner, ref.repo);
-  const stack = useStack(ref);
+  const stack = useStack(ref, origin);
   const reviewable = isReviewablePull(pull);
   const canEdit = reviewable && auth.viewer?.login === pull?.user.login;
 
@@ -1319,7 +1337,7 @@ export function PrScreen() {
         onClick={back}
         className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-ink-2 hover:bg-raise hover:text-ink"
       >
-        <ArrowLeft className="size-4" strokeWidth={2} /> Inbox
+        <ArrowLeft className="size-4" strokeWidth={2} /> {originMeta.label}
       </Button>
       {position >= 0 ? (
         <span className="tnum flex items-center gap-1 text-[12.5px] text-ink-3">
@@ -1550,6 +1568,17 @@ export function PrScreen() {
                 ? activeReviewSkills[0].name
                 : `${activeReviewSkills.length} review skills`}
             </Button>
+          ) : null}
+          {pull && reviewable ? (
+            <AutoFixButton
+              prRef={ref}
+              pull={pull}
+              clone={clone}
+              threads={pr.threads}
+              reviews={pr.reviews.data ?? []}
+              checks={pr.checks.data}
+              instructions={promptInstructions}
+            />
           ) : null}
           <Button
             variant="ghost"
@@ -1936,6 +1965,7 @@ export function PrScreen() {
               void navigate({
                 to: "/pr/$owner/$repo/$number",
                 params: { owner: ref.owner, repo: ref.repo, number: String(n) },
+                search: { from: origin },
               })
             }
             briefingReach={

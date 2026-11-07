@@ -33,6 +33,7 @@ import { reconcileStackItems, useWithStacks } from "@/features/list/stacks";
 import { APP_STORE } from "@/lib/edition";
 import { syncPrs } from "@/lib/pr-sync";
 import { safeOpenUrl } from "@/lib/ui";
+import type { PrOrigin } from "@/lib/pr-navigation";
 import { cn } from "@/lib/utils";
 
 import { PrPeek } from "./pr-peek";
@@ -54,7 +55,7 @@ export function TitleSearch() {
   );
 }
 
-export function useOpenItem() {
+export function useOpenItem(origin: PrOrigin = "inbox") {
   const navigate = useNavigate();
   return useCallback(
     (item: Ranked) => {
@@ -67,12 +68,13 @@ export function useOpenItem() {
         void navigate({
           to: "/pr/$owner/$repo/$number",
           params: { owner: item.owner, repo: item.repoName, number: String(item.number) },
+          search: { from: origin },
         });
         return;
       }
       if (item.url) safeOpenUrl(item.url);
     },
-    [navigate],
+    [navigate, origin],
   );
 }
 
@@ -389,7 +391,7 @@ export function InboxScreen() {
           label={`Inbox:${workspace ?? "all"}`}
           sections={sections}
           actions={{ open, done, snooze, snoozeFor, unsnooze, checkout }}
-          renderPeek={(it) => <PrPeek item={it} />}
+          renderPeek={(it) => <PrPeek item={it} origin="inbox" />}
           empty={
             isFiltering(filter) ? (
               <Nothing detail="Try removing a filter or searching for something broader.">

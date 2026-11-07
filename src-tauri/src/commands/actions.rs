@@ -158,7 +158,7 @@ pub async fn gh_repo_labels(
         }
         page += 1;
     }
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|item| item.name.to_lowercase());
     Ok(out)
 }
 

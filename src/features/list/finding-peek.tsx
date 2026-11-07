@@ -142,6 +142,7 @@ function AdvisoryPeek({ item }: { item: Ranked }) {
       void navigate({
         to: "/pr/$owner/$repo/$number",
         params: { owner: m[1], repo: m[2], number: m[3] },
+        search: { from: "health" },
       });
     else safeOpenUrl(url);
   };

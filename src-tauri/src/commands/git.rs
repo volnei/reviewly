@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
@@ -749,6 +749,7 @@ pub async fn gh_list_branches(path: String) -> AppResult<BranchList> {
 /// `{ key, ok, url|error, package }`. The work runs in a Rust task, so it
 /// survives navigating away or refreshing the webview.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn gh_dependabot_ai_fix_bg(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -874,6 +875,64 @@ pub async fn gh_resolve_conflicts_ai(path: String, number: u64, base: String) ->
 #[tauri::command]
 pub async fn gh_pr_checkout(path: String, number: u64) -> AppResult<()> {
     gh(&path, &["pr", "checkout", &number.to_string()]).await?;
+    Ok(())
+}
+
+/// Prepare a PR for an explicitly requested local auto-fix. Refuse to mix the
+/// run with existing work. When GitHub reports conflicts, leave the repository
+/// in the merge state the implementation agent needs to resolve; the caller
+/// validates the result and aborts the merge if the agent fails.
+#[tauri::command]
+pub async fn gh_prepare_pr_autofix(
+    path: String,
+    number: u64,
+    base: String,
+    prepare_conflicts: bool,
+) -> AppResult<()> {
+    let dirty = git(&path, &["status", "--porcelain"]).await?;
+    if !dirty.trim().is_empty() {
+        return Err(AppError::Other(
+            "Review or stash the existing local changes before running Auto-fix.".into(),
+        ));
+    }
+    gh(&path, &["pr", "checkout", &number.to_string()]).await?;
+    if !prepare_conflicts {
+        return Ok(());
+    }
+    git_net(&path, &["fetch", "origin", &base]).await?;
+    let target = format!("origin/{base}");
+    // Never create a commit here. Even a clean merge remains staged for the
+    // user to inspect alongside the agent's edits.
+    if git(&path, &["merge", "--no-commit", "--no-ff", &target])
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    let unmerged = git(&path, &["diff", "--name-only", "--diff-filter=U"]).await?;
+    if unmerged.trim().is_empty() {
+        let _ = git(&path, &["merge", "--abort"]).await;
+        return Err(AppError::Other(
+            "Couldn't prepare the base merge for Auto-fix.".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_unmerged_files(path: String) -> AppResult<Vec<String>> {
+    Ok(git(&path, &["diff", "--name-only", "--diff-filter=U"])
+        .await?
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+#[tauri::command]
+pub async fn git_abort_merge(path: String) -> AppResult<()> {
+    git(&path, &["merge", "--abort"]).await?;
     Ok(())
 }
 
@@ -1467,7 +1526,7 @@ fn app_path(app: &str) -> Option<PathBuf> {
     None
 }
 
-async fn plist_icon_name(app: &PathBuf) -> Option<String> {
+async fn plist_icon_name(app: &Path) -> Option<String> {
     let info = app.join("Contents/Info.plist");
     Command::new("/usr/libexec/PlistBuddy")
         .arg("-c")
@@ -1547,8 +1606,8 @@ fn editor_key(raw: &str) -> String {
 }
 
 fn candidate_matches(c: EditorCandidate, key: &str) -> bool {
-    c.aliases.iter().any(|alias| *alias == key)
-        || c.commands.iter().any(|cmd| *cmd == key)
+    c.aliases.contains(&key)
+        || c.commands.contains(&key)
         || c.apps.iter().any(|app| app.to_lowercase() == key)
 }
 

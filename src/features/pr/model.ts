@@ -114,10 +114,11 @@ export function usePullRequest(ref: PrRef) {
     queryFn: gh((g) => g.checks(ref.owner, ref.repo, sha ?? "")),
     enabled: !!sha,
     staleTime: 10_000,
-    // While something runs, ask again every few seconds; once all are done, stop.
+    // Running CI is a live surface. Poll quickly while work is in flight, then
+    // stop completely as soon as the head commit settles.
     refetchInterval: (q) => {
       if (q.state.error) return 30_000;
-      return q.state.data?.check_runs.some((r) => r.status !== "completed") ? 15_000 : false;
+      return q.state.data?.check_runs.some((r) => r.status !== "completed") ? 3_000 : false;
     },
   });
   const threads = useMemo(

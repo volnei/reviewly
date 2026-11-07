@@ -37,7 +37,7 @@ impl DeltaCursor {
         let Some(max) = pulls.iter().map(|pull| pull.updated_at).max() else {
             return;
         };
-        if self.at.map_or(true, |at| max > at) {
+        if self.at.is_none_or(|at| max > at) {
             self.at = Some(max);
             self.ids_at_watermark = pulls
                 .iter()

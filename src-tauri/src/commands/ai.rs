@@ -92,7 +92,7 @@ fn cli_path() -> &'static str {
     PATH.get_or_init(|| {
         let mut dirs: Vec<String> = Vec::new();
         let add = |d: String, dirs: &mut Vec<String>| {
-            if !d.is_empty() && !dirs.iter().any(|x| *x == d) {
+            if !d.is_empty() && !dirs.contains(&d) {
                 dirs.push(d);
             }
         };
@@ -266,6 +266,7 @@ pub async fn ai_review(
 /// whenever it finishes and the reloaded UI's listener picks it up. `ai_inflight`
 /// lets the UI restore the "generating" state on mount.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ai_review_bg(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -891,6 +892,7 @@ async fn run_openai_compatible(
 /// text arrives and a final `ai:complete { key, ok, output, costUsd?, error? }`.
 /// De-duped + cancelable via the same inflight/task maps as `ai_review_bg`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ai_stream(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -963,6 +965,7 @@ pub async fn ai_stream(
 
 /// Returns (full_text, cost_usd). Claude and OpenAI-compatible stream text live;
 /// Codex streams structured run telemetry and emits its clean final answer.
+#[allow(clippy::too_many_arguments)]
 async fn stream_provider(
     app: &AppHandle,
     key: &str,

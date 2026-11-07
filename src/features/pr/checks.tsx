@@ -36,8 +36,16 @@ function scope(r: S.CheckRun): { jobId?: number; runId?: number } {
 }
 
 function durationText(r: S.CheckRun): string {
-  const ms = checkDuration(r);
-  if (ms == null) return r.status !== "completed" ? "In progress" : "—";
+  return durationTextAt(r, Date.now());
+}
+
+function durationTextAt(r: S.CheckRun, now: number): string {
+  const measured = checkDuration(r);
+  const started = r.started_at ? Date.parse(r.started_at) : Number.NaN;
+  const ms =
+    measured ??
+    (r.status !== "completed" && Number.isFinite(started) ? Math.max(0, now - started) : null);
+  if (ms == null) return r.status !== "completed" ? "Starting…" : "—";
   const seconds = Math.round(ms / 1000);
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
@@ -91,10 +99,19 @@ export function ChecksSection({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "attention" | "required">("all");
   const [folds, setFolds] = useState<Record<string, boolean>>({});
+  const [now, setNow] = useState(() => Date.now());
   const req = new Set(required.data ?? []);
   const list = runs ?? [];
   const counts = { failed: 0, running: 0, passed: 0, skipped: 0, cancelled: 0, other: 0 };
   for (const r of list) counts[checkState(r)]++;
+  useEffect(() => {
+    if (!counts.running) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [counts.running]);
+  const completed = list.filter((r) => r.status === "completed").length;
+  const progress = list.length ? Math.round((completed / list.length) * 100) : 0;
   const visible = list.filter(
     (r) =>
       r.name.toLowerCase().includes(query.toLowerCase()) &&
@@ -103,7 +120,14 @@ export function ChecksSection({
   );
   const groups = groupChecks(visible);
   const row = (r: S.CheckRun) => (
-    <CheckRow key={r.id} r={r} prRef={prRef} required={req.has(r.name)} onJump={onJump} />
+    <CheckRow
+      key={r.id}
+      r={r}
+      prRef={prRef}
+      required={req.has(r.name)}
+      onJump={onJump}
+      now={now}
+    />
   );
   const content = (
     <div className="checks-v2">
@@ -128,6 +152,28 @@ export function ChecksSection({
         </div>
         <span className="checks-total">{refreshing ? "Refreshing…" : `${list.length} total`}</span>
       </header>
+      {counts.running ? (
+        <div className="checks-live" aria-live="polite">
+          <div className="checks-live-copy">
+            <span className="checks-live-dot" aria-hidden />
+            <strong>CI is running</strong>
+            <span>
+              {completed} of {list.length} finished · {counts.running} active
+            </span>
+            <span className="checks-live-percent tnum">{progress}%</span>
+          </div>
+          <div
+            className="checks-live-track"
+            role="progressbar"
+            aria-label="CI progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
+            <span style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      ) : null}
       {error ? (
         <div className="checks-recovery" role="alert">
           <div>
@@ -260,11 +306,13 @@ function CheckRow({
   prRef,
   required,
   onJump,
+  now,
 }: {
   r: S.CheckRun;
   prRef: PrRef;
   required: boolean;
   onJump?: (path: string, line: number) => void;
+  now: number;
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -274,16 +322,22 @@ function CheckRow({
     if (r.status !== "completed") setQueued(false);
   }, [r.status]);
   const failed = isFailed(r);
+  const running = r.status !== "completed";
   const ann = useEffectQuery(
     ["annotations", prRef.owner, prRef.repo, r.id],
     Effect.flatMap(GitHub, (g) => g.annotations(prRef.owner, prRef.repo, r.id)),
-    { enabled: open, staleTime: 60_000 },
+    { enabled: open && r.status === "completed", staleTime: 60_000 },
   );
   const jobId = scope(r).jobId;
   const job = useEffectQuery(
     ["actions-job", prRef.owner, prRef.repo, jobId ?? 0],
     Effect.flatMap(GitHub, (g) => g.actionsJob(prRef.owner, prRef.repo, jobId ?? 0)),
-    { enabled: open && !!jobId, staleTime: 60_000 },
+    {
+      enabled: open && !!jobId,
+      staleTime: 1_500,
+      refetchInterval: (query) =>
+        query.state.data && query.state.data.status !== "completed" ? 2_500 : false,
+    },
   );
   const expandable = failed || !!r.output?.summary || !!jobId;
 
@@ -318,7 +372,7 @@ function CheckRow({
   };
 
   return (
-    <li className="check-result">
+    <li className={cn("check-result", running && "check-result-running")}>
       <div className="check-result-line">
         <StatusIcon run={r} />
         <Button
@@ -332,13 +386,14 @@ function CheckRow({
           title={r.name}
         >
           <span>{r.name}</span>
+          {running ? <span className="check-running-label">Live</span> : null}
           {required ? <span className="check-required">Required</span> : null}
           {expandable ? (
             <ChevronRight size={12} className={open ? "rotate-90 shrink-0" : "shrink-0"} />
           ) : null}
         </Button>
         <span className="check-duration tnum" title={CHECK_LABEL[checkState(r)]}>
-          {durationText(r)}
+          {r.status === "completed" ? durationText(r) : durationTextAt(r, now)}
         </span>
         <div className="check-row-actions">
           {r.status === "completed" ? (
@@ -358,8 +413,12 @@ function CheckRow({
           </IconButton>
         </div>
       </div>
+      {running && !open ? <span className="check-running-line" aria-hidden /> : null}
       {open ? (
-        <div className="mt-1 mb-2 ml-[26px] rounded-md bg-sink px-3 py-2 text-[12.5px]">
+        <div className="check-result-detail">
+          {r.status !== "completed" && jobId ? (
+            <LiveJobProgress job={job.data} fetching={job.isFetching} />
+          ) : null}
           {r.output?.summary ? (
             <Markdown className="text-ink-2">{r.output.summary}</Markdown>
           ) : null}
@@ -367,7 +426,12 @@ function CheckRow({
             <Markdown className="mt-2 text-ink-2">{r.output.text}</Markdown>
           ) : null}
           {job.data?.steps?.length ? (
-            <ol className={cn("grid gap-0.5", (r.output?.summary || r.output?.text) && "mt-2")}>
+            <ol
+              className={cn(
+                "check-result-steps grid gap-0.5",
+                (r.output?.summary || r.output?.text) && "mt-2",
+              )}
+            >
               {job.data.steps.map((st) => {
                 const ms =
                   st.started_at && st.completed_at
@@ -377,7 +441,7 @@ function CheckRow({
                 return (
                   <li
                     key={st.number}
-                    className="grid grid-cols-[14px_minmax(0,1fr)_56px] items-center gap-2"
+                    className="grid min-w-0 grid-cols-[14px_minmax(0,1fr)_56px] items-center gap-2"
                   >
                     <span
                       className={cn(
@@ -420,7 +484,7 @@ function CheckRow({
           ) : null}
           {ann.isPending ? <p className="text-ink-3">Loading what it said…</p> : null}
           {ann.data?.length ? (
-            <ul className={cn("grid gap-1", r.output?.summary && "mt-2")}>
+            <ul className={cn("check-result-annotations grid gap-1", r.output?.summary && "mt-2")}>
               {ann.data.map((a, i) => (
                 <li key={`${a.path}:${a.start_line}:${i}`}>
                   <Button
@@ -428,7 +492,7 @@ function CheckRow({
                     size="sm"
                     type="button"
                     onClick={() => onJump?.(a.path, a.start_line)}
-                    className="text-left hover:text-ink"
+                    className="min-w-0 max-w-full whitespace-normal text-left hover:text-ink"
                   >
                     <span className="mono text-ink-3">
                       {a.path}:{a.start_line}
@@ -456,5 +520,40 @@ function CheckRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+function LiveJobProgress({
+  job,
+  fetching,
+}: {
+  job: S.ActionsJob | undefined;
+  fetching: boolean;
+}) {
+  const steps = job?.steps ?? [];
+  const completed = steps.filter((step) => step.status === "completed").length;
+  const active = steps.find((step) => step.status !== "completed");
+  const progress = steps.length ? Math.round((completed / steps.length) * 100) : 0;
+  return (
+    <div className="check-job-live" aria-live="polite">
+      <div className="check-job-live-copy">
+        <span className="checks-live-dot" aria-hidden />
+        <strong>{active?.name ?? (steps.length ? "Finishing the job…" : "Starting the job…")}</strong>
+        <span className="tnum">
+          {steps.length ? `${completed}/${steps.length} steps` : "Waiting for steps"}
+        </span>
+        {fetching ? <RotateCw className="size-3 animate-spin" aria-label="Refreshing" /> : null}
+      </div>
+      <div
+        className="check-job-live-track"
+        role="progressbar"
+        aria-label="Job progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+      >
+        <span style={{ width: `${progress}%` }} />
+      </div>
+    </div>
   );
 }

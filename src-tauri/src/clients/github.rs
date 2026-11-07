@@ -216,8 +216,8 @@ pub struct SearchPage<T> {
     pub items: Vec<T>,
 }
 
-pub fn auth_request<'a>(
-    state: &'a AppState,
+pub fn auth_request(
+    state: &AppState,
     token: &str,
     method: reqwest::Method,
     url: &str,
@@ -483,7 +483,7 @@ pub async fn list_repo_pulls(
                 }
             }
             // pulls omits `repository_url`; inject it so the UI maps PR → repo.
-            if item.get("repository_url").map_or(true, |v| v.is_null()) {
+            if item.get("repository_url").is_none_or(|v| v.is_null()) {
                 item["repository_url"] = serde_json::Value::String(repo_url.clone());
             }
             match serde_json::from_value::<PullSummary>(item) {

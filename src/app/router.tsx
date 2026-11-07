@@ -10,6 +10,7 @@ import {
 import { Shell } from "@/app/shell";
 import { prefsStore } from "@/effect/services/Prefs";
 import { APP_STORE } from "@/lib/edition";
+import { parsePrOrigin } from "@/lib/pr-navigation";
 import { InboxScreen } from "@/screens/inbox";
 
 const root = createRootRoute({ component: Shell });
@@ -64,6 +65,11 @@ const specLens = createRoute({
   getParentRoute: () => root,
   path: "/spec-lens",
   beforeLoad: localOnly,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { compose?: boolean } => ({
+    compose: search.compose === true || search.compose === "true" || search.compose === "1",
+  }),
   component: lazyRouteComponent(() => import("@/screens/spec-lens"), "SpecLensScreen"),
 });
 const mergeLab = createRoute({
@@ -125,6 +131,10 @@ const firstRun = createRoute({
 const pr = createRoute({
   getParentRoute: () => root,
   path: "/pr/$owner/$repo/$number",
+  validateSearch: (search: Record<string, unknown>): { from?: ReturnType<typeof parsePrOrigin> } => {
+    const from = parsePrOrigin(search.from);
+    return from ? { from } : {};
+  },
   component: lazyRouteComponent(() => import("@/screens/pr"), "PrScreen"),
 });
 const chat = createRoute({

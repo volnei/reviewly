@@ -47,7 +47,7 @@ export function HomeScreen() {
     { enabled: !!login, staleTime: 3_600_000 },
   );
   const [period, setPeriod] = useState(30);
-  const open = useOpenItem();
+  const open = useOpenItem("home");
   useEffect(() => {
     if (inbox.data) saveHomeSnapshot(cacheKey, { inbox: inbox.data });
   }, [cacheKey, inbox.data]);

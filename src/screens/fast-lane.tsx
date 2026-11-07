@@ -18,7 +18,7 @@ export function FastLaneScreen() {
   const navigate = useNavigate();
   const teamsPlan = useTeamsPlan();
   const fastLane = useFastLaneItems();
-  const open = useOpenItem();
+  const open = useOpenItem("fast-lane");
   const { done, snooze, snoozeFor, checkout } = useItemActions();
   useKeepScroll("fast-lane", root, !fastLane.isPending);
   useTitleSlot(
@@ -132,7 +132,7 @@ export function FastLaneScreen() {
         label="Fast lane"
         sections={[{ key: "fast-lane", items: fastLane.items }]}
         actions={{ open, done, snooze, snoozeFor, checkout }}
-        renderPeek={(item) => <PrPeek item={item} />}
+        renderPeek={(item) => <PrPeek item={item} origin="fast-lane" />}
         empty={empty}
       />
     </div>

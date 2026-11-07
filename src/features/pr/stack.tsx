@@ -2,6 +2,7 @@ import { useEffectQuery } from "@/effect/runtime";
 import type * as S from "@/effect/schema";
 import { GitHub, type PrRef } from "@/effect/services/GitHub";
 import { cn } from "@/lib/utils";
+import type { PrOrigin } from "@/lib/pr-navigation";
 import { useNavigate } from "@tanstack/react-router";
 import { Effect } from "effect";
 import { Layers } from "lucide-react";
@@ -12,7 +13,7 @@ import { useCallback, useMemo } from "react";
  * requests where each one's base is the head of the one below. Read from the
  * stacks API, never guessed from branch names.
  */
-export function useStack(prRef: PrRef) {
+export function useStack(prRef: PrRef, origin: PrOrigin) {
   const navigate = useNavigate();
   const q = useEffectQuery(
     ["stack", prRef.owner, prRef.repo, prRef.number],
@@ -27,8 +28,9 @@ export function useStack(prRef: PrRef) {
       void navigate({
         to: "/pr/$owner/$repo/$number",
         params: { owner: prRef.owner, repo: prRef.repo, number: String(number) },
+        search: { from: origin },
       }),
-    [navigate, prRef.owner, prRef.repo],
+    [navigate, prRef.owner, prRef.repo, origin],
   );
   /** `}` goes up the stack (the layer built on this one), `{` down (what this one builds on). */
   const step = useCallback(

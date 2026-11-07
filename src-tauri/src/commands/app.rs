@@ -59,7 +59,9 @@ pub fn get_launch_at_login(app: AppHandle) -> AppResult<bool> {
 #[cfg(not(feature = "direct"))]
 #[tauri::command]
 pub fn set_launch_at_login(_app: AppHandle, _enabled: bool) -> AppResult<()> {
-    Err(AppError::Other("Launch at login isn't available in this edition".into()))
+    Err(AppError::Other(
+        "Launch at login isn't available in this edition".into(),
+    ))
 }
 
 #[cfg(not(feature = "direct"))]

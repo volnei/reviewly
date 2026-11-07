@@ -328,6 +328,7 @@ export function TeamScreen() {
                     void navigate({
                       to: "/pr/$owner/$repo/$number",
                       params: { owner, repo, number: String(pull.number) },
+                      search: { from: "team" },
                     });
                   }
                 }}

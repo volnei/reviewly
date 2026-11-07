@@ -60,6 +60,7 @@ export function HistoryScreen() {
     void navigate({
       to: "/pr/$owner/$repo/$number",
       params: { owner, repo, number: String(entry.number) },
+      search: { from: "history" },
     });
   };
 

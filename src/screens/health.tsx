@@ -31,7 +31,7 @@ export function HealthScreen() {
   const inbox = useWorkspaceInbox();
   useKeepScroll("health", root, !!inbox.data);
   const health = useWorkspaceHealth();
-  const open = useOpenItem();
+  const open = useOpenItem("health");
   const { done, snooze, snoozeFor, unsnooze } = useItemActions();
   const advisories = useMemo(
     () =>

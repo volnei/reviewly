@@ -7,6 +7,7 @@ import { useBackgroundRun } from "@/features/pr/ai";
 import { pullKey } from "@/features/pr/model";
 import { useSummary } from "@/features/pr/plans-store";
 import { readingMinutes } from "@/lib/estimate";
+import type { PrOrigin } from "@/lib/pr-navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { useItemActions, useOpenItem } from "./inbox";
@@ -15,10 +16,10 @@ import { useItemActions, useOpenItem } from "./inbox";
  * `space` on a pull request: the paragraph the model read ahead, the size and
  * the time it takes, what is waiting in it, and the two things to do.
  */
-export function PrPeek({ item }: { item: Ranked }) {
+export function PrPeek({ item, origin }: { item: Ranked; origin: PrOrigin }) {
   const qc = useQueryClient();
   const provider = usePrefs((p) => p.ai.provider);
-  const open = useOpenItem();
+  const open = useOpenItem(origin);
   const { snooze } = useItemActions();
   const key =
     item.owner && item.repoName && item.number

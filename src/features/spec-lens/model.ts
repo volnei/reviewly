@@ -1,10 +1,11 @@
-import { isNative } from "@/effect/Tauri";
+import { Effect } from "effect";
+import { useMemo } from "react";
+
 import { useEffectQuery } from "@/effect/runtime";
 import { Git } from "@/effect/services/Git";
 import { usePrefs } from "@/effect/services/Prefs";
+import { isNative } from "@/effect/Tauri";
 import { APP_STORE } from "@/lib/edition";
-import { Effect } from "effect";
-import { useMemo } from "react";
 
 export type SpecStage = "proposal" | "specs" | "tasks" | "apply" | "verify";
 export type SpecSeverity = "blocking" | "warning" | "note";
@@ -29,6 +30,20 @@ export interface SpecIssue {
   file: string | null;
 }
 
+export interface SpecPullRequest {
+  url: string;
+  label: string;
+}
+
+export interface SourceSpec {
+  capability: string;
+  title: string;
+  summary: string;
+  file: string;
+  requirements: SpecRequirement[];
+  scenarios: number;
+}
+
 export interface SpecChange {
   id: string;
   title: string;
@@ -43,6 +58,7 @@ export interface SpecChange {
   requirements: SpecRequirement[];
   issues: SpecIssue[];
   ready_to_archive: boolean;
+  pull_requests: SpecPullRequest[];
   worktree_path?: string | null;
   branch?: string | null;
 }
@@ -52,6 +68,8 @@ export interface OpenSpecScan {
   config_file: string | null;
   source_specs: number;
   source_spec_files: string[];
+  source_spec_details: SourceSpec[];
+  archived_changes: number;
   changes: SpecChange[];
 }
 
@@ -74,11 +92,7 @@ export function mergeSpecWorktreeChanges(
 ): OpenSpecScan {
   const isolated = worktrees.flatMap(({ path, branch, scan }) =>
     scan.changes
-      .filter(
-        (change) =>
-          branch === `spec/${change.id}` ||
-          branch.startsWith(`spec/${change.id}/`),
-      )
+      .filter((change) => branch === `spec/${change.id}` || branch.startsWith(`spec/${change.id}/`))
       .map((change) => ({
         ...change,
         worktree_path: path,
@@ -88,10 +102,7 @@ export function mergeSpecWorktreeChanges(
   const isolatedIds = new Set(isolated.map((change) => change.id));
   return {
     ...primary,
-    changes: [
-      ...isolated,
-      ...primary.changes.filter((change) => !isolatedIds.has(change.id)),
-    ],
+    changes: [...isolated, ...primary.changes.filter((change) => !isolatedIds.has(change.id))],
   };
 }
 
@@ -117,9 +128,7 @@ export function useSpecWorkspaces(): ReadonlyArray<SpecWorkspace> {
             if (!primary) return null;
             const worktreeScans = yield* Effect.forEach(
               linked.filter(
-                (worktree) =>
-                  worktree.path !== path &&
-                  worktree.branch?.startsWith("spec/"),
+                (worktree) => worktree.path !== path && worktree.branch?.startsWith("spec/"),
               ),
               (worktree) =>
                 git.openSpecScan(worktree.path).pipe(
@@ -139,15 +148,10 @@ export function useSpecWorkspaces(): ReadonlyArray<SpecWorkspace> {
             );
             const scan = mergeSpecWorktreeChanges(
               primary,
-              worktreeScans.filter(
-                (item): item is SpecWorktreeScan => item !== null,
-              ),
+              worktreeScans.filter((item): item is SpecWorktreeScan => item !== null),
             );
-            const remote = info.remote_url?.match(
-              /[/:]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/,
-            );
-            const fallback =
-              path.split(/[\\/]/).filter(Boolean).at(-1) ?? "repository";
+            const remote = info.remote_url?.match(/[/:]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/);
+            const fallback = path.split(/[\\/]/).filter(Boolean).at(-1) ?? "repository";
             return {
               owner: remote?.[1] ?? "local",
               repo: remote?.[2] ?? fallback,
@@ -161,23 +165,42 @@ export function useSpecWorkspaces(): ReadonlyArray<SpecWorkspace> {
     { staleTime: 10 * 60_000, enabled: candidates.length > 0 },
   );
   return useMemo(
-    () =>
-      (query.data ?? []).filter((item): item is SpecWorkspace => item !== null),
+    () => (query.data ?? []).filter((item): item is SpecWorkspace => item !== null),
     [query.data],
   );
 }
 
 export const actionableIssueCount = (workspace: SpecWorkspace): number =>
   workspace.scan.changes.reduce(
-    (total, change) =>
-      total + change.issues.filter((issue) => issue.severity !== "note").length,
+    (total, change) => total + change.issues.filter((issue) => issue.severity !== "note").length,
     0,
   );
 
-export function buildSpecBrief(
-  workspace: SpecWorkspace,
-  change: SpecChange,
-): string {
+/** Honest delivery progress derived only from checked OpenSpec artifacts. */
+export function changeProgress(change: SpecChange): number {
+  const artifacts = [change.proposal_file, change.tasks_file].filter(Boolean).length;
+  const artifactScore = artifacts / 2;
+  const scenarioScore = change.requirements.length
+    ? change.requirements.filter((item) => item.scenarios.length > 0).length /
+      change.requirements.length
+    : 0;
+  const taskScore = change.tasks_total ? change.tasks_done / change.tasks_total : 0;
+  const archiveScore = change.ready_to_archive ? 1 : 0;
+  return Math.round(
+    Math.min(1, artifactScore * 0.2 + scenarioScore * 0.2 + taskScore * 0.5 + archiveScore * 0.1) *
+      100,
+  );
+}
+
+export function workspaceProgress(workspace: SpecWorkspace): number {
+  if (!workspace.scan.changes.length) return 100;
+  return Math.round(
+    workspace.scan.changes.reduce((total, change) => total + changeProgress(change), 0) /
+      workspace.scan.changes.length,
+  );
+}
+
+export function buildSpecBrief(workspace: SpecWorkspace, change: SpecChange): string {
   const openTasks = change.tasks.filter((task) => !task.done);
   return [
     `# OpenSpec review: ${change.title}`,
