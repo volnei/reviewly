@@ -3,6 +3,7 @@ import {
   CircleCheck,
   CircleDashed,
   CircleX,
+  Clock3,
   ExternalLink,
   GitMerge,
   GitPullRequest,
@@ -24,6 +25,7 @@ import { useReview } from "@/features/pr/review-state";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
+import { estimateReviewMinutes, reviewTimeLabel } from "./review-time";
 import { SNOOZE_LABEL, type SnoozeWhen } from "./snooze";
 
 /** "2d", "5h", "just now" — the age the list shows, two characters when it can. */
@@ -125,6 +127,7 @@ export function Row({
   const snoozedUntil = usePrefs((p) => p.snoozed[item.id]);
   const isSnoozed = !!snoozedUntil && Date.parse(snoozedUntil) > Date.now();
   if (item.kind === "pr") {
+    const reviewMinutes = estimateReviewMinutes(item);
     const openThreads = item.unresolved ?? 0;
     const primaryStatus = item.conflicting
       ? "Conflicts"
@@ -191,6 +194,23 @@ export function Row({
             <span>#{item.number}</span>
             {item.author ? <span>{item.author}</span> : null}
             <span>{age(item.createdAt ?? item.updatedAt)}</span>
+            {reviewMinutes !== null ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span className="inline-flex shrink-0 items-center gap-1 tabular-nums" />}
+                >
+                  <Clock3 className="size-3" aria-hidden />
+                  <span aria-label={`Estimated review time: ${reviewTimeLabel(reviewMinutes)}`}>
+                    {reviewTimeLabel(reviewMinutes)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipPopup>
+                  Approximate review time based on {item.additions} added lines, {item.deletions}{" "}
+                  removed lines and {item.changedFiles} files. Excludes running tests and
+                  discussion; generated files may inflate the estimate.
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
             {pending ? (
               <span>
                 {pending} draft comment{pending === 1 ? "" : "s"}

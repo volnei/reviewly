@@ -257,3 +257,44 @@ pub async fn gh_compare(
     let token = creds::require_token()?;
     github::compare_files(&state, &token, &owner, &repo, &base, &head).await
 }
+
+/// Scalar diff statistics for a bounded batch, without downloading diffs or one request per PR.
+#[tauri::command]
+pub async fn gh_review_sizes(
+    state: State<'_, AppState>,
+    owner: String,
+    repo: String,
+    numbers: Vec<u64>,
+) -> AppResult<Vec<serde_json::Value>> {
+    if numbers.len() > 25 || numbers.iter().any(|n| *n == 0 || *n > i32::MAX as u64) {
+        return Err(AppError::Other("Invalid review size batch".into()));
+    }
+    if numbers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let fields = numbers
+        .iter()
+        .map(|number| {
+            format!(
+                "p{number}:pullRequest(number:{number}){{number additions deletions changedFiles updatedAt}}"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let query = format!(
+        "query($owner:String!,$repo:String!){{repository(owner:$owner,name:$repo){{{fields}}}}}"
+    );
+    let token = creds::require_token()?;
+    let data: serde_json::Value = graphql(
+        &state,
+        &token,
+        &query,
+        serde_json::json!({"owner":owner,"repo":repo}),
+    )
+    .await?;
+    Ok(data
+        .get("repository")
+        .and_then(|r| r.as_object())
+        .map(|r| r.values().filter(|v| !v.is_null()).cloned().collect())
+        .unwrap_or_default())
+}

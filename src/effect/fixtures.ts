@@ -1137,6 +1137,9 @@ const commands: Record<string, Handler> = {
         labels: string[];
       }> = {},
     ) => ({
+      additions: 40 + (n % 8) * 45,
+      deletions: 15 + (n % 4) * 10,
+      changedFiles: 1 + (n % 6),
       id: 90000 + n,
       number: n,
       title,
@@ -1866,8 +1869,18 @@ const commands: Record<string, Handler> = {
     ciFail: 1,
     ciPending: 0,
     stale: 1,
-    incoming,
-    mine,
+    incoming: incoming.map((pr, index) => ({
+      ...pr,
+      additions: 40 + index * 55,
+      deletions: 12 + index * 10,
+      changedFiles: 2 + index,
+    })),
+    mine: mine.map((pr, index) => ({
+      ...pr,
+      additions: 90 + index * 45,
+      deletions: 20,
+      changedFiles: 3 + index,
+    })),
   }),
   gh_list_repos: () => ["acme/ledger-api", "acme/web", "acme/infra", "sam/reviewly"],
   gh_get_pull: () => ({ ...pull, ...pullPatch }),

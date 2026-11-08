@@ -17,6 +17,22 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.1.6",
+    date: "2026-11-08",
+    items: [
+      {
+        title: "Create a project environment with AI",
+        detail:
+          "Reviewly can read the selected repository's manifests, documentation, and current OpenSpec rules to draft environment variables, reusable commands, and focused review skills. It never invents secret values or runs the generated commands before you review them.",
+      },
+      {
+        title: "See the review before opening the pull request",
+        detail:
+          "Pull request rows now show an approximate review time based on changed files, additions, and deletions, with the underlying numbers available in a tooltip and refreshed whenever the pull request changes.",
+      },
+    ],
+  },
+  {
     version: "1.1.5",
     date: "2026-11-07",
     items: [

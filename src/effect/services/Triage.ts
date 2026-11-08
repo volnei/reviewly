@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+
 import type { Verdict } from "./Prefs";
 
 /**
@@ -18,6 +19,9 @@ export interface Candidate {
   readonly createdAt?: string | null;
   readonly updatedAt?: string | null;
   readonly mine: boolean;
+  readonly additions?: number | null;
+  readonly deletions?: number | null;
+  readonly changedFiles?: number | null;
   readonly draft?: boolean;
   readonly ci?: string;
   readonly conflicting?: boolean;

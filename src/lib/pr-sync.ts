@@ -1,16 +1,19 @@
-import { Tauri } from "@/effect/Tauri";
+import type { QueryClient } from "@tanstack/react-query";
+import { Effect, Schema } from "effect";
+
 import { run } from "@/effect/runtime";
 import { Dashboard, PullStack, PullSummary } from "@/effect/schema";
+import { Tauri } from "@/effect/Tauri";
 import {
   applyDashboardPrs,
   applyRepoStacks,
   getRepoSync,
+  pendingReviewSizes,
   pruneOpen,
+  saveReviewSizes,
   setRepoSync,
   upsertPrs,
 } from "@/lib/prs-db";
-import type { QueryClient } from "@tanstack/react-query";
-import { Effect, Schema } from "effect";
 
 const pendingRepos = new Set<string>();
 let pendingFull = false;
@@ -110,6 +113,36 @@ async function syncStackSignals(repos: ReadonlyArray<string>): Promise<void> {
   );
 }
 
+async function syncReviewSizes(repos: readonly string[]): Promise<void> {
+  const sizeSchema = Schema.Array(
+    Schema.Struct({
+      number: Schema.Number,
+      additions: Schema.Number,
+      deletions: Schema.Number,
+      changedFiles: Schema.Number,
+      updatedAt: Schema.String,
+    }),
+  );
+  // Sequential batches keep this optional enrichment from flooding GitHub.
+  for (const slug of repos) {
+    const [owner, repo] = slug.split("/");
+    if (!owner || !repo) continue;
+    const numbers = await pendingReviewSizes(slug);
+    for (let offset = 0; offset < numbers.length; offset += 25) {
+      const sizes = await run(
+        Effect.flatMap(Tauri, (tauri) =>
+          tauri.invoke(
+            "gh_review_sizes",
+            { owner, repo, numbers: numbers.slice(offset, offset + 25) },
+            sizeSchema,
+          ),
+        ),
+      );
+      await saveReviewSizes(slug, sizes);
+    }
+  }
+}
+
 async function syncPass(
   queryClient: QueryClient,
   repos: ReadonlyArray<string>,
@@ -131,6 +164,9 @@ async function syncPass(
     }),
     syncStackSignals(repos),
   ]);
+  await syncReviewSizes(repos).catch((error) => {
+    console.warn("[pr-sync] review size enrichment failed", error);
+  });
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["prs"] }),
     queryClient.invalidateQueries({ queryKey: ["inbox"] }),

@@ -284,6 +284,9 @@ export const PullSummary = S.Struct({
   pull_request: nullable(S.Struct({ merged_at: nullable(S.String) })),
   head: nullable(BranchRef),
   base: nullable(BranchRef),
+  additions: S.optionalKey(S.NullOr(S.Number)),
+  deletions: S.optionalKey(S.NullOr(S.Number)),
+  changedFiles: S.optionalKey(S.NullOr(S.Number)),
   /** Signals enriched by the dashboard sync and persisted in the native SQLite mirror. */
   inboxIncoming: S.optionalKey(S.Boolean),
   inboxMine: S.optionalKey(S.Boolean),
@@ -436,6 +439,9 @@ export type CheckRuns = typeof CheckRuns.Type;
 export const DashboardPr = S.Struct({
   id: S.Number,
   number: S.Number,
+  additions: S.optionalKey(S.NullOr(S.Number)),
+  deletions: S.optionalKey(S.NullOr(S.Number)),
+  changedFiles: S.optionalKey(S.NullOr(S.Number)),
   title: S.String,
   url: S.String,
   repo: S.String,

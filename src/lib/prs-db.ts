@@ -66,6 +66,10 @@ interface PrRow {
   ci: string;
   conflicting: number;
   review_decision: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  size_updated_at: string | null;
   issue_comment_count: number;
   review_thread_count: number;
   unresolved_thread_count: number;
@@ -127,6 +131,9 @@ function fromRow(row: PrRow): S.PullSummary {
     ci: row.ci,
     conflicting: !!row.conflicting,
     reviewDecision: row.review_decision,
+    additions: row.size_updated_at === row.updated_at ? row.additions : null,
+    deletions: row.size_updated_at === row.updated_at ? row.deletions : null,
+    changedFiles: row.size_updated_at === row.updated_at ? row.changed_files : null,
     issueCommentCount: row.issue_comment_count,
     reviewThreadCount: row.review_thread_count,
     unresolvedThreadCount: row.unresolved_thread_count,
@@ -451,4 +458,40 @@ export async function setRepoSync(
       [next.repo, next.open_synced_at, next.updated_high, next.all_backfilled, next.last_error],
     ),
   );
+}
+
+export interface PullReviewSize {
+  number: number;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  updatedAt: string;
+}
+
+/** Open queue first, then recent history. Bound the work for large repositories. */
+export async function pendingReviewSizes(repo: string): Promise<number[]> {
+  const rows = await (
+    await db()
+  ).select<Array<{ number: number }>>(
+    `SELECT number FROM prs WHERE repo=$1 AND (size_updated_at IS NULL OR size_updated_at != updated_at)
+     ORDER BY (state='open') DESC, updated_at DESC LIMIT 100`,
+    [repo],
+  );
+  return rows.map((row) => row.number);
+}
+
+export async function saveReviewSizes(
+  repo: string,
+  sizes: readonly PullReviewSize[],
+): Promise<void> {
+  await writeSerial(async () => {
+    const database = await db();
+    for (const size of sizes) {
+      await database.execute(
+        `UPDATE prs SET additions=$1, deletions=$2, changed_files=$3, size_updated_at=$4
+         WHERE repo=$5 AND number=$6 AND updated_at=$4`,
+        [size.additions, size.deletions, size.changedFiles, size.updatedAt, repo, size.number],
+      );
+    }
+  });
 }

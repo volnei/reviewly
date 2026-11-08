@@ -139,3 +139,19 @@ test("uses the same icon system for ready and draft states", () => {
   expect(draft).toContain("lucide-git-pull-request-draft");
   expect(draft).toContain('aria-label="Draft"');
 });
+
+test("review time appears consistently for standalone and stacked PRs", () => {
+  for (const inStack of [false, true]) {
+    const html = renderToStaticMarkup(
+      <Row
+        item={{ ...item, additions: 70, deletions: 0, changedFiles: 1 }}
+        inStack={inStack}
+        selected={false}
+        onSelect={() => {}}
+        onOpen={() => {}}
+      />,
+    );
+    expect(html).toContain("Estimated review time: ~5 min");
+  }
+  expect(render(false)).not.toContain("Estimated review time");
+});

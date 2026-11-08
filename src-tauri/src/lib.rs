@@ -175,6 +175,12 @@ pub fn run() {
         "#,
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 10,
+            description: "cache PR diff sizes for review time estimates",
+            sql: "ALTER TABLE prs ADD COLUMN additions INTEGER; ALTER TABLE prs ADD COLUMN deletions INTEGER; ALTER TABLE prs ADD COLUMN changed_files INTEGER; ALTER TABLE prs ADD COLUMN size_updated_at TEXT;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default()
@@ -353,6 +359,7 @@ pub fn run() {
             commands::search::set_watched_repos,
             // pulls
             commands::pulls::gh_get_pull,
+            commands::pulls::gh_review_sizes,
             commands::pulls::gh_list_pull_files,
             commands::pulls::gh_list_commits,
             commands::pulls::gh_list_checks,

@@ -4,7 +4,7 @@ What it takes to go from "runs on my machine" to "a build people can install and
 The app code is ready; the remaining work is **credentials + infra that only you can do**
 (Apple cert, an update-signing key, hosting). This is the runway.
 
-Current: `version 1.1.5`, `identifier dev.volnei.reviewly`, target macOS (Tauri 2).
+Current: `version 1.1.6`, `identifier dev.volnei.reviewly`, target macOS (Tauri 2).
 
 Reviewly Hobby is free and open source. Reviewly Teams adds shared coordination,
 Fast lane, integrations, and shared environments through getreviewly.dev.
@@ -12,6 +12,7 @@ Fast lane, integrations, and shared environments through getreviewly.dev.
 ---
 
 ## ✅ Done in-app (no action needed)
+
 - **First-run wizard** — `/onboarding`: Connect GitHub → pick repos → Start.
 - **Auto-update plumbed** — updater + process plugins, config (pubkey + endpoint),
   launch check + ⌘K "Check for updates" (see §2 for the 2 remaining ops steps).
@@ -21,6 +22,7 @@ Fast lane, integrations, and shared environments through getreviewly.dev.
 ---
 
 ## 1. Code signing + notarization (macOS)
+
 Unsigned `.app`s get the Gatekeeper "damaged / unidentified developer" wall. To avoid it:
 
 1. Apple **Developer ID Application** certificate (paid Apple Developer account).
@@ -35,6 +37,7 @@ Unsigned `.app`s get the Gatekeeper "damaged / unidentified developer" wall. To 
 > ⚠️ I can't enter your Apple cert / app-specific password.
 
 ## 2. Auto-update (`tauri-plugin-updater`) — ✅ WIRED, 2 steps left
+
 Already done in-app: plugins (`tauri-plugin-updater` + `tauri-plugin-process`) installed &
 registered, capabilities added, `plugins.updater` configured (pubkey + GitHub Releases endpoint),
 `createUpdaterArtifacts: true`, **silent check on launch** + **"Check for updates" in ⌘K** (toast →
@@ -42,6 +45,7 @@ Restart & install). A **dev signing key** was generated at `~/.reviewly/updater.
 public key is in `tauri.conf.json`.
 
 You still need to:
+
 1. **Own the signing key.** The generated dev key has **no password** — for production, regenerate
    with one (`bun tauri signer generate -p '<pw>' -w ~/.reviewly/updater.key -f`), put the new
    `.pub` into `tauri.conf.json → plugins.updater.pubkey`, and in CI set
@@ -53,6 +57,7 @@ You still need to:
    Until the first release exists, the launch check just 404s silently — harmless.
 
 ## 3. Build & distribute
+
 - `bun tauri build` → `src-tauri/target/release/bundle/dmg/Reviewly_<ver>_aarch64.dmg`.
 - Bump `version` in `tauri.conf.json` per release (drives the updater).
 - Host the `.dmg` + `latest.json` on GitHub Releases; link the `.dmg` from a tiny landing page.
@@ -60,6 +65,7 @@ You still need to:
 ---
 
 ## Suggested order
+
 1. **Signing + notarization** → a `.dmg` that opens cleanly (do this first; everything else builds on a trusted app).
 2. **Auto-update** → ship fixes without users re-downloading.
 3. Landing page + first public build.

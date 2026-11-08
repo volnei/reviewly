@@ -1,11 +1,12 @@
 import { Context, Effect, Layer } from "effect";
-import { hasBackend } from "../Tauri";
+
 import type { AppError } from "../errors";
 import { TauriError } from "../errors";
 import type * as S from "../schema";
+import { hasBackend } from "../Tauri";
 import { GitHub, splitRepo } from "./GitHub";
-import { PrefsService, isSnoozed } from "./Prefs";
-import { type Candidate, type Ranked, Triage, compareRanked } from "./Triage";
+import { isSnoozed, PrefsService } from "./Prefs";
+import { type Candidate, compareRanked, type Ranked, Triage } from "./Triage";
 
 export interface InboxData {
   /** Your turn, most urgent first. */
@@ -87,6 +88,9 @@ function fromDashboard(p: S.DashboardPr, mine: boolean): Candidate {
     updatedAt: p.updatedAt,
     mine,
     draft: p.isDraft,
+    additions: p.additions,
+    deletions: p.deletions,
+    changedFiles: p.changedFiles,
     ci: p.ci,
     conflicting: p.conflicting,
     reviewDecision: p.reviewDecision,
@@ -117,6 +121,9 @@ export function fromSummary(p: S.PullSummary, viewer: string | null): Candidate 
     updatedAt: p.updated_at,
     mine: p.inboxMine ?? (viewer != null && viewer === p.user.login),
     draft: p.draft,
+    additions: p.additions,
+    deletions: p.deletions,
+    changedFiles: p.changedFiles,
     ci: p.ci,
     conflicting: p.conflicting,
     reviewDecision: p.reviewDecision,

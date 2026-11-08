@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import {
   BookOpenCheck,
   Braces,
@@ -12,12 +12,13 @@ import {
   Play,
   Plus,
   Save,
+  Sparkles,
   TerminalSquare,
   Trash2,
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTeamsPlan } from "@/app/teams-billing";
 import { useTeamsWorkspace } from "@/app/teams-workspace";
@@ -39,10 +40,16 @@ import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { run, useEffectQuery } from "@/effect/runtime";
 import * as S from "@/effect/schema";
 import type { CommandRunResult, TeamEnvironment } from "@/effect/schema";
+import { Ai } from "@/effect/services/Ai";
 import { Git } from "@/effect/services/Git";
 import { prefsStore, type ReviewSkill, usePrefs } from "@/effect/services/Prefs";
 import { Teams } from "@/effect/services/Teams";
 import { Tauri } from "@/effect/Tauri";
+import {
+  environmentPrompt,
+  environmentSourcePaths,
+  parseEnvironmentProposal,
+} from "@/features/environments/ai";
 import {
   deletePersonalEnvironment,
   environmentsStore,
@@ -179,6 +186,15 @@ export function EnvironmentsScreen() {
   const [creating, setCreating] = useState(personal.length === 0);
   const isNew = creating || !selected;
   const [tab, setTab] = useState<Tab>("variables");
+  const generationVersion = useRef(0);
+  useEffect(() => {
+    generationVersion.current += 1;
+  }, [scope, draft.id, draft.localDirectory]);
+  const [generating, setGenerating] = useState(false);
+  const [generatedSkills, setGeneratedSkills] = useState<{
+    draftId: string;
+    skills: ReviewSkill[];
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<CommandRunResult | null>(null);
@@ -201,18 +217,24 @@ export function EnvironmentsScreen() {
 
   const projectReviewSkills = useMemo(
     () =>
-      draft.repository
-        ? reviewSkills.filter(
-            (skill) =>
-              skill.repositories.length === 1 &&
-              skill.repositories[0].toLowerCase() === draft.repository?.toLowerCase(),
-          )
-        : [],
-    [draft.repository, reviewSkills],
+      generatedSkills?.draftId === draft.id
+        ? generatedSkills.skills
+        : draft.repository
+          ? reviewSkills.filter(
+              (skill) =>
+                skill.repositories.length === 1 &&
+                skill.repositories[0].toLowerCase() === draft.repository?.toLowerCase(),
+            )
+          : [],
+    [draft.id, draft.repository, reviewSkills, generatedSkills],
   );
   const setProjectReviewSkills = (skills: ReviewSkill[]) => {
     if (!draft.repository) return;
     const repository = draft.repository;
+    if (generatedSkills?.draftId === draft.id) {
+      setGeneratedSkills({ draftId: draft.id, skills });
+      return;
+    }
     prefsStore.update((prefs) => ({
       ...prefs,
       reviewSkills: [
@@ -330,6 +352,104 @@ export function EnvironmentsScreen() {
   }, [isNew, scope, selected]);
 
   const canEdit = scope === "personal" || teamQuery.data?.canEdit === true;
+  const createWithAi = async () => {
+    if (!draft.localDirectory || generating) return;
+    const snapshot = draft;
+    const version = generationVersion.current;
+    setGenerating(true);
+    try {
+      const sources = await run(
+        Effect.gen(function* () {
+          const git = yield* Git;
+          const paths = environmentSourcePaths(yield* git.lsFiles(snapshot.localDirectory));
+          const files: { path: string; content: string }[] = [];
+          let budget = 100_000;
+          for (const path of paths) {
+            if (budget <= 0) break;
+            const content = (yield* git.readFile(`${snapshot.localDirectory}/${path}`)).slice(
+              0,
+              Math.min(16_000, budget),
+            );
+            budget -= content.length;
+            files.push({ path, content });
+          }
+          return files;
+        }),
+      );
+      if (!sources.length) throw new Error("No project manifests or documentation found.");
+      const output = await run(
+        Effect.gen(function* () {
+          const ai = yield* Ai;
+          return yield* Stream.runCollect(
+            ai.stream(
+              `environment:${snapshot.id}:${id()}`,
+              environmentPrompt(
+                sources,
+                snapshot.variables.map((v) => v.key),
+              ),
+            ),
+          );
+        }),
+      );
+      if (version !== generationVersion.current) return;
+      const proposal = parseEnvironmentProposal(Array.from(output).join(""));
+      setDraft((current) => {
+        if (current.id !== snapshot.id || current.localDirectory !== snapshot.localDirectory)
+          return current;
+        const keys = new Set(current.variables.map((v) => v.key));
+        return {
+          ...current,
+          name: proposal.name,
+          variables: [
+            ...current.variables,
+            ...proposal.variables
+              .filter((v) => {
+                if (keys.has(v.key)) return false;
+                keys.add(v.key);
+                return true;
+              })
+              .map((v) => ({
+                id: id(),
+                key: v.key,
+                value: "",
+                secret: true,
+                origin: "local" as const,
+              })),
+          ],
+          commands: [
+            ...current.commands,
+            ...proposal.commands
+              .filter(
+                (c) =>
+                  !current.commands.some(
+                    (existing) =>
+                      existing.command === c.command &&
+                      existing.workingDirectory === c.workingDirectory,
+                  ),
+              )
+              .map((c) => ({ ...c, id: id(), timeoutSeconds: 300 })),
+          ],
+        };
+      });
+      setGeneratedSkills({
+        draftId: snapshot.id,
+        skills: [
+          ...projectReviewSkills,
+          ...proposal.skills.map((skill) => ({
+            ...skill,
+            id: id(),
+            enabled: true,
+            repositories: snapshot.repository ? [snapshot.repository] : [],
+          })),
+        ],
+      });
+    } catch (error) {
+      toast.fail("Couldn’t create the environment with AI", error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const save = async () => {
     const name = draft.name.trim();
     if (!name) return toast.fail("Name this environment");
@@ -348,17 +468,13 @@ export function EnvironmentsScreen() {
           previous?.variables ?? [],
           draft.variables,
         );
-        const newSecretsWithoutValues = draft.variables.filter(
-          (variable) =>
-            variable.secret &&
-            !variable.value &&
-            !previousSecrets.some((previousVariable) => previousVariable.key === variable.key),
-        );
-        if (newSecretsWithoutValues.length) {
-          return toast.fail(`Enter a value for ${newSecretsWithoutValues[0].key || "the secret"}`);
-        }
         const secrets = draft.variables
-          .filter((variable) => variable.secret && variable.value.length > 0)
+          .filter(
+            (variable) =>
+              variable.secret &&
+              (variable.value.length > 0 ||
+                !previousSecrets.some((previousVariable) => previousVariable.key === variable.key)),
+          )
           .map((variable) => ({ key: variable.key, value: variable.value, secret: true }));
         if (secrets.length) {
           await run(
@@ -399,7 +515,9 @@ export function EnvironmentsScreen() {
             ...(variable.persistedId ? { id: variable.persistedId } : {}),
             key: variable.key,
             secret: variable.secret,
-            ...(variable.value ? { value: variable.value } : {}),
+            ...(!variable.persistedId || variable.value.length > 0
+              ? { value: variable.value }
+              : {}),
           })),
           commands: draft.commands.map((command) => ({
             id: command.id,
@@ -419,6 +537,23 @@ export function EnvironmentsScreen() {
         setTeamEnvironmentDirectory(savedId, draft.localDirectory);
         setSelectedId(savedId);
         await queryClient.invalidateQueries({ queryKey: ["teams", "environments", scope] });
+      }
+      if (generatedSkills?.draftId === draft.id && draft.repository) {
+        const repository = draft.repository;
+        prefsStore.update((prefs) => ({
+          ...prefs,
+          reviewSkills: [
+            ...prefs.reviewSkills.filter(
+              (skill) =>
+                !(
+                  skill.repositories.length === 1 &&
+                  skill.repositories[0].toLowerCase() === repository.toLowerCase()
+                ),
+            ),
+            ...generatedSkills.skills.map((skill) => ({ ...skill, repositories: [repository] })),
+          ],
+        }));
+        setGeneratedSkills(null);
       }
       setCreating(false);
       toast.done("Environment saved");
@@ -526,231 +661,247 @@ export function EnvironmentsScreen() {
 
         <div className="mt-5 flex min-h-0 flex-1 gap-4">
           <aside className="flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-hair bg-panel/75">
-          <div className="border-b border-hair p-3">
-            <Button
-              className="w-full justify-start rounded-xl"
-              variant="outline"
-              onClick={() => {
-                setCreating(true);
-                setSelectedId(null);
-                setDraft(blank(repository));
-                setResult(null);
-              }}
-              disabled={scope !== "personal" && !canEdit}
-            >
-              <Plus className="size-4" /> New environment
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {environments.length ? (
-              <div className="space-y-1">
-                {environments.map((environment) => (
-                  <button
-                    key={environment.id}
-                    type="button"
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
-                      !creating && selected?.id === environment.id
-                        ? "bg-raise text-ink"
-                        : "text-ink-2 hover:bg-raise/55 hover:text-ink",
-                    )}
-                    onClick={() => {
-                      setCreating(false);
-                      setSelectedId(environment.id);
-                    }}
-                  >
-                    {scope === "personal" ? (
-                      <Braces className="size-4" />
-                    ) : (
-                      <UsersRound className="size-4" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">
-                        {environment.name}
+            <div className="border-b border-hair p-3">
+              <Button
+                className="w-full justify-start rounded-xl"
+                variant="outline"
+                onClick={() => {
+                  setCreating(true);
+                  setSelectedId(null);
+                  setDraft(blank(repository));
+                  setResult(null);
+                }}
+                disabled={scope !== "personal" && !canEdit}
+              >
+                <Plus className="size-4" /> New environment
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {environments.length ? (
+                <div className="space-y-1">
+                  {environments.map((environment) => (
+                    <button
+                      key={environment.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                        !creating && selected?.id === environment.id
+                          ? "bg-raise text-ink"
+                          : "text-ink-2 hover:bg-raise/55 hover:text-ink",
+                      )}
+                      onClick={() => {
+                        setCreating(false);
+                        setSelectedId(environment.id);
+                      }}
+                    >
+                      {scope === "personal" ? (
+                        <Braces className="size-4" />
+                      ) : (
+                        <UsersRound className="size-4" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium">
+                          {environment.name}
+                        </span>
+                        <span className="block truncate text-[11px] text-ink-3">
+                          {environment.repository ?? "Any repository"}
+                        </span>
                       </span>
-                      <span className="block truncate text-[11px] text-ink-3">
-                        {environment.repository ?? "Any repository"}
-                      </span>
-                    </span>
-                    <ChevronRight className="size-3.5 text-ink-3" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="px-3 py-10 text-center text-[12px] leading-relaxed text-ink-3">
-                No environments for {repository ?? "this scope"} yet.
-              </div>
-            )}
-          </div>
+                      <ChevronRight className="size-3.5 text-ink-3" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-3 py-10 text-center text-[12px] leading-relaxed text-ink-3">
+                  No environments for {repository ?? "this scope"} yet.
+                </div>
+              )}
+            </div>
           </aside>
 
           <section className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-hair bg-panel/75">
-          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-hair bg-panel px-6 py-4">
-            <div className="min-w-0 flex-1">
-              <input
-                aria-label="Environment name"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                disabled={!canEdit}
-                className="block w-full max-w-[640px] truncate border-0 bg-transparent p-0 text-[18px] font-semibold leading-7 text-ink outline-none placeholder:text-ink-3 disabled:opacity-60"
-              />
-              <p className="mt-1 text-[12px] text-ink-3">
-                {scope === "personal"
-                  ? "Local to this Mac · included in Hobby"
-                  : "Shared with this Teams workspace"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {!isNew && canEdit ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Delete environment"
-                  onClick={() => void remove()}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              ) : null}
-              {canEdit ? (
-                <Button className="rounded-xl" onClick={() => void save()} disabled={saving}>
-                  <Save className="size-4" /> {saving ? "Saving…" : "Save"}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="space-y-6 p-6">
-            <div className="overflow-hidden rounded-2xl border border-hair">
-              <div className="grid gap-3 px-4 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
-                <div>
-                  <Label className="text-[12px] text-ink">Project</Label>
-                  <p className="mt-0.5 text-[11px] text-ink-3">
-                    Choose a local repository already added to Reviewly.
-                  </p>
-                </div>
-                <Select
-                  value={draft.localDirectory || "__any__"}
-                  onValueChange={(path) => {
-                    if (!path) return;
-                    if (path === "__any__") {
-                      setDraft({ ...draft, repository: null, localDirectory: "" });
-                      return;
-                    }
-                    const selectedRepository = localRepositories.data?.find(
-                      (item) => item.path === path,
-                    );
-                    setDraft({
-                      ...draft,
-                      repository:
-                        scope === "personal" || canEdit
-                          ? (selectedRepository?.repository ?? null)
-                          : draft.repository,
-                      localDirectory: path,
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-full rounded-xl" aria-label="Project repository">
-                    <SelectValue>
-                      {draft.repository ??
-                        (draft.localDirectory
-                          ? draft.localDirectory.split(/[\\/]/).pop()
-                          : "Any repository")}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup alignItemWithTrigger={false} className="min-w-[360px]">
-                    <SelectItem value="__any__">Any repository</SelectItem>
-                    {(localRepositories.data ?? [])
-                      .filter(
-                        (item) =>
-                          scope === "personal" ||
-                          canEdit ||
-                          !draft.repository ||
-                          item.repository === draft.repository,
-                      )
-                      .map((item) => (
-                        <SelectItem key={item.path} value={item.path}>
-                          <span className="flex min-w-0 flex-col py-0.5">
-                            <span className="truncate text-[12px] text-ink">
-                              {item.repository ?? item.path.split(/[\\/]/).pop()}
-                            </span>
-                            <span className="truncate font-mono text-[10px] text-ink-3">
-                              {item.path}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                  </SelectPopup>
-                </Select>
-              </div>
-              <div className="grid gap-3 border-t border-hair px-4 py-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
-                <div>
-                  <p className="text-[12px] text-ink-2">Local directory</p>
-                  <p className="mt-0.5 text-[11px] text-ink-3">Private to this Mac.</p>
-                </div>
-                <p className="min-w-0 truncate font-mono text-[11.5px] text-ink-2">
-                  {draft.localDirectory || "Choose a project above"}
+            <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-hair bg-panel px-6 py-4">
+              <div className="min-w-0 flex-1">
+                <input
+                  aria-label="Environment name"
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  disabled={!canEdit}
+                  className="block w-full max-w-[640px] truncate border-0 bg-transparent p-0 text-[18px] font-semibold leading-7 text-ink outline-none placeholder:text-ink-3 disabled:opacity-60"
+                />
+                <p className="mt-1 text-[12px] text-ink-3">
+                  {scope === "personal"
+                    ? "Local to this Mac · included in Hobby"
+                    : "Shared with this Teams workspace"}
                 </p>
               </div>
+              <div className="flex items-center gap-2">
+                {isNew && canEdit ? (
+                  <Button
+                    variant="outline"
+                    disabled={
+                      generating || saving || !draft.localDirectory || environmentImport?.loading
+                    }
+                    onClick={() => void createWithAi()}
+                  >
+                    <Sparkles className="size-4" />{" "}
+                    {generating ? "Reading project…" : "Create with AI"}
+                  </Button>
+                ) : null}
+                {!isNew && canEdit ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete environment"
+                    onClick={() => void remove()}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                ) : null}
+                {canEdit ? (
+                  <Button
+                    className="rounded-xl"
+                    onClick={() => void save()}
+                    disabled={saving || generating}
+                  >
+                    <Save className="size-4" /> {saving ? "Saving…" : "Save"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
-            <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
-              <TabsList className="rounded-xl">
-                <TabsTab value="variables">
-                  <KeyRound className="size-3.5" /> Variables
-                </TabsTab>
-                <TabsTab value="commands">
-                  <TerminalSquare className="size-3.5" /> Commands
-                </TabsTab>
-                <TabsTab value="skills" disabled={!draft.repository}>
-                  <BookOpenCheck className="size-3.5" /> Review skills
-                </TabsTab>
-              </TabsList>
-            </Tabs>
-
-            {tab === "variables" ? (
-              <VariablesEditor
-                draft={draft}
-                setDraft={setDraft}
-                canEdit={canEdit}
-                environmentImport={environmentImport}
-              />
-            ) : tab === "commands" ? (
-              <CommandsEditor
-                draft={draft}
-                setDraft={setDraft}
-                canEdit={canEdit}
-                running={running}
-                onRun={execute}
-              />
-            ) : draft.repository ? (
+            <div className="space-y-6 p-6">
               <div className="overflow-hidden rounded-2xl border border-hair">
-                <div className="border-b border-hair px-4 py-3">
-                  <p className="text-[13px] font-medium">Project review skills</p>
-                  <p className="mt-0.5 text-[11px] text-ink-3">
-                    Applied automatically to reviews in {draft.repository}. Changes save
-                    immediately.
+                <div className="grid gap-3 px-4 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                  <div>
+                    <Label className="text-[12px] text-ink">Project</Label>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      Choose a local repository already added to Reviewly.
+                    </p>
+                  </div>
+                  <Select
+                    value={draft.localDirectory || "__any__"}
+                    onValueChange={(path) => {
+                      if (!path) return;
+                      if (path === "__any__") {
+                        setDraft({ ...draft, repository: null, localDirectory: "" });
+                        return;
+                      }
+                      const selectedRepository = localRepositories.data?.find(
+                        (item) => item.path === path,
+                      );
+                      setDraft({
+                        ...draft,
+                        repository:
+                          scope === "personal" || canEdit
+                            ? (selectedRepository?.repository ?? null)
+                            : draft.repository,
+                        localDirectory: path,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="w-full rounded-xl" aria-label="Project repository">
+                      <SelectValue>
+                        {draft.repository ??
+                          (draft.localDirectory
+                            ? draft.localDirectory.split(/[\\/]/).pop()
+                            : "Any repository")}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup alignItemWithTrigger={false} className="min-w-[360px]">
+                      <SelectItem value="__any__">Any repository</SelectItem>
+                      {(localRepositories.data ?? [])
+                        .filter(
+                          (item) =>
+                            scope === "personal" ||
+                            canEdit ||
+                            !draft.repository ||
+                            item.repository === draft.repository,
+                        )
+                        .map((item) => (
+                          <SelectItem key={item.path} value={item.path}>
+                            <span className="flex min-w-0 flex-col py-0.5">
+                              <span className="truncate text-[12px] text-ink">
+                                {item.repository ?? item.path.split(/[\\/]/).pop()}
+                              </span>
+                              <span className="truncate font-mono text-[10px] text-ink-3">
+                                {item.path}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+                <div className="grid gap-3 border-t border-hair px-4 py-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                  <div>
+                    <p className="text-[12px] text-ink-2">Local directory</p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">Private to this Mac.</p>
+                  </div>
+                  <p className="min-w-0 truncate font-mono text-[11.5px] text-ink-2">
+                    {draft.localDirectory || "Choose a project above"}
                   </p>
                 </div>
-                <div className="p-4">
-                  <ReviewSkillsEditor
-                    skills={projectReviewSkills}
-                    onChange={setProjectReviewSkills}
-                    repository={draft.repository}
-                    disabled={!canEdit}
-                  />
-                </div>
               </div>
-            ) : null}
 
-            {APP_STORE && tab === "commands" ? (
-              <p className="rounded-xl border border-hair bg-raise/35 px-4 py-3 text-[12px] text-ink-2">
-                Local command execution is available in the direct download, including the free
-                Hobby plan.
-              </p>
-            ) : null}
+              <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
+                <TabsList className="rounded-xl">
+                  <TabsTab value="variables">
+                    <KeyRound className="size-3.5" /> Variables
+                  </TabsTab>
+                  <TabsTab value="commands">
+                    <TerminalSquare className="size-3.5" /> Commands
+                  </TabsTab>
+                  <TabsTab value="skills" disabled={!draft.repository}>
+                    <BookOpenCheck className="size-3.5" /> Review skills
+                  </TabsTab>
+                </TabsList>
+              </Tabs>
 
-            {result ? <RunOutput result={result} /> : null}
-          </div>
+              {tab === "variables" ? (
+                <VariablesEditor
+                  draft={draft}
+                  setDraft={setDraft}
+                  canEdit={canEdit}
+                  environmentImport={environmentImport}
+                />
+              ) : tab === "commands" ? (
+                <CommandsEditor
+                  draft={draft}
+                  setDraft={setDraft}
+                  canEdit={canEdit}
+                  running={running}
+                  onRun={execute}
+                />
+              ) : draft.repository ? (
+                <div className="overflow-hidden rounded-2xl border border-hair">
+                  <div className="border-b border-hair px-4 py-3">
+                    <p className="text-[13px] font-medium">Project review skills</p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      Applied automatically to reviews in {draft.repository}. Changes save
+                      immediately.
+                    </p>
+                  </div>
+                  <div className="p-4">
+                    <ReviewSkillsEditor
+                      skills={projectReviewSkills}
+                      onChange={setProjectReviewSkills}
+                      repository={draft.repository}
+                      disabled={!canEdit}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {APP_STORE && tab === "commands" ? (
+                <p className="rounded-xl border border-hair bg-raise/35 px-4 py-3 text-[12px] text-ink-2">
+                  Local command execution is available in the direct download, including the free
+                  Hobby plan.
+                </p>
+              ) : null}
+
+              {result ? <RunOutput result={result} /> : null}
+            </div>
           </section>
         </div>
       </div>
