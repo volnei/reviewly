@@ -5616,6 +5616,80 @@ html[data-reduce-motion] .workspace-idea-icon::after {
   background: color-mix(in srgb, var(--muted) 38%, transparent) !important;
 }
 
+/* Modals use the current page palette rather than the denser menu material.
+   Keep the scrim light: blurring it heavily erases the context the glass reveals. */
+:root {
+  --dialog-glass-opacity: 64%;
+  --dialog-scrim: color-mix(in srgb, var(--void) 22%, transparent);
+  --dialog-rim: color-mix(in srgb, var(--ink) 16%, transparent);
+  --dialog-highlight: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+:root:is([data-theme="light"], [data-theme="clouds"]) {
+  --dialog-glass-opacity: 74%;
+  --dialog-scrim: color-mix(in srgb, var(--ink) 12%, transparent);
+  --dialog-highlight: rgba(255, 255, 255, 0.6);
+}
+
+:root :is(
+  [data-slot="dialog-backdrop"],
+  [data-slot="alert-dialog-backdrop"],
+  [data-slot="command-dialog-backdrop"]
+) {
+  background: var(--dialog-scrim) !important;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+:root[data-theme] :is(
+  [data-slot="dialog-popup"],
+  [data-slot="alert-dialog-popup"],
+  [data-slot="command-dialog-popup"]
+) {
+  color: var(--ink);
+  background: var(--page) !important;
+  border-color: var(--dialog-rim) !important;
+  box-shadow:
+    inset 0 1px 0 var(--dialog-highlight),
+    inset 0 0 0 1px color-mix(in srgb, var(--ink) 3%, transparent),
+    0 24px 80px color-mix(in srgb, var(--void) 38%, transparent),
+    0 6px 20px color-mix(in srgb, var(--void) 18%, transparent) !important;
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :root[data-theme] :is(
+    [data-slot="dialog-popup"],
+    [data-slot="alert-dialog-popup"],
+    [data-slot="command-dialog-popup"]
+  ) {
+    background: linear-gradient(145deg, var(--dialog-highlight), transparent 45%),
+      color-mix(in srgb, var(--page) var(--dialog-glass-opacity), transparent) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(1.12);
+    backdrop-filter: blur(32px) saturate(1.12);
+  }
+}
+
+:root[data-theme] :is(
+  [data-slot="dialog-popup"],
+  [data-slot="alert-dialog-popup"],
+  [data-slot="command-dialog-popup"]
+) [data-slot$="footer"] {
+  background: color-mix(in srgb, var(--page) 24%, transparent) !important;
+  border-color: var(--hair);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme] :is(
+    [data-slot="dialog-popup"],
+    [data-slot="alert-dialog-popup"],
+    [data-slot="command-dialog-popup"]
+  ) {
+    background: var(--page) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* The guided review is the one intentionally magical control in the PR header. */
 .pr-v2 .pr-ai-review {
   position: relative;

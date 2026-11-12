@@ -17,7 +17,11 @@ use crate::state::AppState;
 /// The common ones: the PR is already mergeable (`clean`/`unstable` status), so
 /// there's nothing to queue behind; or the repo simply hasn't enabled auto-merge.
 fn friendly_auto_merge_error(raw: &str) -> String {
-    if raw.contains("unstable status") || raw.contains("clean status") {
+    if raw.contains("Auto-merge is not supported for stacked pull requests") {
+        "GitHub doesn't support auto-merge for stacked pull requests. \
+         Merge this PR manually once its required checks and reviews pass."
+            .to_string()
+    } else if raw.contains("unstable status") || raw.contains("clean status") {
         "GitHub won't queue auto-merge while this PR is already mergeable. \
          Use \u{201c}Merge now,\u{201d} or wait for the pending checks to finish and merge then."
             .to_string()

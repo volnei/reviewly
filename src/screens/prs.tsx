@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { useMemo, useRef } from "react";
+
 import { useTitleSlot } from "@/app/title-slot";
 import { useWorkspace, useWorkspaceInbox } from "@/app/workspace";
 import { useEffectQuery } from "@/effect/runtime";
@@ -5,36 +8,29 @@ import { useAuth } from "@/effect/services/Auth";
 import { GitHub, splitRepo } from "@/effect/services/GitHub";
 import { fromSummary } from "@/effect/services/Inbox";
 import { usePrefs } from "@/effect/services/Prefs";
-import { type Ranked, Triage, compareRanked } from "@/effect/services/Triage";
-import { type Store, persistedStore, useStore } from "@/effect/store";
+import { type Ranked, Triage } from "@/effect/services/Triage";
+import { persistedStore, type Store, useStore } from "@/effect/store";
 import {
+  applyFilterWithStacks,
   Chips,
   FilterBar,
-  applyFilterWithStacks,
   isFiltering,
   prStatusOf,
   useListFilter,
 } from "@/features/list/filters";
 import { List, ListHead, Nothing, type Section } from "@/features/list/list";
 import { useKeepScroll } from "@/features/list/scroll";
+import { compareListItems, LIST_SORTS, type ListSort, SortControl } from "@/features/list/sort";
 import { useWithStacks } from "@/features/list/stacks";
-import { Effect } from "effect";
-import { useMemo, useRef } from "react";
+
 import { RefreshButton, TitleSearch, useItemActions, useOpenItem } from "./inbox";
 import { PrPeek } from "./pr-peek";
 
 type Group = "none" | "repo" | "author" | "stack";
-type Sort = "priority" | "updated" | "updated-asc" | "created" | "created-asc" | "title";
+type Sort = ListSort;
 type Display = { group: Group; sort: Sort };
 const GROUPS: ReadonlyArray<Group> = ["none", "repo", "author", "stack"];
-const SORTS: ReadonlyArray<Sort> = [
-  "priority",
-  "updated",
-  "updated-asc",
-  "created",
-  "created-asc",
-  "title",
-];
+const SORTS = LIST_SORTS;
 const DEFAULT_DISPLAY: Display = { group: "none", sort: "priority" };
 const decodeDisplay = (raw: unknown): Display => {
   const r = raw as Partial<{ group: unknown; sort: unknown }> | null;
@@ -131,15 +127,7 @@ export function PrsScreen() {
   const filterable = useWithStacks(all);
 
   const items = useMemo(() => {
-    const by: Record<Sort, (a: Ranked, b: Ranked) => number> = {
-      priority: compareRanked,
-      "updated-asc": (a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""),
-      "created-asc": (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
-      updated: (a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
-      created: (a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-      title: (a, b) => a.title.localeCompare(b.title),
-    };
-    return applyFilterWithStacks(filterable, filter).sort(by[sort]);
+    return applyFilterWithStacks(filterable, filter).sort((a, b) => compareListItems(sort, a, b));
   }, [filterable, filter, sort]);
 
   const sections = useMemo<Section[]>(() => {
@@ -205,6 +193,7 @@ export function PrsScreen() {
             : `${all.length} that involve you. Watch repositories in Settings for the whole list.`}
       </ListHead>
       <FilterBar
+        actions={<SortControl value={sort} onChange={setSort} />}
         id="prs"
         items={filterable}
         filter={filter}
@@ -231,19 +220,6 @@ export function PrsScreen() {
             ["stack", "By stack"],
           ]}
         />
-        <Chips
-          label="Sort"
-          value={sort}
-          onChange={setSort}
-          options={[
-            ["priority", "Needs action first"],
-            ["updated", "Recently updated"],
-            ["updated-asc", "Least recently updated"],
-            ["created", "Newest first"],
-            ["created-asc", "Oldest first"],
-            ["title", "Title"],
-          ]}
-        />
       </FilterBar>
       {!loading ? (
         <List
@@ -252,9 +228,7 @@ export function PrsScreen() {
           pageSize={120}
           actions={{ open, snooze, snoozeFor, unsnooze, checkout }}
           renderPeek={(it) =>
-            it.kind === "pr" || it.kind === "mention" ? (
-              <PrPeek item={it} origin="prs" />
-            ) : null
+            it.kind === "pr" || it.kind === "mention" ? <PrPeek item={it} origin="prs" /> : null
           }
           empty={
             isFiltering(filter) ? (

@@ -17,6 +17,32 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.1.7",
+    date: "2026-11-12",
+    items: [
+      {
+        title: "Review and implement with Cursor",
+        detail:
+          "Choose Cursor CLI as your local AI provider, with an optional model override. Reviews use read-only Ask mode, while explicit implementation actions can edit the local checkout.",
+      },
+      {
+        title: "A clearer local repository workspace",
+        detail:
+          "Changes, history, and branches have dedicated tabs. A persistent commit sidebar, changed-file search, and clearer file names make local work easier to navigate.",
+      },
+      {
+        title: "Sort your queue by review time",
+        detail:
+          "Sort Inbox and Pull Requests by shortest or longest estimated review, alongside priority, dates, and title. Review sizes refresh through the dashboard and opened pull requests with fewer cache writes.",
+      },
+      {
+        title: "Clearer GitHub errors",
+        detail:
+          "GraphQL failures show readable messages, and stacked pull requests explain why GitHub cannot enable auto-merge.",
+      },
+    ],
+  },
+  {
     version: "1.1.6",
     date: "2026-11-08",
     items: [

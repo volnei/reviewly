@@ -38,6 +38,7 @@ fn resolve_timeout(override_secs: Option<u64>, default: Duration) -> Duration {
 fn provider_bin(provider: &str) -> &str {
     match provider {
         "codex" => "codex",
+        "cursor" => "cursor-agent",
         "agy" => "agy",
         "gemini" => "gemini",
         _ => "claude",
@@ -56,6 +57,7 @@ async fn run_provider(
 ) -> AppResult<String> {
     match provider {
         "codex" => run_codex(prompt, cwd, model.as_deref(), timeout_secs).await,
+        "cursor" => run_cursor(prompt, cwd, model.as_deref(), timeout_secs, false).await,
         "agy" => run_agy(prompt, cwd, model.as_deref(), timeout_secs).await,
         "gemini" => run_gemini(prompt, cwd, model.as_deref(), timeout_secs).await,
         "openai" => run_openai_compatible(prompt, base_url, model, api_key, timeout_secs).await,
@@ -381,6 +383,62 @@ fn feed_stdin(child: &mut tokio::process::Child, prompt: &str) {
     }
 }
 
+/// Use the Cursor-specific alias: `agent` can belong to another installed CLI.
+/// Ask mode keeps reviews read-only; only explicit implementation runs get force.
+fn build_cursor_cmd(cwd: Option<&str>, model: Option<&str>, apply: bool) -> Command {
+    let mut cmd = cli_command(provider_bin("cursor"));
+    cmd.args(["--print", "--output-format", "text", "--trust"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if apply {
+        cmd.arg("--force");
+    } else {
+        cmd.args(["--mode", "ask"]);
+    }
+    add_model(&mut cmd, "--model", model);
+    apply_cwd(&mut cmd, cwd);
+    cmd
+}
+
+async fn run_cursor(
+    prompt: &str,
+    cwd: Option<&str>,
+    model: Option<&str>,
+    timeout_secs: Option<u64>,
+    apply: bool,
+) -> AppResult<String> {
+    let mut child = build_cursor_cmd(cwd, model, apply)
+        .spawn()
+        .map_err(|e| AppError::Other(format!("failed to spawn cursor-agent: {e}")))?;
+    feed_stdin(&mut child, prompt);
+    let timeout = resolve_timeout(
+        timeout_secs,
+        if apply {
+            REVIEW_TIMEOUT
+        } else {
+            run_timeout(cwd)
+        },
+    );
+    let output = tokio::time::timeout(timeout, child.wait_with_output())
+        .await
+        .map_err(|_| AppError::Other(format!(
+            "Cursor took longer than {}s and was stopped. Try again, or increase the AI time limit in Settings.",
+            timeout.as_secs()
+        )))?
+        .map_err(|e| AppError::Other(format!("wait cursor-agent: {e}")))?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || text.is_empty() {
+        return Err(cli_error(
+            "cursor-agent",
+            &exit_code(&output.status),
+            &cli_detail(&output.stdout, &output.stderr),
+        ));
+    }
+    Ok(text)
+}
+
 async fn run_claude(
     prompt: &str,
     cwd: Option<&str>,
@@ -617,10 +675,11 @@ pub async fn ai_apply(
     match provider.as_str() {
         "claude" => apply_with_claude(&prompt, &cwd).await,
         "codex" => apply_with_codex(&prompt, &cwd, model.as_deref()).await,
+        "cursor" => run_cursor(&prompt, Some(&cwd), model.as_deref(), None, true).await,
         "agy" => apply_with_agy(&prompt, &cwd, model.as_deref()).await,
         "gemini" => apply_with_gemini(&prompt, &cwd, model.as_deref()).await,
         _ => Err(AppError::Other(
-            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex, Antigravity, or Gemini to implement it."
+            "An OpenAI-compatible endpoint can draft a spec, but cannot edit the local repository. Choose Claude, Codex, Cursor, Antigravity, or Gemini to implement it."
                 .into(),
         )),
     }
@@ -1814,10 +1873,35 @@ mod tests {
     #[test]
     fn test_provider_bin_mapping() {
         assert_eq!(provider_bin("codex"), "codex");
+        assert_eq!(provider_bin("cursor"), "cursor-agent");
         assert_eq!(provider_bin("agy"), "agy");
         assert_eq!(provider_bin("gemini"), "gemini");
         assert_eq!(provider_bin("claude"), "claude");
         assert_eq!(provider_bin("unknown"), "claude");
+    }
+
+    #[test]
+    fn test_cursor_review_cannot_enable_edits() {
+        let cmd = build_cursor_cmd(Some("/tmp"), Some(" custom-model "), false);
+        let cmd = cmd.as_std();
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy()).collect();
+        assert_eq!(cmd.get_program(), "cursor-agent");
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp")));
+        assert!(args.windows(2).any(|w| w == ["--mode", "ask"]));
+        assert!(args.windows(2).any(|w| w == ["--model", "custom-model"]));
+        assert!(!args.iter().any(|a| a == "--force" || a == "--yolo"));
+    }
+
+    #[test]
+    fn test_cursor_apply_allows_implementation_without_ask_mode() {
+        let cmd = build_cursor_cmd(Some("/tmp"), Some(" "), true);
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy())
+            .collect();
+        assert!(args.iter().any(|a| a == "--force"));
+        assert!(!args.iter().any(|a| a == "--mode" || a == "--model"));
     }
 
     #[test]

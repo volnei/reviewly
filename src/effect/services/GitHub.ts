@@ -1,10 +1,11 @@
-import { readRepoPrs } from "@/lib/prs-db";
 import { Context, Effect, Layer, Schema } from "effect";
-import { Tauri } from "../Tauri";
-import { hasBackend } from "../Tauri";
+
+import { readRepoPrs, saveReviewSizes } from "@/lib/prs-db";
+
 import { TauriError } from "../errors";
 import type { AppError } from "../errors";
 import * as S from "../schema";
+import { hasBackend, Tauri } from "../Tauri";
 
 type Fx<A> = Effect.Effect<A, AppError>;
 
@@ -161,7 +162,35 @@ export const GitHubLive = Layer.effect(
     return {
       dashboard: (repoQualifier) => t.invoke("gh_dashboard", { repoQualifier }, S.Dashboard),
       repos: t.invoke("gh_list_repos", {}, S.Strings),
-      pull: (ref) => t.invoke("gh_get_pull", pr(ref), S.PullDetail),
+      pull: (ref) =>
+        t.invoke("gh_get_pull", pr(ref), S.PullDetail).pipe(
+          Effect.tap((pull) => {
+            if (
+              !hasBackend() ||
+              pull.additions == null ||
+              pull.deletions == null ||
+              pull.changed_files == null
+            ) {
+              return Effect.void;
+            }
+            const additions = pull.additions;
+            const deletions = pull.deletions;
+            const changedFiles = pull.changed_files;
+            return Effect.promise(() =>
+              saveReviewSizes(`${ref.owner}/${ref.repo}`, [
+                {
+                  number: ref.number,
+                  additions,
+                  deletions,
+                  changedFiles,
+                  updatedAt: pull.updated_at,
+                },
+              ]).catch((error) => {
+                console.warn("[pr-cache] review size persistence failed", error);
+              }),
+            );
+          }),
+        ),
       files: (ref) => t.invoke("gh_list_pull_files", pr(ref), Schema.Array(S.PullFile)),
       reviewComments: (ref) =>
         t.invoke("gh_list_review_comments", pr(ref), Schema.Array(S.ReviewComment)),

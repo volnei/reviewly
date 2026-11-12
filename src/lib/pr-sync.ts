@@ -10,6 +10,7 @@ import {
   getRepoSync,
   pendingReviewSizes,
   pruneOpen,
+  type PullReviewSize,
   saveReviewSizes,
   setRepoSync,
   upsertPrs,
@@ -43,12 +44,19 @@ async function syncOne(repo: string, forceFull: boolean): Promise<void> {
       pulls.map((pull) => pull.id),
       startedAt,
     );
+    const updatedHigh = newest(pulls) ?? status?.updated_high ?? new Date().toISOString();
     await setRepoSync(repo, {
       open_synced_at: startedAt,
-      updated_high: newest(pulls) ?? status?.updated_high ?? new Date().toISOString(),
+      updated_high: updatedHigh,
       last_error: null,
     });
-    status = await getRepoSync(repo);
+    status = {
+      repo,
+      open_synced_at: startedAt,
+      updated_high: updatedHigh,
+      all_backfilled: status?.all_backfilled ?? 0,
+      last_error: null,
+    };
   }
 
   // One bounded historical pass makes merged/closed filters local too. Future
@@ -61,16 +69,23 @@ async function syncOne(repo: string, forceFull: boolean): Promise<void> {
       since,
     });
     await upsertPrs(repo, history);
+    const updatedHigh =
+      [status?.updated_high, newest(history)]
+        .filter((value): value is string => !!value)
+        .sort()
+        .at(-1) ?? new Date().toISOString();
     await setRepoSync(repo, {
       all_backfilled: 1,
-      updated_high:
-        [status?.updated_high, newest(history)]
-          .filter((value): value is string => !!value)
-          .sort()
-          .at(-1) ?? new Date().toISOString(),
+      updated_high: updatedHigh,
       last_error: null,
     });
-    status = await getRepoSync(repo);
+    status = {
+      repo,
+      open_synced_at: status?.open_synced_at ?? null,
+      updated_high: updatedHigh,
+      all_backfilled: 1,
+      last_error: null,
+    };
   }
 
   if (reconciledAllOpen) {
@@ -128,6 +143,7 @@ async function syncReviewSizes(repos: readonly string[]): Promise<void> {
     const [owner, repo] = slug.split("/");
     if (!owner || !repo) continue;
     const numbers = await pendingReviewSizes(slug);
+    const collected: PullReviewSize[] = [];
     for (let offset = 0; offset < numbers.length; offset += 25) {
       const sizes = await run(
         Effect.flatMap(Tauri, (tauri) =>
@@ -138,8 +154,9 @@ async function syncReviewSizes(repos: readonly string[]): Promise<void> {
           ),
         ),
       );
-      await saveReviewSizes(slug, sizes);
+      collected.push(...sizes);
     }
+    await saveReviewSizes(slug, collected);
   }
 }
 
@@ -158,15 +175,18 @@ async function syncPass(
   );
   // The complete REST mirror and the reviewer-specific GraphQL signals have
   // different jobs, but both land in the same canonical table.
-  await Promise.all([
-    syncInboxSignals(repos).catch((error) => {
-      console.warn("[pr-sync] inbox signal enrichment failed", error);
-    }),
-    syncStackSignals(repos),
-  ]);
-  await syncReviewSizes(repos).catch((error) => {
-    console.warn("[pr-sync] review size enrichment failed", error);
+  const stackSync = syncStackSignals(repos);
+  await syncInboxSignals(repos).catch((error) => {
+    console.warn("[pr-sync] inbox signal enrichment failed", error);
   });
+  // Dashboard sizes are now in SQLite. Only ask the bounded fallback for PRs
+  // that did not arrive through that GraphQL query or an opened PR detail.
+  await Promise.all([
+    stackSync,
+    syncReviewSizes(repos).catch((error) => {
+      console.warn("[pr-sync] review size enrichment failed", error);
+    }),
+  ]);
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["prs"] }),
     queryClient.invalidateQueries({ queryKey: ["inbox"] }),

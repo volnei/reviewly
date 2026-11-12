@@ -8,6 +8,7 @@ describe("AI Providers registry & compatibility", () => {
     const keys = PROVIDERS.map(([k]) => k);
     expect(keys).toContain("claude");
     expect(keys).toContain("codex");
+    expect(keys).toContain("cursor");
     expect(keys).toContain("agy");
     expect(keys).toContain("gemini");
     expect(keys).toContain("openai");
@@ -15,6 +16,7 @@ describe("AI Providers registry & compatibility", () => {
 
   it("formats short names correctly for both agy and gemini", () => {
     expect(providerName("agy")).toBe("Antigravity");
+    expect(providerName("cursor")).toBe("Cursor");
     expect(providerName("gemini")).toBe("Gemini");
   });
 
@@ -38,9 +40,9 @@ describe("AI Providers registry & compatibility", () => {
     expect(decoded.provider).toBe("gemini");
   });
 
-  it("decodes stored Antigravity preferences cleanly", () => {
+  it.each(["agy", "cursor"])("decodes stored %s preferences cleanly", (provider) => {
     const decoded = Schema.decodeUnknownSync(Prefs.fields.ai)({
-      provider: "agy",
+      provider,
       model: "gemini-3.8-flash-high",
       apiKey: "",
       baseUrl: "",
@@ -50,6 +52,6 @@ describe("AI Providers registry & compatibility", () => {
       autoTour: false,
       suggestionAction: "draft",
     });
-    expect(decoded.provider).toBe("agy");
+    expect(decoded.provider).toBe(provider);
   });
 });

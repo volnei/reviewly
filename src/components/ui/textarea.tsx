@@ -2,7 +2,7 @@
 
 import { Field as FieldPrimitive } from "@base-ui/react/field";
 import { mergeProps } from "@base-ui/react/merge-props";
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export type TextareaProps = React.ComponentPropsWithoutRef<"textarea"> &
@@ -11,13 +11,12 @@ export type TextareaProps = React.ComponentPropsWithoutRef<"textarea"> &
     unstyled?: boolean;
   };
 
-export function Textarea({
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({
   className,
   size = "default",
   unstyled = false,
-  ref,
   ...props
-}: TextareaProps): React.ReactElement {
+}, ref): React.ReactElement {
   return (
     <span
       className={
@@ -53,6 +52,4 @@ export function Textarea({
       />
     </span>
   );
-}
-
-;
+});

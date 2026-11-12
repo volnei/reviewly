@@ -1,7 +1,30 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { Effect } from "effect";
+import {
+  ArrowDownToLine,
+  ArrowLeft,
+  CheckCircle2,
+  Code,
+  FileCode2,
+  Folder,
+  GitBranch,
+  GitCommitHorizontal,
+  Minus,
+  Plus,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { useKeyScope } from "@/app/keys";
 import { useTitleSlot } from "@/app/title-slot";
 import { toast } from "@/app/toast";
 import { IconButton } from "@/components/icon-button";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogDescription,
@@ -11,6 +34,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectItem,
@@ -18,6 +42,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { type AppServices, run, useEffectQuery } from "@/effect/runtime";
 import type * as S from "@/effect/schema";
 import { providerName } from "@/effect/services/Ai";
@@ -33,29 +59,10 @@ import { COMMIT_PROMPT } from "@/lib/ai/prompts";
 import { fromLocalId } from "@/lib/local-id";
 import { safeOpenUrl } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Effect } from "effect";
-import {
-  ArrowDownToLine,
-  ArrowLeft,
-  Code,
-  Minus,
-  Plus,
-  RefreshCw,
-  Sparkles,
-  Undo2,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Fx = Effect.Effect<unknown, unknown, AppServices>;
 
-/**
- * One clone on this machine, as a page: what is staged and what isn't on the
- * left, the diffs and a commit box on the right, then the branch against its
- * base, recent commits and the branches, all folded. Entering it is entering
- * a page; esc goes back to Local.
- */
+/** A local working tree with a persistent commit sidebar and separate history and branch views. */
 export function LocalRepoScreen() {
   const { id } = useParams({ strict: false }) as { id: string };
   const search = useSearch({ strict: false }) as {
@@ -118,6 +125,10 @@ export function LocalRepoScreen() {
     ],
     [t],
   );
+  const [view, setView] = useState<"changes" | "history" | "branches">("changes");
+  const [fileFilter, setFileFilter] = useState("");
+  const visibleFile = (file: S.FileChange) =>
+    file.path.toLowerCase().includes(fileFilter.trim().toLowerCase());
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const keyOf = (f: { path: string; staged: boolean }) => `${f.staged ? "s" : "u"}:${f.path}`;
   const index = Math.max(
@@ -191,6 +202,7 @@ export function LocalRepoScreen() {
       `Discarded ${f.path}`,
     );
   const jump = (k: string) => {
+    setView("changes");
     setCurrentKey(k);
     document
       .getElementById(`lf-${k.replace(/[^a-z0-9]+/gi, "-")}`)
@@ -213,21 +225,33 @@ export function LocalRepoScreen() {
             return true;
           case "j":
           case "k": {
+            if (view !== "changes") return false;
+            const visible = files.filter(visibleFile);
+            const position = Math.max(
+              0,
+              visible.findIndex(
+                (file) => keyOf(file) === keyOf(current ?? { path: "", staged: false }),
+              ),
+            );
             const next =
-              files[Math.min(files.length - 1, Math.max(0, index + (e.key === "j" ? 1 : -1)))];
+              visible[
+                Math.min(visible.length - 1, Math.max(0, position + (e.key === "j" ? 1 : -1)))
+              ];
             if (next) jump(keyOf(next));
             return true;
           }
           case " ":
+            if (view !== "changes" || search.file) return false;
             if (current) void (current.staged ? unstage(current.path) : stage(current.path));
             return !!current;
           case "c":
-            message.current?.focus();
+            setView("changes");
+            requestAnimationFrame(() => message.current?.focus());
             return true;
         }
         return false;
       },
-      [prOpen, quickOpen, back, files, index, current],
+      [prOpen, quickOpen, back, files, index, current, view, search.file, fileFilter],
     ),
   );
 
@@ -238,13 +262,15 @@ export function LocalRepoScreen() {
 
   useTitleSlot(
     <>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         onClick={back}
         className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-ink-2 hover:bg-raise hover:text-ink"
       >
         <ArrowLeft className="size-4" strokeWidth={2} /> Local
-      </button>
+      </Button>
       <span className="text-[13px] text-ink">{name}</span>
       {t ? (
         <span className="mono truncate text-[12px] text-ink-3">
@@ -259,13 +285,15 @@ export function LocalRepoScreen() {
         </span>
       ) : null}
       <span className="flex-1" />
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         onClick={() => setQuickOpen(true)}
         className="flex h-7 items-center gap-2 rounded-md bg-raise/70 px-2.5 text-[12.5px] text-ink-3 hover:bg-raise"
       >
         Open a file <kbd className="text-[11px]">⌘P</kbd>
-      </button>
+      </Button>
       <IconButton
         label="Fetch"
         disabled={busy !== null}
@@ -309,7 +337,9 @@ export function LocalRepoScreen() {
         </IconButton>
       ) : null}
       {canPush ? (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           disabled={busy !== null}
           onClick={() =>
@@ -322,16 +352,18 @@ export function LocalRepoScreen() {
           className="h-7 rounded-md border border-edge px-2.5 text-[12.5px] text-ink-2 hover:bg-raise hover:text-ink disabled:opacity-50"
         >
           {busy === "Push" ? "Pushing…" : "Push"}
-        </button>
+        </Button>
       ) : null}
       {canPr ? (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={() => setPrOpen(true)}
           className="h-7 rounded-md border border-ink bg-ink px-2.5 text-[12.5px] font-medium text-[#141414]"
         >
           Open a pull request
-        </button>
+        </Button>
       ) : null}
     </>,
     "page",
@@ -352,47 +384,96 @@ export function LocalRepoScreen() {
 
   const stagedCount = t.staged.length;
   return (
-    <div className="flex h-full flex-col bg-page">
-      <header className="shrink-0 border-b border-hair px-8 pt-5 pb-4">
-        <h1 className="selectable text-[20px] font-semibold tracking-[-0.02em] text-ink">{name}</h1>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-3">
-          <span className="mono selectable">{path}</span>
-          <span>·</span>
-          <span className="mono">{t.branch}</span>
-          {info.data?.remote_url ? (
-            <>
-              <span>·</span>
-              <span className="mono truncate">{info.data.remote_url}</span>
-            </>
-          ) : null}
-        </p>
-        <p className="mt-2 text-[13px] text-ink-2">
-          {files.length
-            ? `${stagedCount} staged, ${t.unstaged.length} not yet`
-            : "Nothing uncommitted"}
-          {t.ahead ? ` · ${t.ahead} commit${t.ahead === 1 ? "" : "s"} to push` : ""}
-          {t.behind ? ` · ${t.behind} behind` : ""}
-        </p>
+    <Tabs
+      value={view}
+      onValueChange={(value) => {
+        setView(value as typeof view);
+        if (search.file) void navigate({ to: "/local/$id", params: { id }, search: {} });
+      }}
+      className="flex h-full flex-col bg-page"
+    >
+      <header className="shrink-0 border-b border-hair px-5 pt-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-[18px] font-semibold tracking-tight text-ink">{name}</h1>
+              <span className="inline-flex max-w-80 items-center gap-1.5 rounded-md border border-hair bg-raise/40 px-2 py-1 text-[11px] text-ink-2">
+                <GitBranch className="size-3.5 shrink-0" />
+                <span className="truncate">{t.branch}</span>
+              </span>
+            </div>
+            <p
+              className="mt-1 truncate text-[11px] text-ink-3"
+              title={info.data?.remote_url ?? path}
+            >
+              {path}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[12px] text-ink-3">
+            {t.ahead ? <span>{t.ahead} to push</span> : null}
+            {t.behind ? <span>{t.behind} behind upstream</span> : null}
+            {!t.ahead && !t.behind && t.upstream ? (
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5" /> Up to date
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <TabsList variant="underline">
+          <TabsTab value="changes">
+            <FileCode2 className="size-3.5" /> Changes{" "}
+            <span className="text-ink-3">{files.length}</span>
+          </TabsTab>
+          <TabsTab value="history">
+            <GitCommitHorizontal className="size-3.5" /> History
+          </TabsTab>
+          <TabsTab value="branches">
+            <GitBranch className="size-3.5" /> Branches{" "}
+            <span className="text-ink-3">{branches.data?.all.length ?? 0}</span>
+          </TabsTab>
+        </TabsList>
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside className="flex h-full w-64 shrink-0 flex-col border-r border-hair bg-desk">
+        <aside
+          aria-label="Working tree"
+          className={cn(
+            "flex h-full w-[300px] shrink-0 flex-col border-r border-hair bg-desk max-lg:w-[260px]",
+            view !== "changes" && "hidden",
+          )}
+        >
+          <div className="relative p-3">
+            <Search className="pointer-events-none absolute left-5 top-5 size-3.5 text-ink-3" />
+            <Input
+              value={fileFilter}
+              onChange={(event) => setFileFilter(event.target.value)}
+              aria-label="Filter changed files"
+              placeholder="Filter changed files…"
+              size="sm"
+              className="pl-7"
+            />
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto pb-6 scrollbar-thin">
+            {fileFilter.trim() && !files.some(visibleFile) ? (
+              <p className="px-4 py-3 text-[12px] text-ink-3">No files match your search.</p>
+            ) : null}
             <Group
               title="Staged"
               count={t.staged.length}
               action={
                 t.staged.length ? (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     onClick={() => void unstage(null)}
                     className="text-[11px] text-ink-3 hover:text-ink"
                   >
-                    unstage all
-                  </button>
+                    Unstage all
+                  </Button>
                 ) : null
               }
             >
-              {t.staged.map((f) => (
+              {t.staged.filter(visibleFile).map((f) => (
                 <ChangeRow
                   key={`s:${f.path}`}
                   f={f}
@@ -407,21 +488,23 @@ export function LocalRepoScreen() {
               ))}
             </Group>
             <Group
-              title="Not staged"
+              title="Changes"
               count={t.unstaged.length}
               action={
                 t.unstaged.length ? (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     onClick={() => void stage(null)}
                     className="text-[11px] text-ink-3 hover:text-ink"
                   >
-                    stage all
-                  </button>
+                    Stage all
+                  </Button>
                 ) : null
               }
             >
-              {t.unstaged.map((f) => (
+              {t.unstaged.filter(visibleFile).map((f) => (
                 <ChangeRow
                   key={`u:${f.path}`}
                   f={f}
@@ -445,6 +528,23 @@ export function LocalRepoScreen() {
               ))}
             </Group>
           </div>
+          <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-hair p-3">
+            <CommitBox
+              inputRef={message}
+              staged={stagedCount}
+              busy={busy === "Commit"}
+              repo={path}
+              lastSubject={log.data?.[0]?.subject ?? ""}
+              onCommit={async (m, amend) => {
+                const ok = await act(
+                  "Commit",
+                  git((g) => g.commit(path, m, amend)),
+                  amend ? "Amended" : "Committed",
+                );
+                return ok;
+              }}
+            />
+          </div>
         </aside>
         <div className="relative h-full min-w-0 flex-1 overflow-y-auto bg-page scrollbar-thin">
           {search.file ? (
@@ -460,7 +560,9 @@ export function LocalRepoScreen() {
                   </p>
                   <h2 className="mono mt-1 truncate text-[13px] text-ink">{search.file}</h2>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   onClick={() => void closeFile()}
                   className="h-7 rounded-md px-2.5 text-[12px] text-ink-2 hover:bg-raise hover:text-ink"
@@ -470,101 +572,128 @@ export function LocalRepoScreen() {
                     : search.from === "living-architecture"
                       ? "Back to architecture"
                       : "Back to changes"}
-                </button>
+                </Button>
               </div>
               <FilePreview repo={path} rel={search.file} line={search.line} wrap={wrap} />
             </div>
           ) : (
-            <div className="mx-auto max-w-[980px] px-8 pt-6 pb-24">
-              <CommitBox
-                inputRef={message}
-                staged={stagedCount}
-                busy={busy === "Commit"}
-                repo={path}
-                lastSubject={log.data?.[0]?.subject ?? ""}
-                onCommit={async (m, amend) => {
-                  const ok = await act(
-                    "Commit",
-                    git((g) => g.commit(path, m, amend)),
-                    amend ? "Amended" : "Committed",
-                  );
-                  return ok;
-                }}
-              />
-              <div className="mt-6 grid gap-6">
-                {files.map((f) => (
-                  <FileDiff
-                    key={keyOf(f)}
-                    repo={path}
-                    f={f}
-                    wrap={wrap}
-                    id={`lf-${keyOf(f).replace(/[^a-z0-9]+/gi, "-")}`}
-                    onToggle={() => void (f.staged ? unstage(f.path) : stage(f.path))}
-                  />
-                ))}
-              </div>
-              {changes.data?.files.length ? (
-                <Section
-                  title={`Against ${changes.data.base ?? defaultBranch}: ${changes.data.files.length} file${changes.data.files.length === 1 ? "" : "s"}`}
-                >
-                  <ul className="grid gap-1">
-                    {changes.data.files.map((f) => (
-                      <li
-                        key={f.path}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-[12.5px]"
-                      >
-                        <span className="mono truncate text-ink-2">{f.path}</span>
-                        <span className="tnum">
-                          <span className="text-add">+{f.additions}</span>{" "}
-                          <span className="text-del">−{f.deletions}</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
+            <div className="p-5 pb-12">
+              <TabsPanel value="changes">
+                {view === "changes" ? (
+                  current ? (
+                    <FileDiff
+                      key={keyOf(current)}
+                      repo={path}
+                      f={current}
+                      wrap={wrap}
+                      id={`lf-${keyOf(current).replace(/[^a-z0-9]+/gi, "-")}`}
+                      onToggle={() =>
+                        void (current.staged ? unstage(current.path) : stage(current.path))
+                      }
+                    />
+                  ) : (
+                    <div className="grid min-h-[360px] place-content-center justify-items-center gap-2 text-center">
+                      <CheckCircle2 className="mb-2 size-8 text-ink-3" />
+                      <h2 className="text-[15px] font-medium text-ink">Working tree is clean</h2>
+                      <p className="max-w-xs text-[12px] text-ink-3">
+                        Your local changes will appear here. Browse history or switch branches
+                        above.
+                      </p>
+                    </div>
+                  )
+                ) : null}
+              </TabsPanel>
+              {view === "history" ? (
+                <TabsPanel value="history">
+                  <div className="mb-4">
+                    <h2 className="text-[15px] font-semibold text-ink">Commit history</h2>
+                    <p className="mt-1 text-[12px] text-ink-3">
+                      {log.data?.length ?? 0} recent commits · {t.branch}
+                    </p>
+                  </div>
+                  {log.isError ? (
+                    <p className="text-[12px] text-del">Couldn’t load commit history.</p>
+                  ) : log.isPending ? (
+                    <p className="text-[12px] text-ink-3">Reading commits…</p>
+                  ) : null}
+                  {changes.data?.files.length ? (
+                    <Section
+                      title={`Against ${changes.data.base ?? defaultBranch}: ${changes.data.files.length} file${changes.data.files.length === 1 ? "" : "s"}`}
+                    >
+                      <ul className="grid gap-1">
+                        {changes.data.files.map((f) => (
+                          <li
+                            key={f.path}
+                            className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-[12.5px]"
+                          >
+                            <span className="mono truncate text-ink-2">{f.path}</span>
+                            <span className="tnum">
+                              <span className="text-add">+{f.additions}</span>{" "}
+                              <span className="text-del">−{f.deletions}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </Section>
+                  ) : null}
+                  <div className="rounded-xl border border-hair bg-desk p-3">
+                    <ol className="grid gap-1">
+                      {(log.data ?? []).map((c) => (
+                        <CommitRow key={c.hash} repo={path} c={c} wrap={wrap} />
+                      ))}
+                    </ol>
+                  </div>
+                </TabsPanel>
               ) : null}
-              <Section title={`${log.data?.length ?? 0} recent commits`}>
-                <ol className="grid gap-1">
-                  {(log.data ?? []).map((c) => (
-                    <CommitRow key={c.hash} repo={path} c={c} wrap={wrap} />
-                  ))}
-                </ol>
-              </Section>
-              <Section title={`Branches · on ${t.branch}`}>
-                <Branches
-                  current={t.branch}
-                  all={branches.data?.all ?? []}
-                  worktrees={worktrees.data ?? []}
-                  busy={busy !== null}
-                  onSwitch={(b) =>
-                    void act(
-                      "Switch branch",
-                      git((g) => g.checkout(path, b)),
-                      `On ${b}`,
-                    )
-                  }
-                  onCreate={(b) =>
-                    void act(
-                      "New branch",
-                      git((g) => g.createBranch(path, b)),
-                      `On ${b}`,
-                    )
-                  }
-                  onDelete={async (b) => {
-                    const ok = await act(
-                      "Delete branch",
-                      git((g) => g.deleteBranch(path, b, false)),
-                      `Deleted ${b}`,
-                    );
-                    if (!ok && window.confirm(`${b} isn’t fully merged. Delete it anyway?`))
+              {view === "branches" ? (
+                <TabsPanel value="branches">
+                  <div className="mb-4">
+                    <h2 className="text-[15px] font-semibold text-ink">Local branches</h2>
+                    <p className="mt-1 text-[12px] text-ink-3">
+                      Switch branches, create a branch or manage worktrees.
+                    </p>
+                  </div>
+                  {branches.isError ? (
+                    <p className="text-[12px] text-del">Couldn’t load branches.</p>
+                  ) : branches.isPending ? (
+                    <p className="text-[12px] text-ink-3">Reading branches…</p>
+                  ) : null}
+
+                  <Branches
+                    current={t.branch}
+                    all={branches.data?.all ?? []}
+                    worktrees={worktrees.data ?? []}
+                    busy={busy !== null}
+                    onSwitch={(b) =>
                       void act(
+                        "Switch branch",
+                        git((g) => g.checkout(path, b)),
+                        `On ${b}`,
+                      )
+                    }
+                    onCreate={(b) =>
+                      void act(
+                        "New branch",
+                        git((g) => g.createBranch(path, b)),
+                        `On ${b}`,
+                      )
+                    }
+                    onDelete={async (b) => {
+                      const ok = await act(
                         "Delete branch",
-                        git((g) => g.deleteBranch(path, b, true)),
+                        git((g) => g.deleteBranch(path, b, false)),
                         `Deleted ${b}`,
                       );
-                  }}
-                />
-              </Section>
+                      if (!ok && window.confirm(`${b} isn’t fully merged. Delete it anyway?`))
+                        void act(
+                          "Delete branch",
+                          git((g) => g.deleteBranch(path, b, true)),
+                          `Deleted ${b}`,
+                        );
+                    }}
+                  />
+                </TabsPanel>
+              ) : null}
             </div>
           )}
         </div>
@@ -593,7 +722,7 @@ export function LocalRepoScreen() {
           }
         }}
       />
-    </div>
+    </Tabs>
   );
 }
 
@@ -602,16 +731,21 @@ function Group({
   count,
   action,
   children,
-}: { title: string; count: number; action?: React.ReactNode; children: React.ReactNode }) {
+}: {
+  title: string;
+  count: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <p className="flex items-center gap-2 px-4 pt-3 pb-1 text-[11px] text-ink-3">
+      <p className="flex items-center gap-2 px-3 pt-3 pb-2 text-[11px] font-medium text-ink-3">
         <span>
           {title} <span className="tnum">{count}</span>
         </span>
         <span className="ml-auto">{action}</span>
       </p>
-      {count === 0 ? <p className="px-4 pb-1 text-[12px] text-ink-3">nothing</p> : children}
+      {count === 0 ? <p className="px-4 pb-1 text-[12px] text-ink-3">No files</p> : children}
     </div>
   );
 }
@@ -624,33 +758,54 @@ const STATUS: Record<string, string> = {
   "?": "new",
 };
 
-function ChangeRow({
+export function ChangeRow({
   f,
   current,
   onSelect,
   actions,
-}: { f: S.FileChange; current: boolean; onSelect: () => void; actions: React.ReactNode }) {
+}: {
+  f: S.FileChange;
+  current: boolean;
+  onSelect: () => void;
+  actions: React.ReactNode;
+}) {
   return (
     <div
       className={cn(
-        "group grid h-7 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 pr-2 pl-4",
+        "group mx-2 mb-1 grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-lg px-2",
         current ? "bg-raise" : "hover:bg-raise/50",
       )}
     >
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         onClick={onSelect}
         aria-current={current ? "true" : undefined}
         className={cn(
-          "grid min-w-0 grid-cols-[12px_minmax(0,1fr)] items-center gap-2 text-left text-[12.5px]",
+          "h-auto min-w-0 justify-start gap-2 px-0 py-1 text-left text-[12.5px]",
           current ? "text-ink" : "text-ink-2 hover:text-ink",
         )}
       >
         <span className="mono text-[10.5px] text-ink-3" title={STATUS[f.status] ?? f.status}>
           {f.status}
         </span>
-        <span className="mono truncate text-[12px]">{f.path.split("/").pop()}</span>
-      </button>
+        <span className="min-w-0 flex-1" title={f.path}>
+          <span className="block truncate text-[12px] font-medium">
+            {f.path
+              .replace(/[/\\]+$/, "")
+              .split(/[/\\]/)
+              .pop()}
+          </span>
+          <span className="block truncate text-[10px] text-ink-3">
+            {f.path.endsWith("/")
+              ? "Untracked directory"
+              : f.path.includes("/")
+                ? f.path.slice(0, f.path.lastIndexOf("/"))
+                : (STATUS[f.status] ?? f.status)}
+          </span>
+        </span>
+      </Button>
       <span className="flex items-center opacity-0 focus-within:opacity-100 group-hover:opacity-100">
         {actions}
       </span>
@@ -677,28 +832,46 @@ function FileDiff({
     { retry: false },
   );
   return (
-    <section id={id} className="scroll-mt-10 rounded-lg border border-edge bg-page">
-      <header className="sticky top-0 z-10 flex h-9 items-center gap-3 rounded-t-lg border-b border-hair bg-page/95 px-3 backdrop-blur">
+    <section id={id} className="scroll-mt-10 overflow-clip rounded-xl border border-hair bg-page">
+      <header className="sticky top-0 z-10 flex min-h-11 flex-wrap items-center gap-3 border-b border-hair bg-desk px-4 py-2">
         <span className="mono min-w-0 flex-1 truncate text-[12px] text-ink">{f.path}</span>
         <span className="text-[11px] text-ink-3">
           {STATUS[f.status] ?? f.status} · {f.staged ? "staged" : "not staged"}
         </span>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={onToggle}
           className="h-6 rounded-md px-2 text-[12px] text-ink-2 hover:bg-raise hover:text-ink"
         >
           {f.staged ? "Unstage" : "Stage"}
-        </button>
+        </Button>
       </header>
-      {diff.isError ? (
-        <p className="px-4 py-3 text-[12.5px] text-ink-3">
-          {f.status === "?" ? "A new file: stage it to see it." : "No diff to show."}
+      {f.path.endsWith("/") ? (
+        <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
+          <Folder className="size-8 text-ink-3" />
+          <h3 className="text-[14px] font-medium text-ink">Untracked directory</h3>
+          <p className="max-w-sm text-[12px] leading-5 text-ink-3">
+            Git is showing this directory as one entry. Stage it to list the files Git can include.
+          </p>
+        </div>
+      ) : diff.isPending ? (
+        <p className="p-5 text-[12px] text-ink-3">Reading local changes…</p>
+      ) : diff.isError ? (
+        <p className="p-5 text-[12px] text-del">
+          Couldn’t read this local diff. Refresh to try again.
+        </p>
+      ) : f.status === "?" && !diff.data ? (
+        <FilePreview repo={repo} rel={f.path} wrap={wrap} />
+      ) : !diff.data?.trim() ? (
+        <p className="p-5 text-[12px] text-ink-3">
+          No text changes to display. This may be a binary file, a rename, or a file mode change.
         </p>
       ) : (
         <Diff
           filename={f.path}
-          patch={diff.data ?? null}
+          patch={diff.data}
           split={false}
           wrap={wrap}
           under={() => null}
@@ -757,14 +930,18 @@ const CommitBox = ({
     }
   };
   return (
-    <div className="max-w-[760px] rounded-lg border border-edge bg-card p-3">
-      <textarea
+    <div className="space-y-3">
+      <p className="flex items-center justify-between text-[11px] font-medium text-ink-2">
+        <span>Commit changes</span>
+        <span className="text-ink-3">{staged} staged</span>
+      </p>
+      <Textarea
         ref={inputRef}
         value={ai.running && ai.text ? ai.text : m}
         onChange={(e) => setM(e.target.value)}
-        rows={2}
+        rows={3}
         placeholder={
-          staged || amend ? "What this commit does, in a line." : "Stage something first."
+          staged || amend ? "What this commit does, in a line." : "Write a commit message…"
         }
         className="selectable w-full resize-y rounded-md border border-input bg-sink px-2.5 py-1.5 font-sans text-[13px] leading-[1.5] text-ink outline-none placeholder:text-ink-3 focus:border-edge"
         onKeyDown={(e) => {
@@ -775,40 +952,40 @@ const CommitBox = ({
           }
         }}
       />
-      <div className="mt-2 flex items-center gap-2">
-        <button
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="default"
+          size="sm"
           type="button"
           disabled={!can}
           onClick={() => void send()}
-          className="h-7 rounded-md border border-ink bg-ink px-3 text-[12.5px] font-medium text-[#141414] disabled:opacity-50"
+          className="w-full"
         >
           {busy ? "Committing…" : "Commit"}{" "}
           <kbd className="ml-1 font-sans text-[11px] opacity-70">⌘↵</kbd>
-        </button>
-        <span className="tnum text-[12px] text-ink-3">
-          {staged} file{staged === 1 ? "" : "s"} staged
-        </span>
-        <span className="flex-1" />
+        </Button>
+
         <label className="flex items-center gap-1.5 text-[12px] text-ink-3">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={amend}
-            onChange={(e) => {
-              setAmend(e.target.checked);
-              if (e.target.checked && !m.trim()) setM(lastSubject);
+            onCheckedChange={(checked) => {
+              setAmend(checked);
+              if (checked && !m.trim()) setM(lastSubject);
             }}
-            className="accent-ink"
           />
-          amend the last commit
+          Amend last commit
         </label>
+        <span className="flex-1" />
         {ai.running ? (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             onClick={ai.cancel}
             className="text-[12px] text-ink-2 hover:text-ink"
           >
             Stop
-          </button>
+          </Button>
         ) : (
           <IconButton
             size={6}
@@ -844,17 +1021,19 @@ function CommitRow({ repo, c, wrap }: { repo: string; c: S.LocalCommit; wrap: bo
   const parts = useMemo(() => (show.data ? splitUnifiedDiff(show.data) : []), [show.data]);
   return (
     <li>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="grid w-full grid-cols-[64px_minmax(0,1fr)_auto_auto] items-baseline gap-3 rounded-md py-0.5 text-left text-[12.5px] hover:bg-raise/50"
+        className="grid h-auto min-h-11 w-full grid-cols-[64px_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-lg px-3 py-2 text-left text-[12.5px] hover:bg-raise/50"
       >
         <span className="mono text-ink-3">{c.short}</span>
         <span className="truncate text-ink">{c.subject}</span>
         <span className="text-ink-3">{c.author}</span>
         <span className="tnum text-ink-3">{age(c.date)}</span>
-      </button>
+      </Button>
       {open ? (
         <div className="mt-2 mb-3 grid gap-3 pl-[76px]">
           {show.isPending ? <p className="text-[12.5px] text-ink-3">Loading the commit…</p> : null}
@@ -902,9 +1081,9 @@ function Branches({
     ? all.filter((b) => b.toLowerCase().includes(q.trim().toLowerCase()))
     : all;
   return (
-    <div className="grid max-w-[760px] gap-3">
+    <div className="grid max-w-[960px] gap-3">
       {all.length > 8 ? (
-        <input
+        <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={`Filter ${all.length} branches`}
@@ -912,30 +1091,34 @@ function Branches({
           onKeyDown={(e) => e.stopPropagation()}
         />
       ) : null}
-      <ul className="grid max-h-80 gap-0.5 overflow-y-auto scrollbar-thin">
+      <ul className="grid gap-2">
         {shown.map((b) => (
           <li
             key={b}
-            className="group grid h-7 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-[12.5px]"
+            className="group grid min-h-12 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-lg border border-hair px-3 py-2 text-[12.5px]"
           >
             <span className={cn("mono truncate", b === current ? "text-ink" : "text-ink-2")}>
               {b}
               {b === current ? <span className="ml-2 font-sans text-ink-3">here</span> : null}
             </span>
             {b !== current ? (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
                 disabled={busy}
                 onClick={() => onSwitch(b)}
                 className="h-6 rounded-md px-2 text-[12px] text-ink-2 hover:bg-raise hover:text-ink disabled:opacity-50"
               >
                 Switch
-              </button>
+              </Button>
             ) : (
               <span />
             )}
             {b !== current ? (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
                 disabled={busy}
                 onClick={() => {
@@ -944,7 +1127,7 @@ function Branches({
                 className="h-6 rounded-md px-2 text-[12px] text-ink-3 opacity-0 hover:bg-raise hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
               >
                 Delete
-              </button>
+              </Button>
             ) : (
               <span />
             )}
@@ -962,20 +1145,22 @@ function Branches({
           }
         }}
       >
-        <input
+        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="new-branch-name"
           className="mono h-7 w-64 rounded-md border border-input bg-sink px-2 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-edge"
           onKeyDown={(e) => e.stopPropagation()}
         />
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="submit"
           disabled={!name.trim() || busy}
           className="h-7 rounded-md border border-edge px-2.5 text-[12.5px] text-ink-2 hover:bg-raise hover:text-ink disabled:opacity-50"
         >
           New branch from here
-        </button>
+        </Button>
       </form>
       {worktrees.length > 1 ? (
         <div>
@@ -1037,14 +1222,14 @@ function PrDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="grid gap-3 px-6">
-          <input
+          <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Title"
             className={cn(inputCls, "h-8")}
             onKeyDown={(e) => e.stopPropagation()}
           />
-          <textarea
+          <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={5}
@@ -1078,21 +1263,25 @@ function PrDialog({
           </div>
         </DialogPanel>
         <DialogFooter className="px-6 pb-5">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             onClick={() => onOpenChange(false)}
             className="h-7 rounded-md px-2.5 text-[12.5px] text-ink-2 hover:bg-raise"
           >
             Not yet
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             disabled={!title.trim() || busy}
             onClick={() => onConfirm(title.trim(), body, into)}
-            className="h-7 rounded-md border border-ink bg-ink px-3 text-[12.5px] font-medium text-[#141414] disabled:opacity-50"
+            className="w-full"
           >
             {busy ? "Opening…" : "Open a pull request"}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogPopup>
     </Dialog>

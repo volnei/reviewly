@@ -18,7 +18,12 @@ struct GraphQLRequest<'a> {
 #[derive(Deserialize)]
 struct GraphQLResponse<T> {
     data: Option<T>,
-    errors: Option<Vec<Value>>,
+    errors: Option<Vec<GraphQLError>>,
+}
+
+#[derive(Deserialize)]
+struct GraphQLError {
+    message: String,
 }
 
 pub async fn graphql<T: for<'de> Deserialize<'de>>(
@@ -38,7 +43,15 @@ pub async fn graphql<T: for<'de> Deserialize<'de>>(
     let res = check(res).await?;
     let body: GraphQLResponse<T> = res.json().await?;
     if let Some(errors) = body.errors {
-        return Err(AppError::Other(format!("graphql errors: {errors:?}")));
+        if !errors.is_empty() {
+            return Err(AppError::Other(
+                errors
+                    .into_iter()
+                    .map(|error| error.message)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ));
+        }
     }
     body.data
         .ok_or_else(|| AppError::Other("graphql empty response".into()))

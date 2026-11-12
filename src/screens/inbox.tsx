@@ -29,11 +29,12 @@ import { usePreread } from "@/features/list/preread";
 import { age } from "@/features/list/row";
 import { useKeepScroll } from "@/features/list/scroll";
 import { SNOOZE_LABEL, snoozeUntil, type SnoozeWhen } from "@/features/list/snooze";
+import { compareListItems, SortControl, useListSort } from "@/features/list/sort";
 import { reconcileStackItems, useWithStacks } from "@/features/list/stacks";
 import { APP_STORE } from "@/lib/edition";
+import type { PrOrigin } from "@/lib/pr-navigation";
 import { syncPrs } from "@/lib/pr-sync";
 import { safeOpenUrl } from "@/lib/ui";
-import type { PrOrigin } from "@/lib/pr-navigation";
 import { cn } from "@/lib/utils";
 
 import { PrPeek } from "./pr-peek";
@@ -280,6 +281,7 @@ function useFastLaneFileFacts(
 
 export function InboxScreen() {
   const workspace = useWorkspace();
+  const [sort, setSort] = useListSort("inbox", workspace);
   const fastLanePolicies = useFastLanePolicies();
   const root = useRef<HTMLDivElement>(null);
   useTitleSlot(
@@ -334,9 +336,9 @@ export function InboxScreen() {
   const sections = useMemo(() => {
     return toSections(stackVisible, enabledFastLanePolicies, fastLaneFiles.data).map((s) => ({
       ...s,
-      items: applyFilter(s.items, filter),
+      items: [...applyFilter(s.items, filter)].sort((a, b) => compareListItems(sort, a, b)),
     }));
-  }, [stackVisible, filter, enabledFastLanePolicies, fastLaneFiles.data]);
+  }, [stackVisible, filter, enabledFastLanePolicies, fastLaneFiles.data, sort]);
 
   return (
     <div
@@ -370,6 +372,7 @@ export function InboxScreen() {
       {inbox.data ? (
         <FilterBar
           id="inbox"
+          actions={<SortControl value={sort} onChange={setSort} />}
           items={all}
           filter={filter}
           set={setFilter}

@@ -55,7 +55,7 @@ export const Prefs = Schema.Struct({
   launchAtLogin: Schema.Boolean,
   startInTray: Schema.Boolean,
   ai: Schema.Struct({
-    provider: Schema.Literals(["claude", "codex", "agy", "gemini", "openai"]),
+    provider: Schema.Literals(["claude", "codex", "cursor", "agy", "gemini", "openai"]),
     model: Schema.String,
     apiKey: Schema.String,
     baseUrl: Schema.String,

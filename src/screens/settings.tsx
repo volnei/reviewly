@@ -1564,6 +1564,7 @@ const OPENAI_PRESETS = [
   { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
 ];
 const INSTALL: Record<string, string> = {
+  cursor: "curl https://cursor.com/install -fsS | bash && cursor-agent login",
   claude: "npm i -g @anthropic-ai/claude-code",
   codex: "npm i -g @openai/codex",
   agy: "antigravity.google/download (macOS, Windows, Linux)",

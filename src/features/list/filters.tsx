@@ -1,3 +1,14 @@
+import {
+  Check,
+  ChevronDown,
+  ListFilter as FilterIcon,
+  Minus,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+
 import { isTyping } from "@/app/keys";
 import { useWorkspace } from "@/app/workspace";
 import { Button } from "@/components/ui/button";
@@ -15,23 +26,6 @@ import type { Ranked } from "@/effect/services/Triage";
 import { persistedStore, useStore } from "@/effect/store";
 import { storageKey } from "@/lib/demo";
 import { cn } from "@/lib/utils";
-import {
-  Check,
-  ChevronDown,
-  ListFilter as FilterIcon,
-  Minus,
-  Search,
-  SlidersHorizontal,
-  X,
-} from "lucide-react";
-import {
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
 
 /**
  * Filters for a list: a row of chips under the heading, computed from what
@@ -76,10 +70,7 @@ export const EMPTY_FILTER: ListFilter = {
 
 const BOT = /\[bot\]$|^(dependabot|renovate|github-actions)$/i;
 
-const stores = new Map<
-  string,
-  { state: ListFilter; listeners: Set<() => void> }
->();
+const stores = new Map<string, { state: ListFilter; listeners: Set<() => void> }>();
 const storeOf = (key: string) => {
   let s = stores.get(key);
   if (!s) {
@@ -96,9 +87,7 @@ const storeOf = (key: string) => {
   return s;
 };
 
-export function useListFilter(
-  key: string,
-): [ListFilter, (patch: Partial<ListFilter>) => void] {
+export function useListFilter(key: string): [ListFilter, (patch: Partial<ListFilter>) => void] {
   const workspace = useWorkspace();
   const scopedKey = `${key}:${workspace ?? "all"}`;
   const s = storeOf(scopedKey);
@@ -211,8 +200,7 @@ export function useSavedViews(list?: string): ReadonlyArray<SavedView> {
       views.filter((v) =>
         list
           ? v.list === scopedList || (!workspace && v.list === list)
-          : v.list.endsWith(`:${workspace ?? "all"}`) ||
-            (!workspace && !v.list.includes(":")),
+          : v.list.endsWith(`:${workspace ?? "all"}`) || (!workspace && !v.list.includes(":")),
       ),
     [views, list, scopedList, workspace],
   );
@@ -234,9 +222,7 @@ export function renameSavedView(id: string, name: string) {
   const nextName = name.trim();
   if (!nextName) return;
   viewsStore.update((s) => ({
-    views: s.views.map((view) =>
-      view.id === id ? { ...view, name: nextName } : view,
-    ),
+    views: s.views.map((view) => (view.id === id ? { ...view, name: nextName } : view)),
   }));
 }
 
@@ -281,10 +267,7 @@ export const isFiltering = (f: ListFilter): boolean =>
   !!f.ciStatus ||
   f.stacked;
 
-export function applyFilter(
-  items: ReadonlyArray<Ranked>,
-  f: ListFilter,
-): Ranked[] {
+export function applyFilter(items: ReadonlyArray<Ranked>, f: ListFilter): Ranked[] {
   const needle = f.q.trim().toLowerCase();
   const ins = [...f.labels].filter(([, t]) => t === "in").map(([l]) => l);
   const outs = [...f.labels].filter(([, t]) => t === "out").map(([l]) => l);
@@ -295,16 +278,9 @@ export function applyFilter(
     const status = prStatusOf(r);
     if (f.statuses.size && (!status || !f.statuses.has(status))) return false;
     if (f.authors.size && !f.authors.has(r.author ?? "")) return false;
-    if (
-      f.codeOwners.size &&
-      !(r.codeOwners ?? []).some((owner) => f.codeOwners.has(owner))
-    )
+    if (f.codeOwners.size && !(r.codeOwners ?? []).some((owner) => f.codeOwners.has(owner)))
       return false;
-    if (
-      f.severities.size &&
-      !f.severities.has((r.severity ?? "").toLowerCase())
-    )
-      return false;
+    if (f.severities.size && !f.severities.has((r.severity ?? "").toLowerCase())) return false;
     if (f.hideBots && r.author && BOT.test(r.author)) return false;
     const ci = f.ciStatus ?? (f.ciFailing ? "failing" : null);
     if (ci === "failing" && r.ci !== "failure") return false;
@@ -314,8 +290,7 @@ export function applyFilter(
     if (ins.length && !ins.every((l) => labels.includes(l))) return false;
     if (outs.length && outs.some((l) => labels.includes(l))) return false;
     if (needle) {
-      const hay =
-        `${r.title} ${r.author ?? ""} ${r.repo} #${r.number ?? ""}`.toLowerCase();
+      const hay = `${r.title} ${r.author ?? ""} ${r.repo} #${r.number ?? ""}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return true;
@@ -327,22 +302,16 @@ export function applyFilter(
  * may disappear. Once one layer matches, keep the complete visible stack so a
  * consumer is never shown without the foundation it depends on.
  */
-export function applyFilterWithStacks(
-  items: ReadonlyArray<Ranked>,
-  f: ListFilter,
-): Ranked[] {
+export function applyFilterWithStacks(items: ReadonlyArray<Ranked>, f: ListFilter): Ranked[] {
   const matches = applyFilter(items, f);
   const matchedIds = new Set(matches.map((item) => item.id));
   const matchedStacks = new Set(
-    matches.flatMap((item) =>
-      item.stack ? [`${item.repo}#stack${item.stack.number}`] : [],
-    ),
+    matches.flatMap((item) => (item.stack ? [`${item.repo}#stack${item.stack.number}`] : [])),
   );
   return items.filter(
     (item) =>
       matchedIds.has(item.id) ||
-      (item.stack &&
-        matchedStacks.has(`${item.repo}#stack${item.stack.number}`)),
+      (item.stack && matchedStacks.has(`${item.repo}#stack${item.stack.number}`)),
   );
 }
 
@@ -363,10 +332,7 @@ const cycle = (m: ReadonlyMap<string, Tri>, l: string): Map<string, Tri> => {
   return n;
 };
 
-const count = <T, K>(
-  xs: ReadonlyArray<T>,
-  key: (r: T) => K | null | undefined,
-) => {
+const count = <T, K>(xs: ReadonlyArray<T>, key: (r: T) => K | null | undefined) => {
   const m = new Map<K, number>();
   for (const r of xs) {
     const k = key(r);
@@ -441,6 +407,7 @@ export function FilterBar({
   show,
   children,
   lead,
+  actions,
 }: {
   id: string;
   items: ReadonlyArray<Ranked>;
@@ -449,6 +416,7 @@ export function FilterBar({
   show: FilterShow;
   children?: ReactNode;
   lead?: ReactNode;
+  actions?: ReactNode;
 }) {
   const workspace = useWorkspace();
   const input = useRef<HTMLInputElement>(null);
@@ -482,8 +450,7 @@ export function FilterBar({
     ) => {
       const all = [...options];
       for (const value of values)
-        if (!all.some((o) => o.value === value))
-          all.push({ value, label: value, count: 0 });
+        if (!all.some((o) => o.value === value)) all.push({ value, label: value, count: 0 });
       if (all.length)
         out.push({
           id,
@@ -491,8 +458,7 @@ export function FilterBar({
           options: all,
           values: [...values],
           toggle: (value) => change(toggle(values, value)),
-          remove: (value) =>
-            change(new Set([...values].filter((v) => v !== value))),
+          remove: (value) => change(new Set([...values].filter((v) => v !== value))),
         });
     };
     if (show.repos)
@@ -525,9 +491,7 @@ export function FilterBar({
         "codeOwners",
         "Code owner",
         count(
-          items.flatMap((item) =>
-            (item.codeOwners ?? []).map((owner) => ({ owner })),
-          ),
+          items.flatMap((item) => (item.codeOwners ?? []).map((owner) => ({ owner }))),
           (item) => item.owner,
         ).map(([value, n]) => ({ value, label: value, count: n })),
         filter.codeOwners,
@@ -559,12 +523,10 @@ export function FilterBar({
       multi(
         "kinds",
         "Type",
-        KINDS.filter(([value]) => items.some((i) => i.kind === value)).map(
-          ([value, label]) => ({
-            value,
-            label,
-          }),
-        ),
+        KINDS.filter(([value]) => items.some((i) => i.kind === value)).map(([value, label]) => ({
+          value,
+          label,
+        })),
         filter.kinds,
         (kinds) => set({ kinds: kinds as Set<Ranked["kind"]> }),
       );
@@ -572,12 +534,10 @@ export function FilterBar({
       multi(
         "verdicts",
         "Priority",
-        VERDICTS.filter((value) => items.some((i) => i.verdict === value)).map(
-          (value) => ({
-            value,
-            label: value,
-          }),
-        ),
+        VERDICTS.filter((value) => items.some((i) => i.verdict === value)).map((value) => ({
+          value,
+          label: value,
+        })),
         filter.verdicts,
         (verdicts) => set({ verdicts: verdicts as Set<Verdict> }),
       );
@@ -599,17 +559,16 @@ export function FilterBar({
       multi(
         "severities",
         "Severity",
-        SEVERITIES.filter((value) =>
-          items.some((i) => i.severity?.toLowerCase() === value),
-        ).map((value) => ({ value, label: value })),
+        SEVERITIES.filter((value) => items.some((i) => i.severity?.toLowerCase() === value)).map(
+          (value) => ({ value, label: value }),
+        ),
         filter.severities,
         (severities) => set({ severities }),
       );
     if (show.ci) {
       const selected = filter.ciStatus ?? (filter.ciFailing ? "failing" : null);
       const change = (value: string) => {
-        const ciStatus =
-          selected === value ? null : (value as "failing" | "not-failing");
+        const ciStatus = selected === value ? null : (value as "failing" | "not-failing");
         set({ ciStatus, ciFailing: ciStatus === "failing" });
       };
       out.push({
@@ -727,12 +686,11 @@ export function FilterBar({
             <>
               <FilterIcon size={14} />
               Filter
-              {tokens.length ? (
-                <span className="filter-count tnum">{tokens.length}</span>
-              ) : null}
+              {tokens.length ? <span className="filter-count tnum">{tokens.length}</span> : null}
             </>
           }
         />
+        {actions}
         {children ? (
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="sm" />}>
@@ -759,10 +717,7 @@ export function FilterBar({
                   aria-label={`Change label ${label} to ${filter.labels.get(value) === "out" ? "include" : "exclude"}`}
                   onClick={() => {
                     const labels = new Map(filter.labels);
-                    labels.set(
-                      value,
-                      labels.get(value) === "out" ? "in" : "out",
-                    );
+                    labels.set(value, labels.get(value) === "out" ? "in" : "out");
                     set({ labels });
                   }}
                 >
@@ -825,9 +780,7 @@ function FilterPicker({
   const [query, setQuery] = useState("");
   const field = fields.find((f) => f.id === fieldId) ?? fields[0];
   const options =
-    field?.options.filter((o) =>
-      o.label.toLowerCase().includes(query.toLowerCase()),
-    ) ?? [];
+    field?.options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())) ?? [];
   return (
     <Popover
       onOpenChange={(open) => {
@@ -839,22 +792,13 @@ function FilterPicker({
     >
       <PopoverTrigger
         disabled={!fields.length}
-        render={
-          <Button
-            variant={compact ? "ghost" : "outline"}
-            size={compact ? "xs" : "sm"}
-          />
-        }
+        render={<Button variant={compact ? "ghost" : "outline"} size={compact ? "xs" : "sm"} />}
       >
         {trigger}
       </PopoverTrigger>
       <PopoverPopup align="start" className="filter-picker-popup">
         <div className="filter-picker-layout">
-          <div
-            className="filter-field-list"
-            role="group"
-            aria-label="Filter fields"
-          >
+          <div className="filter-field-list" role="group" aria-label="Filter fields">
             {fields.map((f) => (
               <Button
                 key={f.id}
@@ -883,16 +827,12 @@ function FilterPicker({
               onChange={(e) => setQuery(e.target.value)}
             />
             {field?.id === "labels" ? (
-              <p className="filter-label-hint">
-                Click to include, again to exclude.
-              </p>
+              <p className="filter-label-hint">Click to include, again to exclude.</p>
             ) : null}
             <div className="filter-value-list">
               {options.map((option) => {
                 const selected = field.values.includes(option.value);
-                const excluded =
-                  field.id === "labels" &&
-                  filter.labels.get(option.value) === "out";
+                const excluded = field.id === "labels" && filter.labels.get(option.value) === "out";
                 return (
                   <Button
                     key={option.value}
@@ -903,18 +843,10 @@ function FilterPicker({
                     onClick={() => field.toggle(option.value)}
                   >
                     <span className="filter-check">
-                      {excluded ? (
-                        <Minus size={13} />
-                      ) : selected ? (
-                        <Check size={13} />
-                      ) : null}
+                      {excluded ? <Minus size={13} /> : selected ? <Check size={13} /> : null}
                     </span>
                     {option.avatar ? (
-                      <img
-                        src={option.avatar}
-                        alt=""
-                        className="size-4 rounded-full"
-                      />
+                      <img src={option.avatar} alt="" className="size-4 rounded-full" />
                     ) : null}
                     <span
                       className={cn(
@@ -925,16 +857,12 @@ function FilterPicker({
                       {option.label}
                     </span>
                     {option.count !== undefined ? (
-                      <span className="tnum text-[10px] text-ink-3">
-                        {option.count}
-                      </span>
+                      <span className="tnum text-[10px] text-ink-3">{option.count}</span>
                     ) : null}
                   </Button>
                 );
               })}
-              {!options.length ? (
-                <p className="filter-popup-empty">No matching values.</p>
-              ) : null}
+              {!options.length ? <p className="filter-popup-empty">No matching values.</p> : null}
             </div>
           </div>
         </div>
@@ -966,9 +894,7 @@ export function Chips<T extends string>({
         }}
       >
         <SelectTrigger size="sm">
-          <SelectValue>
-            {options.find(([key]) => key === value)?.[1] ?? value}
-          </SelectValue>
+          <SelectValue>{options.find(([key]) => key === value)?.[1] ?? value}</SelectValue>
         </SelectTrigger>
         <SelectPopup alignItemWithTrigger={false}>
           {options.map(([key, text]) => (

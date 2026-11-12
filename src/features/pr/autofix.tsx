@@ -298,7 +298,7 @@ export function AutoFixButton({
             ) : APP_STORE ? (
               <div className="autofix-notice">Auto-fix needs the direct edition because it runs a local coding agent.</div>
             ) : provider === "openai" ? (
-              <div className="autofix-notice">Choose Claude, Codex, Antigravity, or Gemini in AI settings to edit locally.</div>
+              <div className="autofix-notice">Choose Claude, Codex, Cursor, Antigravity, or Gemini in AI settings to edit locally.</div>
             ) : null}
             {running ? (
               <div className="autofix-running" role="status">

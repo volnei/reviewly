@@ -150,6 +150,9 @@ pub struct Dashboard {
 pub struct DashboardPr {
     pub id: u64,
     pub number: u64,
+    pub additions: Option<u64>,
+    pub deletions: Option<u64>,
+    pub changed_files: Option<u64>,
     pub title: String,
     pub url: String,
     pub repo: String,
@@ -214,6 +217,10 @@ struct StatsNode {
     created_at: Option<String>,
     #[serde(rename = "updatedAt")]
     updated_at: Option<String>,
+    additions: Option<u64>,
+    deletions: Option<u64>,
+    #[serde(rename = "changedFiles")]
+    changed_files: Option<u64>,
     author: Option<GqlAuthor>,
     repository: Option<GqlRepo>,
     commits: Option<StatsCommits>,
@@ -365,6 +372,9 @@ fn dashboard_pr_from_node(n: StatsNode, ci: &str) -> Option<DashboardPr> {
     n.database_id.map(|id| DashboardPr {
         id,
         number: n.number.unwrap_or(0),
+        additions: n.additions,
+        deletions: n.deletions,
+        changed_files: n.changed_files,
         title: n.title.unwrap_or_default(),
         url: n.url.unwrap_or_default(),
         repo: n
@@ -440,7 +450,7 @@ pub async fn gh_dashboard(
     let rr = format!("{prefix}is:pr is:open review-requested:@me archived:false -is:draft");
     let men = format!("{prefix}is:pr is:open involves:@me -author:@me archived:false");
 
-    let pr_fields = "databaseId number title url isDraft reviewDecision mergeable createdAt updatedAt author{ login avatarUrl } repository{ nameWithOwner } comments(first:1){ totalCount } reviewThreads(first:100){ totalCount nodes{ isResolved } } reviewRequests(first:100){ nodes{ requestedReviewer{ ... on User { login } ... on Team { slug organization { login } } } } } commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } }";
+    let pr_fields = "databaseId number additions deletions changedFiles title url isDraft reviewDecision mergeable createdAt updatedAt author{ login avatarUrl } repository{ nameWithOwner } comments(first:1){ totalCount } reviewThreads(first:100){ totalCount nodes{ isResolved } } reviewRequests(first:100){ nodes{ requestedReviewer{ ... on User { login } ... on Team { slug organization { login } } } } } commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } }";
     let gql = format!(
         "query($mine:String!,$rr:String!,$men:String!){{ mine: search(query:$mine,type:ISSUE,first:100){{ issueCount pageInfo{{ hasNextPage endCursor }} nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} incoming: search(query:$rr,type:ISSUE,first:100){{ issueCount pageInfo{{ hasNextPage endCursor }} nodes{{ ... on PullRequest {{ {pr_fields} }} }} }} men: search(query:$men,type:ISSUE){{ issueCount }} }}"
     );

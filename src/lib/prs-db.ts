@@ -304,7 +304,8 @@ export async function applyDashboardPrs(
       head_ref, base_ref, requested_reviewers, requested_teams, synced_at,
       inbox_incoming, inbox_mine, ci, conflicting, review_decision,
       issue_comment_count, review_thread_count, unresolved_thread_count,
-      code_owners, dashboard_synced_at
+      code_owners, dashboard_synced_at,
+      additions, deletions, changed_files, size_updated_at
     ) VALUES `;
     const conflict = ` ON CONFLICT(id) DO UPDATE SET
       repo=excluded.repo, number=excluded.number, title=excluded.title,
@@ -317,7 +318,11 @@ export async function applyDashboardPrs(
       review_thread_count=excluded.review_thread_count,
       unresolved_thread_count=excluded.unresolved_thread_count,
       code_owners=excluded.code_owners,
-      dashboard_synced_at=excluded.dashboard_synced_at`;
+      dashboard_synced_at=excluded.dashboard_synced_at,
+      additions=COALESCE(excluded.additions, prs.additions),
+      deletions=COALESCE(excluded.deletions, prs.deletions),
+      changed_files=COALESCE(excluded.changed_files, prs.changed_files),
+      size_updated_at=COALESCE(excluded.size_updated_at, prs.size_updated_at)`;
     const syncedAt = Date.now();
     const enriched = [...rows.values()];
     for (let offset = 0; offset < enriched.length; offset += 50) {
@@ -347,11 +352,17 @@ export async function applyDashboardPrs(
           pull.reviewThreadCount,
           pull.unresolvedThreadCount,
           JSON.stringify(pull.codeOwners),
+          pull.additions ?? null,
+          pull.deletions ?? null,
+          pull.changedFiles ?? null,
+          pull.additions != null && pull.deletions != null && pull.changedFiles != null
+            ? (pull.updatedAt ?? null)
+            : null,
         ];
         const start = params.length + 1;
         params.push(...row);
         const at = (index: number) => `$${start + index}`;
-        return `(${at(0)},${at(1)},${at(2)},${at(3)},'open',${at(4)},NULL,${at(5)},${at(6)},${at(7)},0,${at(8)},${at(9)},${at(10)},${at(11)},NULL,'[]',NULL,NULL,'[]','[]',${at(12)},${at(13)},${at(14)},${at(15)},${at(16)},${at(17)},${at(18)},${at(19)},${at(20)},${at(21)},${at(12)})`;
+        return `(${at(0)},${at(1)},${at(2)},${at(3)},'open',${at(4)},NULL,${at(5)},${at(6)},${at(7)},0,${at(8)},${at(9)},${at(10)},${at(11)},NULL,'[]',NULL,NULL,'[]','[]',${at(12)},${at(13)},${at(14)},${at(15)},${at(16)},${at(17)},${at(18)},${at(19)},${at(20)},${at(21)},${at(12)},${at(22)},${at(23)},${at(24)},${at(25)})`;
       });
       await database.execute(`${columns}${values.join(",")}${conflict}`, params);
     }
@@ -438,24 +449,19 @@ export async function setRepoSync(
   repo: string,
   patch: Partial<Omit<RepoSync, "repo">>,
 ): Promise<void> {
-  const current = await getRepoSync(repo);
-  const next: RepoSync = {
-    repo,
-    open_synced_at: patch.open_synced_at ?? current?.open_synced_at ?? null,
-    updated_high: patch.updated_high ?? current?.updated_high ?? null,
-    all_backfilled: patch.all_backfilled ?? current?.all_backfilled ?? 0,
-    last_error: patch.last_error === undefined ? (current?.last_error ?? null) : patch.last_error,
-  };
+  const fields = (
+    ["open_synced_at", "updated_high", "all_backfilled", "last_error"] as const
+  ).filter((field) => patch[field] !== undefined);
+  const columns = ["repo", ...fields];
+  const placeholders = columns.map((_, index) => `$${index + 1}`).join(",");
+  const conflict = fields.length
+    ? `DO UPDATE SET ${fields.map((field) => `${field}=excluded.${field}`).join(",")}`
+    : "DO NOTHING";
   await writeSerial(async () =>
     (await db()).execute(
-      `INSERT INTO repo_sync (repo, open_synced_at, updated_high, all_backfilled, last_error)
-        VALUES ($1,$2,$3,$4,$5)
-        ON CONFLICT(repo) DO UPDATE SET
-          open_synced_at=excluded.open_synced_at,
-          updated_high=excluded.updated_high,
-          all_backfilled=excluded.all_backfilled,
-          last_error=excluded.last_error`,
-      [next.repo, next.open_synced_at, next.updated_high, next.all_backfilled, next.last_error],
+      `INSERT INTO repo_sync (${columns.join(",")}) VALUES (${placeholders})
+        ON CONFLICT(repo) ${conflict}`,
+      [repo, ...fields.map((field) => patch[field])],
     ),
   );
 }
@@ -484,14 +490,28 @@ export async function saveReviewSizes(
   repo: string,
   sizes: readonly PullReviewSize[],
 ): Promise<void> {
+  if (!sizes.length) return;
   await writeSerial(async () => {
     const database = await db();
-    for (const size of sizes) {
-      await database.execute(
-        `UPDATE prs SET additions=$1, deletions=$2, changed_files=$3, size_updated_at=$4
-         WHERE repo=$5 AND number=$6 AND updated_at=$4`,
-        [size.additions, size.deletions, size.changedFiles, size.updatedAt, repo, size.number],
-      );
-    }
+    const params: unknown[] = [repo];
+    const values = sizes.map((size) => {
+      const start = params.length + 1;
+      params.push(size.number, size.additions, size.deletions, size.changedFiles, size.updatedAt);
+      return `($${start},$${start + 1},$${start + 2},$${start + 3},$${start + 4})`;
+    });
+    await database.execute(
+      `WITH size_rows(number, additions, deletions, changed_files, updated_at) AS
+        (VALUES ${values.join(",")})
+      UPDATE prs SET
+        additions=size_rows.additions,
+        deletions=size_rows.deletions,
+        changed_files=size_rows.changed_files,
+        size_updated_at=size_rows.updated_at
+      FROM size_rows
+      WHERE prs.repo=$1
+        AND prs.number=size_rows.number
+        AND prs.updated_at=size_rows.updated_at`,
+      params,
+    );
   });
 }
