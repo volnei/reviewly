@@ -40,7 +40,14 @@ export interface PromptOpts {
   readonly instructions: string;
   /** A local clone is passed as the working directory, so the model reads real files, not just the diff. */
   readonly hasClone: boolean;
+  /** User denied tool execution or requested diff-only answer without commands. */
+  readonly forbidTools?: boolean;
 }
+
+const FORBID_TOOLS_CLAUSE = `
+
+# Tool Permissions
+You do NOT have permission to run terminal commands, shell scripts, or inspect the local filesystem. Do NOT call any tools or commands. Answer the user's question directly and completely using ONLY the pull request diff and metadata provided above.`;
 
 const instructionsClause = (s: string) =>
   s.trim()
@@ -77,7 +84,8 @@ export const chatPrompt = (
   [
     CHAT_SYSTEM +
       instructionsClause(o.instructions) +
-      (o.hasClone ? "" : CLONE_ABSENT_CLAUSE),
+      (o.hasClone ? "" : CLONE_ABSENT_CLAUSE) +
+      (o.forbidTools ? FORBID_TOOLS_CLAUSE : ""),
     "",
     "# Pull request",
     ctx,

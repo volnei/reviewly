@@ -800,6 +800,47 @@ async fn run_agy(
             )))
         }
     };
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let low = stderr_str.to_lowercase();
+    if low.contains("required the") && low.contains("permission") {
+        let mut last_cmd = None;
+        for line in stdout_str.lines() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some((_, Some(c))) = extract_agy_tool_call(&v) {
+                    last_cmd = Some(c);
+                }
+            }
+        }
+        let detected_cmd = last_cmd.or_else(|| {
+            let p_low = prompt.to_lowercase();
+            for cmd in [
+                "git status",
+                "git diff",
+                "git log",
+                "git show",
+                "git branch",
+                "npm test",
+                "cargo test",
+                "bun test",
+            ] {
+                if p_low.contains(cmd) {
+                    return Some(cmd.to_string());
+                }
+            }
+            None
+        });
+        let cmd_str = match detected_cmd {
+            Some(ref cmd) => format!(" for `{cmd}`"),
+            None => String::new(),
+        };
+        return Err(AppError::Other(format!(
+            "agy exited {}: a tool required the \"command\" permission{} that headless mode cannot prompt for. Add an allow-rule under permissions.allow in settings.json.",
+            exit_code(&output.status),
+            cmd_str
+        )));
+    }
+
     if !output.status.success() {
         return Err(cli_error(
             "agy",
@@ -807,7 +848,7 @@ async fn run_agy(
             &cli_detail(&output.stdout, &output.stderr),
         ));
     }
-    let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let out = stdout_str.trim().to_string();
     if out.is_empty() {
         return Err(cli_error(
             "agy",
@@ -1512,6 +1553,70 @@ pub(crate) enum AgyStreamAction {
     },
 }
 
+pub(crate) fn extract_agy_tool_call(v: &serde_json::Value) -> Option<(String, Option<String>)> {
+    let step = v.get("step_update").unwrap_or(v);
+
+    let tool_obj = step
+        .get("tool_info")
+        .or_else(|| step.get("tool_call"))
+        .or_else(|| {
+            step.get("tool_calls")
+                .and_then(|t| t.as_array())
+                .and_then(|arr| arr.first())
+        })
+        .or_else(|| {
+            step.get("calls")
+                .and_then(|t| t.as_array())
+                .and_then(|arr| arr.first())
+        })?;
+
+    let name = tool_obj
+        .get("name")
+        .or_else(|| tool_obj.get("tool"))
+        .or_else(|| tool_obj.get("function").and_then(|f| f.get("name")))
+        .and_then(|n| n.as_str())
+        .unwrap_or("command")
+        .to_string();
+
+    let params_val = tool_obj
+        .get("parameters")
+        .or_else(|| tool_obj.get("args"))
+        .or_else(|| tool_obj.get("input"))
+        .or_else(|| tool_obj.get("function").and_then(|f| f.get("arguments")));
+
+    let cmd = if let Some(p) = params_val {
+        if let Some(s) = p.as_str() {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                parsed
+                    .get("CommandLine")
+                    .or_else(|| parsed.get("command"))
+                    .or_else(|| parsed.get("cmd"))
+                    .or_else(|| parsed.get("path"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+                    .or_else(|| Some(s.to_string()))
+            } else {
+                Some(s.to_string())
+            }
+        } else if let Some(obj) = p.as_object() {
+            obj.get("CommandLine")
+                .or_else(|| obj.get("command"))
+                .or_else(|| obj.get("cmd"))
+                .or_else(|| obj.get("target"))
+                .or_else(|| obj.get("path"))
+                .or_else(|| obj.get("query"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Some((name, cmd))
+}
+
 pub(crate) fn parse_agy_stream_line(line: &str) -> Option<AgyStreamAction> {
     let v = serde_json::from_str::<serde_json::Value>(line).ok()?;
     match v.get("event").and_then(|x| x.as_str()) {
@@ -1593,6 +1698,7 @@ async fn stream_agy(
     let mut lines = BufReader::new(stdout).lines();
 
     let mut full = String::new();
+    let mut last_tool: Option<(String, Option<String>)> = None;
     let idle = resolve_timeout(timeout_secs, run_timeout(cwd));
     let read = async {
         loop {
@@ -1606,6 +1712,11 @@ async fn stream_agy(
                 }
             };
             let Some(line) = line else { break };
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if let Some(tool) = extract_agy_tool_call(&v) {
+                    last_tool = Some(tool);
+                }
+            }
             match parse_agy_stream_line(&line) {
                 Some(AgyStreamAction::Init) => {
                     let _ = app.emit(
@@ -1686,11 +1797,48 @@ async fn stream_agy(
         .await
         .map_err(|e| AppError::Other(format!("wait agy: {e}")))?;
     let stderr = stderr_task.await.unwrap_or_default();
+    let stderr_str = String::from_utf8_lossy(&stderr);
+    let low = stderr_str.to_lowercase();
+    let is_permission_error = low.contains("required the") && low.contains("permission");
+
+    if is_permission_error {
+        let detected_cmd = last_tool.as_ref().and_then(|(_, c)| c.clone()).or_else(|| {
+            let p_low = prompt.to_lowercase();
+            for cmd in [
+                "git status",
+                "git diff",
+                "git log",
+                "git show",
+                "git branch",
+                "npm test",
+                "cargo test",
+                "bun test",
+            ] {
+                if p_low.contains(cmd) {
+                    return Some(cmd.to_string());
+                }
+            }
+            None
+        });
+        let cmd_str = match detected_cmd {
+            Some(ref cmd) => format!(" for `{cmd}`"),
+            None => match &last_tool {
+                Some((name, None)) => format!(" for tool `{name}`"),
+                _ => String::new(),
+            },
+        };
+        return Err(AppError::Other(format!(
+            "agy exited {}: a tool required the \"command\" permission{} that headless mode cannot prompt for. Add an allow-rule under permissions.allow in settings.json.",
+            exit_code(&status),
+            cmd_str
+        )));
+    }
+
     if !status.success() {
         return Err(cli_error(
             "agy",
             &exit_code(&status),
-            &String::from_utf8_lossy(&stderr),
+            &stderr_str,
         ));
     }
     let trimmed = full.trim().to_string();
@@ -1698,7 +1846,7 @@ async fn stream_agy(
         return Err(cli_error(
             "agy",
             &exit_code(&status),
-            &String::from_utf8_lossy(&stderr),
+            &stderr_str,
         ));
     }
     Ok((trimmed, None))
@@ -1866,6 +2014,121 @@ pub fn path_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+pub(crate) fn add_permission_rule_to_config(config: &mut serde_json::Value, rule: &str) {
+    if !config.is_object() {
+        *config = serde_json::json!({});
+    }
+    let permissions = config
+        .as_object_mut()
+        .unwrap()
+        .entry("permissions")
+        .or_insert_with(|| serde_json::json!({}));
+    if !permissions.is_object() {
+        *permissions = serde_json::json!({});
+    }
+    let allow = permissions
+        .as_object_mut()
+        .unwrap()
+        .entry("allow")
+        .or_insert_with(|| serde_json::json!([]));
+    if !allow.is_array() {
+        *allow = serde_json::json!([]);
+    }
+    let arr = allow.as_array_mut().unwrap();
+    let rule_val = serde_json::Value::String(rule.to_string());
+    if !arr.contains(&rule_val) {
+        arr.push(rule_val);
+    }
+}
+
+/// Grant a permission rule in `~/.gemini/antigravity-cli/settings.json` under `permissions.allow`.
+/// Defaults to "command(*)" if no pattern is specified.
+#[tauri::command]
+pub async fn agy_grant_permission(pattern: Option<String>) -> AppResult<()> {
+    let home = std::env::var("HOME").map_err(|e| AppError::Other(e.to_string()))?;
+    let settings_dir = std::path::PathBuf::from(&home).join(".gemini/antigravity-cli");
+    if !settings_dir.exists() {
+        tokio::fs::create_dir_all(&settings_dir)
+            .await
+            .map_err(|e| AppError::Other(format!("failed to create agy settings dir: {e}")))?;
+    }
+    let settings_path = settings_dir.join("settings.json");
+    let mut config: serde_json::Value = if settings_path.exists() {
+        let content = tokio::fs::read_to_string(&settings_path)
+            .await
+            .map_err(|e| AppError::Other(format!("failed to read agy settings: {e}")))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let rule = pattern
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "command(*)".to_string());
+
+    add_permission_rule_to_config(&mut config, &rule);
+
+    let serialized = serde_json::to_string_pretty(&config)
+        .map_err(|e| AppError::Other(format!("failed to serialize agy settings: {e}")))?;
+    tokio::fs::write(&settings_path, serialized)
+        .await
+        .map_err(|e| AppError::Other(format!("failed to write agy settings: {e}")))?;
+
+    Ok(())
+}
+
+pub(crate) fn clear_permission_rules_in_config(config: &mut serde_json::Value) {
+    if let Some(permissions) = config.get_mut("permissions").and_then(|p| p.as_object_mut()) {
+        permissions.insert("allow".to_string(), serde_json::json!([]));
+    }
+}
+
+pub fn clear_agy_permissions_sync() {
+    if let Ok(home) = std::env::var("HOME") {
+        let settings_path =
+            std::path::PathBuf::from(&home).join(".gemini/antigravity-cli/settings.json");
+        if settings_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&settings_path) {
+                if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) {
+                    clear_permission_rules_in_config(&mut config);
+                    if let Ok(serialized) = serde_json::to_string_pretty(&config) {
+                        let _ = std::fs::write(&settings_path, serialized);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Reset `permissions.allow` in `~/.gemini/antigravity-cli/settings.json` to an empty array `[]`
+/// when a chat session is closed.
+#[tauri::command]
+pub async fn agy_clear_permissions() -> AppResult<()> {
+    let home = std::env::var("HOME").map_err(|e| AppError::Other(e.to_string()))?;
+    let settings_path =
+        std::path::PathBuf::from(&home).join(".gemini/antigravity-cli/settings.json");
+    if !settings_path.exists() {
+        return Ok(());
+    }
+
+    let content = tokio::fs::read_to_string(&settings_path)
+        .await
+        .map_err(|e| AppError::Other(format!("failed to read agy settings: {e}")))?;
+    let mut config: serde_json::Value =
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}));
+
+    clear_permission_rules_in_config(&mut config);
+
+    let serialized = serde_json::to_string_pretty(&config)
+        .map_err(|e| AppError::Other(format!("failed to serialize agy settings: {e}")))?;
+    tokio::fs::write(&settings_path, serialized)
+        .await
+        .map_err(|e| AppError::Other(format!("failed to write agy settings: {e}")))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1980,6 +2243,78 @@ mod tests {
                 cached_tokens: None,
                 turns: Some(2),
             })
+        );
+    }
+
+    #[test]
+    fn test_add_permission_rule_to_config() {
+        let mut config = serde_json::json!({
+            "model": "Gemini 3.6 Flash (High)"
+        });
+        add_permission_rule_to_config(&mut config, "command(*)");
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!(["command(*)"])
+        );
+
+        // Deduplication
+        add_permission_rule_to_config(&mut config, "command(*)");
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!(["command(*)"])
+        );
+
+        add_permission_rule_to_config(&mut config, "command(git*)");
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!(["command(*)", "command(git*)"])
+        );
+    }
+
+    #[test]
+    fn test_extract_agy_tool_call() {
+        let v1 = serde_json::json!({
+            "event": "step_update",
+            "step_update": {
+                "tool_info": {
+                    "name": "run_command",
+                    "parameters": {
+                        "command": "git status"
+                    }
+                }
+            }
+        });
+        assert_eq!(
+            extract_agy_tool_call(&v1),
+            Some(("run_command".into(), Some("git status".into())))
+        );
+
+        let v2 = serde_json::json!({
+            "tool_call": {
+                "name": "run_command",
+                "parameters": {
+                    "CommandLine": "git log -n 5"
+                }
+            }
+        });
+        assert_eq!(
+            extract_agy_tool_call(&v2),
+            Some(("run_command".into(), Some("git log -n 5".into())))
+        );
+    }
+
+    #[test]
+    fn test_clear_permission_rules_in_config() {
+        let mut config = serde_json::json!({
+            "model": "Gemini 3.6 Flash (High)",
+            "permissions": {
+                "allow": ["command(*)", "command(git status)"]
+            }
+        });
+        clear_permission_rules_in_config(&mut config);
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!([])
         );
     }
 }
