@@ -14,6 +14,7 @@ import {
   Copy,
   PictureInPicture2,
   RotateCcw,
+  ShieldAlert,
   Sparkles,
   Trash2,
   X,
@@ -117,6 +118,30 @@ export function AskPanel({
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [grantingPermission, setGrantingPermission] = useState(false);
+
+  // Reset Antigravity session-granted permissions when the chat session closes or unmounts.
+  useEffect(() => {
+    return () => {
+      if (isNative()) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          void invoke("agy_clear_permissions");
+        });
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleUnload = () => {
+      if (isNative()) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          void invoke("agy_clear_permissions");
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, []);
 
   // The unsent question survives a close and a restart.
   useEffect(() => {
@@ -134,6 +159,7 @@ export function AskPanel({
   const ask = (
     question: string,
     history: ReadonlyArray<ChatMessage> = messages,
+    options?: { forbidTools?: boolean },
   ) => {
     const text = question.trim();
     if (!text || ai.running) return;
@@ -142,7 +168,11 @@ export function AskPanel({
     setQ("");
     ai.start(
       `chat:${prKey}`,
-      chatPrompt(context, history, text, { instructions, hasClone: !!cwd }),
+      chatPrompt(context, history, text, {
+        instructions,
+        hasClone: !!cwd,
+        forbidTools: options?.forbidTools,
+      }),
       (answer) =>
         setChatMessages(prKey, [
           ...history,
@@ -164,11 +194,24 @@ export function AskPanel({
       return;
     ask(messages[i - 1].content, messages.slice(0, i - 1));
   };
+  const clearSessionPermissions = () => {
+    if (isNative()) {
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        void invoke("agy_clear_permissions");
+      });
+    }
+  };
+
   const clear = () => {
+    clearSessionPermissions();
     const was = clearChat(prKey);
     toast.act("Conversation cleared", "Undo", () =>
       setChatMessages(prKey, was),
     );
+  };
+  const handleClose = () => {
+    clearSessionPermissions();
+    onClose?.();
   };
   const canRegenerate =
     !ai.running &&
@@ -231,7 +274,7 @@ export function AskPanel({
           </IconButton>
         ) : null}
         {onClose ? (
-          <IconButton size={6} label="Close (esc)" onClick={onClose}>
+          <IconButton size={6} label="Close (esc)" onClick={handleClose}>
             <X className="size-3.5" strokeWidth={2} />
           </IconButton>
         ) : null}
@@ -296,24 +339,160 @@ export function AskPanel({
                   </Markdown>
                 </div>
               ) : null}
-              <p className="text-del">{ai.error}</p>
-              <p className="text-ink-3">{recoveryHint(ai.error)}</p>
-              {lastQuestion ? (
-                <button
-                  type="button"
-                  onClick={() => {
+              {(() => {
+                const isPermError =
+                  ai.error.toLowerCase().includes('required the "command" permission') ||
+                  ai.error.toLowerCase().includes("permissions.allow") ||
+                  ai.error.toLowerCase().includes("headless mode cannot prompt for");
+
+                if (!isPermError) {
+                  return (
+                    <>
+                      <p className="text-del">{ai.error}</p>
+                      <p className="text-ink-3">{recoveryHint(ai.error)}</p>
+                      {lastQuestion ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const last = messages[messages.length - 1];
+                            const history =
+                              last?.role === "user" && last.content === lastQuestion
+                                ? messages.slice(0, -1)
+                                : messages;
+                            ask(lastQuestion, history);
+                          }}
+                          className="w-fit text-ink-2 underline decoration-ink-3 underline-offset-2 hover:text-ink"
+                        >
+                          Start a clean retry
+                        </button>
+                      ) : null}
+                    </>
+                  );
+                }
+
+                // Extract specific command if present: e.g. for `git status` or command(git status)
+                const cmdMatch =
+                  ai.error.match(/required the ["']?[a-z_-]+["']? permission for `([^`]+)`/i) ||
+                  ai.error.match(/command\(([^)]+)\)/i);
+                const requestedCmd =
+                  (cmdMatch && cmdMatch[1] && cmdMatch[1] !== "<target>"
+                    ? cmdMatch[1].trim()
+                    : null) ||
+                  (() => {
+                    if (!lastQuestion) return null;
+                    const lq = lastQuestion.toLowerCase();
+                    for (const c of [
+                      "git status",
+                      "git diff",
+                      "git log",
+                      "git show",
+                      "git branch",
+                      "npm test",
+                      "cargo test",
+                      "bun test",
+                    ]) {
+                      if (lq.includes(c)) return c;
+                    }
+                    return null;
+                  })();
+
+                const grantAndRetry = async (pattern?: string) => {
+                  if (!isNative()) {
+                    toast.say("Granting permissions requires the desktop app");
+                    return;
+                  }
+                  setGrantingPermission(true);
+                  try {
+                    const { invoke } = await import("@tauri-apps/api/core");
+                    await invoke("agy_grant_permission", {
+                      pattern: pattern ?? "command(*)",
+                    });
+                    toast.say(
+                      pattern
+                        ? `Granted "${pattern}" to Antigravity`
+                        : "Granted command permission to Antigravity",
+                    );
                     const last = messages[messages.length - 1];
                     const history =
                       last?.role === "user" && last.content === lastQuestion
                         ? messages.slice(0, -1)
                         : messages;
-                    ask(lastQuestion, history);
-                  }}
-                  className="w-fit text-ink-2 underline decoration-ink-3 underline-offset-2 hover:text-ink"
-                >
-                  Start a clean retry
-                </button>
-              ) : null}
+                    if (lastQuestion) {
+                      ask(lastQuestion, history);
+                    }
+                  } catch (err) {
+                    toast.fail("Couldn't update permissions", err);
+                  } finally {
+                    setGrantingPermission(false);
+                  }
+                };
+
+                return (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[12.5px]">
+                    <p className="font-medium text-ink flex items-center gap-1.5">
+                      <ShieldAlert className="size-4 text-amber-500 shrink-0" />
+                      Tool permission required
+                    </p>
+                    <p className="mt-1 text-ink-2 text-[12px] leading-relaxed">
+                      Antigravity requested permission to run an inspection command in the local clone. Commands execute inside an isolated sandbox container.
+                    </p>
+                    {requestedCmd ? (
+                      <div className="mt-2.5 rounded-md border border-edge/60 bg-sink/80 px-2.5 py-1.5 font-mono text-[11.5px] text-ink flex items-center gap-1.5">
+                        <span className="text-ink-3 select-none">$</span>
+                        <span className="font-semibold text-ink">{requestedCmd}</span>
+                      </div>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {requestedCmd ? (
+                        <button
+                          type="button"
+                          disabled={grantingPermission}
+                          onClick={() => grantAndRetry(`command(${requestedCmd})`)}
+                          className="ai-button h-6.5 px-2.5 text-[12px] font-medium disabled:opacity-50"
+                        >
+                          {grantingPermission
+                            ? "Granting…"
+                            : `Allow "${requestedCmd}" & retry`}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={grantingPermission}
+                        onClick={() => grantAndRetry("command(*)")}
+                        className={cn(
+                          "h-6.5 px-2.5 text-[12px] font-medium disabled:opacity-50",
+                          requestedCmd
+                            ? "rounded-md border border-hair text-ink-2 hover:bg-raise hover:text-ink"
+                            : "ai-button",
+                        )}
+                      >
+                        {grantingPermission
+                          ? "Granting…"
+                          : requestedCmd
+                            ? "Allow all commands & retry"
+                            : "Allow commands & retry"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={grantingPermission}
+                        onClick={() => {
+                          const last = messages[messages.length - 1];
+                          const history =
+                            last?.role === "user" && last.content === lastQuestion
+                              ? messages.slice(0, -1)
+                              : messages;
+                          if (lastQuestion) {
+                            ask(lastQuestion, history, { forbidTools: true });
+                          }
+                        }}
+                        className="h-6.5 rounded-md border border-hair px-2.5 text-[12px] text-ink-2 hover:bg-raise hover:text-ink disabled:opacity-50"
+                      >
+                        Reject & answer diff-only
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
           <div ref={end} />

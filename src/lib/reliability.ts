@@ -1,6 +1,7 @@
 export type FailureKind =
   | "auth"
   | "permission"
+  | "ai-permission"
   | "not-found"
   | "validation"
   | "rate-limit"
@@ -26,6 +27,12 @@ export function failureText(error: unknown): string {
 export function classifyFailure(error: unknown): FailureKind {
   const text = failureText(error).toLowerCase();
   if (/cancel(?:ed|led)|interrupted|abort(?:ed)?/.test(text)) return "canceled";
+  if (
+    /headless mode cannot prompt for|permissions\.allow|command\(<target>\)|tool required the ["']?[a-z_-]+["']? permission/.test(
+      text,
+    )
+  )
+    return "ai-permission";
   if (/not signed in|sign in|login|unauthori[sz]ed|\b401\b|expired (?:token|session)/.test(text))
     return "auth";
   if (/forbidden|permission|missing.*scope|\b403\b/.test(text)) return "permission";
@@ -44,6 +51,8 @@ export function classifyFailure(error: unknown): FailureKind {
 
 export function retryLimit(error: unknown): number {
   switch (classifyFailure(error)) {
+    case "ai-permission":
+      return 0;
     case "rate-limit":
       return 4;
     case "offline":
@@ -80,6 +89,8 @@ export function retryDelay(attempt: number, error: unknown): number {
 
 export function recoveryHint(error: unknown): string {
   switch (classifyFailure(error)) {
+    case "ai-permission":
+      return "Antigravity needs permission to run commands in headless mode. Review and grant permission below, or answer in diff-only mode.";
     case "auth":
       return "Sign in again, then retry.";
     case "permission":

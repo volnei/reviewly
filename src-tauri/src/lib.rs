@@ -483,6 +483,8 @@ pub fn run() {
             commands::ai::ai_inflight,
             commands::ai::ai_cancel,
             commands::ai::path_is_dir,
+            commands::ai::agy_grant_permission,
+            commands::ai::agy_clear_permissions,
             // tray
             tray::tray_open,
             tray::tray_quit,
@@ -493,10 +495,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app, event| {
+    commands::ai::clear_agy_permissions_sync();
+
+    app.run(|_app, event| {
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Reopen { .. } = event {
-            tray::bring_to_front(app);
+            tray::bring_to_front(_app);
+        }
+        if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+            commands::ai::clear_agy_permissions_sync();
         }
     });
 }
