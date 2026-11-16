@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogClose,
@@ -19,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import type { ReviewEvent } from "@/effect/services/GitHub";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+
 import type { Draft } from "./thread";
 
 const EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string; verb: string }> = [
@@ -31,7 +33,13 @@ const EVENTS: ReadonlyArray<{ value: ReviewEvent; label: string; verb: string }>
 /** Opens the review composer; the verdict belongs inside that dialog, beside its consequences. */
 export function SubmitReviewButton({ onOpen, drafts }: { onOpen: () => void; drafts: number }) {
   return (
-    <Button variant="ghost" size="sm" type="button" onClick={onOpen} className="pr-submit-review">
+    <Button
+      variant="ghost"
+      size="sm"
+      type="button"
+      onClick={onOpen}
+      className="pr-header-action pr-submit-review"
+    >
       Submit review
       {drafts ? (
         <span className="pr-submit-review-count tnum" aria-label={`${drafts} draft comments`}>

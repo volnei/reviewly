@@ -1,8 +1,10 @@
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import { Effect } from "effect";
 import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
 import {
-  Fragment,
+  type MutableRefObject,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -45,6 +47,13 @@ import {
   DraftView,
   ThreadView,
 } from "./thread";
+import {
+  type DiffHit,
+  estimateFileHeight,
+  hunkStarts,
+  lineFraction,
+  shouldFoldLargeDiff,
+} from "./virtual-diff";
 
 /** Where a comment is being written: one line, or a range ending at `line`. */
 export interface Composing {
@@ -67,6 +76,13 @@ export interface Since {
  * lines they are about. Nothing sits beside the code unless asked.
  */
 export type PrView = "overview" | "files" | "guided" | "discussion" | "commits" | "checks";
+
+export interface ReadNavigation {
+  jumpToFile: (path: string, align?: "start" | "center") => void;
+  jumpToLine: (path: string, side: "L" | "R", line: number, onReveal?: () => void) => void;
+  positionOf: (path: string, side?: "L" | "R", line?: number) => number | null;
+  stepHunk: (direction: number) => void;
+}
 
 export function ReadPane({
   view,
@@ -125,6 +141,8 @@ export function ReadPane({
   onOpenBriefing,
   onJumpFile,
   onFinishReview,
+  navigationRef,
+  onCurrentFile,
 }: {
   view: PrView;
   onShowFiles: () => void;
@@ -200,6 +218,8 @@ export function ReadPane({
   onOpenBriefing: () => void;
   onJumpFile: (path: string) => void;
   onFinishReview?: () => void;
+  navigationRef: MutableRefObject<ReadNavigation | null>;
+  onCurrentFile: (path: string | null) => void;
 }) {
   const positions = useRef(new Map<string, number>());
   const scrollKey = `${prRef.owner}/${prRef.repo}#${pull.number}:${view}`;
@@ -207,7 +227,78 @@ export function ReadPane({
     const root = scrollRef.current;
     if (root) root.scrollTop = positions.current.get(scrollKey) ?? 0;
   }, [scrollKey, scrollRef]);
-  const steps = guided.plan?.steps ?? [];
+  const steps = useMemo(() => guided.plan?.steps ?? [], [guided.plan]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [listOffset, setListOffset] = useState(0);
+  const fileIndex = useMemo(
+    () => new Map(files.map((file, index) => [file.filename, index])),
+    [files],
+  );
+  const reasons = useMemo(
+    () => files.map((file) => (hideNoise ? classify(file as unknown as PullFile) : null)),
+    [files, hideNoise],
+  );
+  const openFiles = useRef(new Map<string, boolean>());
+  const [, setOpenVersion] = useState(0);
+  const [targetPath, setTargetPath] = useState<string | null>(null);
+  const pinned = useMemo(() => {
+    const indices = new Set<number>();
+    if (composing) {
+      const index = fileIndex.get(composing.path);
+      if (index != null) indices.add(index);
+    }
+    if (view === "guided" && guided.plan?.steps[guided.step]) {
+      const index = fileIndex.get(guided.plan.steps[guided.step].path);
+      if (index != null) indices.add(index);
+    }
+    if (targetPath) {
+      const index = fileIndex.get(targetPath);
+      if (index != null) indices.add(index);
+    }
+    return indices;
+  }, [composing, fileIndex, guided.plan, guided.step, targetPath, view]);
+  const virtualizer = useVirtualizer({
+    count: files.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => {
+      const file = files[index];
+      const reason = reasons[index];
+      const open = openFiles.current.get(file.filename) ?? (!reason && !shouldFoldLargeDiff(file));
+      return estimateFileHeight(file, !open) + 32;
+    },
+    getItemKey: (index) => files[index]?.filename ?? index,
+    overscan: 2,
+    scrollMargin: listOffset,
+    rangeExtractor: (range) =>
+      [...new Set([...defaultRangeExtractor(range), ...pinned])].sort((a, b) => a - b),
+    enabled: view === "files" || view === "guided",
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+  const measuredSizes = useRef(new Map<number, number>());
+  for (const item of virtualItems) measuredSizes.current.set(item.index, item.size);
+  let geometryStart = listOffset;
+  const fileGeometry = files.map((file, index) => {
+    const reason = reasons[index];
+    const open = openFiles.current.get(file.filename) ?? (!reason && !shouldFoldLargeDiff(file));
+    const size = measuredSizes.current.get(index) ?? estimateFileHeight(file, !open) + 32;
+    const geometry = { start: geometryStart, size, end: geometryStart + size };
+    geometryStart += size;
+    return geometry;
+  });
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const root = scrollRef.current;
+    if (!list || !root || (view !== "files" && view !== "guided")) return;
+    const measure = () => {
+      const rr = root.getBoundingClientRect();
+      setListOffset(list.getBoundingClientRect().top - rr.top + root.scrollTop);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (list.parentElement) observer.observe(list.parentElement);
+    return () => observer.disconnect();
+  }, [scrollRef, view, files.length]);
   // Comments and reviews in one order, the one they happened in. A review
   // that only wrapped inline comments (no words, no decision) says nothing here.
   const timeline = useMemo(() => {
@@ -222,6 +313,17 @@ export function ReadPane({
         items.push({ kind: "review", at: r.submitted_at ?? "", r });
     return items.sort((a, b) => a.at.localeCompare(b.at));
   }, [issueComments, reviews]);
+  const threadsByPath = useMemo(() => groupByPath(threads), [threads]);
+  const draftsByPath = useMemo(() => groupByPath(drafts), [drafts]);
+  const stepsByPath = useMemo(() => {
+    const grouped = new Map<string, Array<{ step: GuidedStep; index: number }>>();
+    steps.forEach((step, index) => {
+      const here = grouped.get(step.path) ?? [];
+      here.push({ step, index });
+      grouped.set(step.path, here);
+    });
+    return grouped;
+  }, [steps]);
   const ctx: FileCtx = {
     prRef,
     headSha: pull.head.sha,
@@ -231,9 +333,10 @@ export function ReadPane({
     split,
     wrap,
     hideWhitespace,
-    threads,
-    drafts,
     steps,
+    threadsByPath,
+    draftsByPath,
+    stepsByPath,
     showGuided,
     provider,
     composing,
@@ -251,25 +354,112 @@ export function ReadPane({
     viewed,
     onMarkRead,
   };
-  const marks: MapMark[] = [
-    ...threads
-      .filter((t) => !t.resolved && t.line != null)
-      .map((t) => ({
-        id: lineId(fileAnchor(t.path), t.side?.[0] === "L" ? "L" : "R", t.line as number),
-        kind: "thread" as const,
+  const marks: MapMark[] = useMemo(
+    () => [
+      ...threads
+        .filter((t) => !t.resolved && t.line != null)
+        .map((t) => ({
+          id: lineId(fileAnchor(t.path), t.side?.[0] === "L" ? "L" : "R", t.line as number),
+          path: t.path,
+          side: (t.side?.[0] === "L" ? "L" : "R") as "L" | "R",
+          line: t.line as number,
+          kind: "thread" as const,
+        })),
+      ...drafts.map((d) => ({
+        id: lineId(fileAnchor(d.path), d.side, d.line),
+        path: d.path,
+        side: d.side,
+        line: d.line,
+        kind: "draft" as const,
       })),
-    ...drafts.map((d) => ({
-      id: lineId(fileAnchor(d.path), d.side, d.line),
-      kind: "draft" as const,
-    })),
-  ];
+    ],
+    [drafts, threads],
+  );
+  const positionOf = useCallback(
+    (path: string, side?: "L" | "R", line?: number) => {
+      const index = fileIndex.get(path);
+      if (index == null) return null;
+      const measurement = fileGeometry[index];
+      if (!measurement) return null;
+      if (side == null || line == null) return measurement.start;
+      return measurement.start + measurement.size * lineFraction(files[index], side, line);
+    },
+    [fileGeometry, fileIndex, files],
+  );
+  const reveal = useCallback(
+    (
+      path: string,
+      side?: "L" | "R",
+      line?: number,
+      align: "start" | "center" = "start",
+      onReveal?: () => void,
+    ) => {
+      const index = fileIndex.get(path);
+      if (index == null) return;
+      setTargetPath(path);
+      if (side != null && line != null && openFiles.current.get(path) !== true) {
+        openFiles.current.set(path, true);
+        measuredSizes.current.delete(index);
+        setOpenVersion((version) => version + 1);
+      }
+      virtualizer.scrollToIndex(index, { align });
+      let attempts = 0;
+      const finish = () => {
+        const id =
+          side != null && line != null ? lineId(fileAnchor(path), side, line) : fileAnchor(path);
+        const element = document.getElementById(id);
+        if (element) {
+          element.scrollIntoView({ block: align });
+          onReveal?.();
+          return;
+        }
+        if (attempts++ < 12) requestAnimationFrame(finish);
+      };
+      requestAnimationFrame(finish);
+    },
+    [fileIndex, virtualizer],
+  );
+  const stepVirtualHunk = useCallback(
+    (direction: number) => {
+      const root = scrollRef.current;
+      if (!root) return;
+      const at = root.scrollTop + 44;
+      const hunks = files.flatMap((file) =>
+        hunkStarts(file).map((hit) => ({
+          hit,
+          top: positionOf(hit.path, hit.side, hit.line) ?? 0,
+        })),
+      );
+      const target =
+        direction > 0
+          ? hunks.find((hunk) => hunk.top > at + 4)
+          : [...hunks].reverse().find((hunk) => hunk.top < at - 4);
+      if (target) reveal(target.hit.path, target.hit.side, target.hit.line, "start");
+    },
+    [files, positionOf, reveal, scrollRef],
+  );
+  useLayoutEffect(() => {
+    navigationRef.current = {
+      jumpToFile: (path, align = "start") => reveal(path, undefined, undefined, align),
+      jumpToLine: (path, side, line, onReveal) => reveal(path, side, line, "center", onReveal),
+      positionOf,
+      stepHunk: stepVirtualHunk,
+    };
+    return () => {
+      navigationRef.current = null;
+    };
+  }, [navigationRef, positionOf, reveal, stepVirtualHunk]);
+
+  useEffect(() => {
+    if (view !== "files" && view !== "guided") return;
+    const offset = (virtualizer.scrollOffset ?? 0) + 44;
+    const currentItem = virtualItems.find((item) => item.end > offset);
+    onCurrentFile(currentItem ? (files[currentItem.index]?.filename ?? null) : null);
+  }, [files, onCurrentFile, view, virtualItems, virtualizer.scrollOffset]);
+
   const jumpToSide = (path: string, side: "L" | "R", line: number) => {
     onShowFiles();
-    requestAnimationFrame(() =>
-      document
-        .getElementById(lineId(fileAnchor(path), side, line))
-        ?.scrollIntoView({ block: "center" }),
-    );
+    requestAnimationFrame(() => reveal(path, side, line, "center"));
   };
   const jumpToLine = (path: string, line: number) => jumpToSide(path, "R", line);
 
@@ -281,11 +471,12 @@ export function ReadPane({
     let raf = 0;
     const check = () => {
       raf = 0;
-      const rr = root.getBoundingClientRect();
-      for (const el of root.querySelectorAll<HTMLElement>("[data-file]")) {
-        const r = el.getBoundingClientRect();
-        const end = r.bottom > rr.top && r.bottom <= rr.bottom + 8;
-        if (r.top < rr.top + 8 && end && el.dataset.file) onFileEnd(el.dataset.file);
+      const bottom = root.scrollTop + root.clientHeight + 8;
+      for (const item of virtualizer.getVirtualItems()) {
+        if (item.start < root.scrollTop + 8 && item.end <= bottom) {
+          const path = files[item.index]?.filename;
+          if (path) onFileEnd(path);
+        }
       }
     };
     const onScroll = () => {
@@ -296,11 +487,20 @@ export function ReadPane({
       root.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [onFileEnd, scrollRef, view]);
+  }, [files, onFileEnd, scrollRef, view, virtualizer]);
+  const jumpToHit = useCallback(
+    (hit: DiffHit) => reveal(hit.path, hit.side, hit.line, "center"),
+    [reveal],
+  );
+  const mapBlocks = fileGeometry.map((item, index) => ({
+    path: files[index]?.filename ?? "",
+    top: item.start,
+    height: item.size,
+  }));
   return (
     <TabsPanel value={view} keepMounted className="relative flex h-full min-w-0 flex-1 flex-col">
       {(view === "files" || view === "guided") && findOpen ? (
-        <FindBar scrollRef={scrollRef} onClose={onFindClose} />
+        <FindBar scrollRef={scrollRef} files={files} onJump={jumpToHit} onClose={onFindClose} />
       ) : null}
       <Definitions clone={clone} root={scrollRef} onOpenFile={onOpenFile} />
       {view === "guided" && tourOn ? (
@@ -323,6 +523,8 @@ export function ReadPane({
           paths={files.map((f) => f.filename)}
           viewed={viewed}
           marks={marks}
+          blocks={mapBlocks}
+          positionOf={positionOf}
         />
       ) : null}
       <div
@@ -520,17 +722,39 @@ export function ReadPane({
           </div>
 
           <div hidden={view !== "files" && view !== "guided"}>
-            <div className="grid min-w-0 gap-8">
-              {files.map((f) => (
-                <Fragment key={f.filename}>
-                  {headingFor?.(f.filename)}
-                  <FileSection
-                    f={f}
-                    reason={hideNoise ? classify(f as unknown as PullFile) : null}
-                    ctx={ctx}
-                  />
-                </Fragment>
-              ))}
+            <div
+              ref={listRef}
+              className="relative min-w-0"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {virtualItems.map((item) => {
+                const f = files[item.index];
+                const reason = reasons[item.index];
+                const open =
+                  openFiles.current.get(f.filename) ?? (!reason && !shouldFoldLargeDiff(f));
+                return (
+                  <div
+                    key={item.key}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full pb-8"
+                    style={{ transform: `translateY(${item.start - listOffset}px)` }}
+                  >
+                    {headingFor?.(f.filename)}
+                    <FileSection
+                      f={f}
+                      reason={reason}
+                      ctx={ctx}
+                      open={open}
+                      onOpenChange={(next) => {
+                        openFiles.current.set(f.filename, next);
+                        measuredSizes.current.delete(item.index);
+                        setOpenVersion((version) => version + 1);
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -547,6 +771,16 @@ const ago = (iso: string) => {
 /** A body with something to read once HTML comments (a bot's markers) are gone. */
 const hasWords = (body: string | null | undefined) =>
   !!body && body.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
+
+function groupByPath<T extends { readonly path: string }>(items: ReadonlyArray<T>) {
+  const grouped = new Map<string, T[]>();
+  for (const item of items) {
+    const here = grouped.get(item.path) ?? [];
+    here.push(item);
+    grouped.set(item.path, here);
+  }
+  return grouped;
+}
 
 const REVIEW_WORD: Record<string, string> = {
   APPROVED: "approved",
@@ -669,9 +903,10 @@ interface FileCtx {
   readonly split: boolean;
   readonly wrap: boolean;
   readonly hideWhitespace: boolean;
-  readonly threads: ReadonlyArray<Thread>;
-  readonly drafts: ReadonlyArray<Draft>;
   readonly steps: ReadonlyArray<GuidedStep>;
+  readonly threadsByPath: ReadonlyMap<string, ReadonlyArray<Thread>>;
+  readonly draftsByPath: ReadonlyMap<string, ReadonlyArray<Draft>>;
+  readonly stepsByPath: ReadonlyMap<string, ReadonlyArray<{ step: GuidedStep; index: number }>>;
   readonly showGuided: boolean;
   readonly provider: string;
   readonly composing: Composing | null;
@@ -699,12 +934,15 @@ function FileSection({
   f,
   reason,
   ctx,
+  open,
+  onOpenChange,
 }: {
   f: S.PullFile;
   reason: ReturnType<typeof classify>;
   ctx: FileCtx;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(!reason);
   const permalink = githubWebUrl(
     `${ctx.prRef.owner}/${ctx.prRef.repo}/blob/${ctx.headSha}/${f.filename}`,
   );
@@ -723,19 +961,16 @@ function FileSection({
     { enabled: wantFull, staleTime: Number.POSITIVE_INFINITY, retry: false },
   );
   const fullText = !wantFull ? undefined : full.isError ? null : full.data;
-  const ts = ctx.threads.filter((t) => t.path === f.filename);
-  const ds = ctx.drafts.filter((d) => d.path === f.filename);
-  const stepsHere = ctx.showGuided ? ctx.steps.filter((s) => s.path === f.filename) : [];
+  const ts = ctx.threadsByPath.get(f.filename) ?? [];
+  const ds = ctx.draftsByPath.get(f.filename) ?? [];
+  const stepsHere = ctx.showGuided ? (ctx.stepsByPath.get(f.filename) ?? []) : [];
   const read = ctx.viewed.has(f.filename);
   const under = (side: "L" | "R", line: number): ReactNode => {
     const here = ts.filter((t) => t.line === line && (t.side ? t.side[0] === side : side === "R"));
     const dh = ds.filter((d) => d.line === line && d.side === side);
-    const stepIdx =
-      side === "R" ? ctx.steps.findIndex((s) => s.path === f.filename && s.line === line) : -1;
-    const step =
-      stepIdx >= 0 && stepsHere.length && !ctx.guided.isDismissed(stepIdx)
-        ? ctx.steps[stepIdx]
-        : null;
+    const stepHere = side === "R" ? stepsHere.find(({ step }) => step.line === line) : undefined;
+    const stepIdx = stepHere?.index ?? -1;
+    const step = stepIdx >= 0 && !ctx.guided.isDismissed(stepIdx) ? (stepHere?.step ?? null) : null;
     const c = ctx.composing;
     const isComposing = c && c.path === f.filename && c.side === side && c.line === line;
     if (!here.length && !dh.length && !isComposing && !step) return null;
@@ -854,15 +1089,16 @@ function FileSection({
           {f.additions ? <span className="text-add">+{f.additions}</span> : null}{" "}
           {f.deletions ? <span className="text-del">−{f.deletions}</span> : null}
         </span>
-        <IconButton
-          size={6}
-          label={read ? "Mark unread" : "Mark read"}
-          pressed={read}
+        <button
+          type="button"
+          aria-label={read ? "Viewed: mark as not viewed" : "Mark file as viewed"}
+          aria-pressed={read}
           onClick={() => ctx.onMarkRead(f.filename)}
-          className={read ? "text-ok hover:text-ok" : undefined}
+          className="file-viewed-toggle"
         >
           <Check className="size-3.5" strokeWidth={2} />
-        </IconButton>
+          {read ? "Viewed" : "Mark viewed"}
+        </button>
       </header>
       {open ? (
         <Diff
@@ -916,7 +1152,7 @@ function FileSection({
       ) : (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => onOpenChange(true)}
           className="flex h-9 w-full items-center gap-2 px-3 text-left text-[12.5px] text-ink-3 hover:text-ink"
         >
           {reason ? FOLD_WHY[reason] : "Folded"} — {f.changes} line{f.changes === 1 ? "" : "s"}{" "}

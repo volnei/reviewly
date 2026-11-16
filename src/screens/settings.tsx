@@ -26,6 +26,7 @@ import { toast } from "@/app/toast";
 import { checkForUpdates } from "@/app/updater";
 import { openWhatsNew } from "@/app/whats-new";
 import { parseRepository, workspaceStore } from "@/app/workspace";
+import { ColorField } from "@/components/color-field";
 import {
   Autocomplete,
   AutocompleteInput,
@@ -322,6 +323,42 @@ export function SettingsScreen() {
                 checked={prefs.reduceMotion}
                 onChange={(v) => set("reduceMotion", v)}
               />
+            </Section>
+            <Section
+              title="Diff colors"
+              blurb="Choose how added and removed lines stand out. Status colors stay the same."
+            >
+              <Field label="Color palette">
+                <Choice
+                  inline
+                  value={prefs.diffAppearance.mode}
+                  onChange={(mode) => set("diffAppearance", { ...prefs.diffAppearance, mode })}
+                  options={[
+                    { value: "default", label: "Default" },
+                    { value: "vivid", label: "Vivid" },
+                    { value: "custom", label: "Custom" },
+                  ]}
+                />
+              </Field>
+              {prefs.diffAppearance.mode === "custom" ? (
+                <div className="diff-color-fields">
+                  {(
+                    [
+                      ["added", "Added lines"],
+                      ["removed", "Removed lines"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <ColorField
+                      key={key}
+                      label={label}
+                      value={prefs.diffAppearance[key]}
+                      onChange={(value) =>
+                        set("diffAppearance", { ...prefs.diffAppearance, [key]: value })
+                      }
+                    />
+                  ))}
+                </div>
+              ) : null}
             </Section>
             <p className="settings-autosave">
               <Check size={12} />

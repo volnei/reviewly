@@ -1,71 +1,3 @@
-import { useRegisterCommands } from "@/app/commands";
-import { useKeyScope } from "@/app/keys";
-import { settingsCategoryStore } from "@/app/settings-navigation";
-import { useTitleSlot } from "@/app/title-slot";
-import { toast } from "@/app/toast";
-import { usePullRequestInbox, workspaceStore } from "@/app/workspace";
-import { IconButton } from "@/components/icon-button";
-import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsiblePanel,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
-import { run, useEffectQuery } from "@/effect/runtime";
-import { useAuth } from "@/effect/services/Auth";
-import { Git } from "@/effect/services/Git";
-import { GitHub, type PrRef, type ReviewEvent } from "@/effect/services/GitHub";
-import { prId } from "@/effect/services/Inbox";
-import { prefsStore, tomorrowMorning, usePrefs } from "@/effect/services/Prefs";
-import { copyNamedLink } from "@/lib/clipboard";
-import { rememberSelection } from "@/features/list/list";
-import { age } from "@/features/list/row";
-import { MoreMenu } from "@/features/pr/actions";
-import { prContext } from "@/features/pr/ai";
-import { AskDrawer } from "@/features/pr/ask";
-import { AutoFixButton } from "@/features/pr/autofix";
-import { useLocalClone } from "@/features/pr/clone";
-import { SubmitDialog, SubmitReviewButton } from "@/features/pr/decide";
-import { lineId } from "@/features/pr/diff";
-import { EditableTitle } from "@/features/pr/editable";
-import { FilesColumn, type FilesOrder } from "@/features/pr/files-column";
-import { type StepActions, liftOf, useGuided } from "@/features/pr/guided";
-import { LayerHeading, orderByLayers, useLayers } from "@/features/pr/layers";
-import {
-  type Thread,
-  isReviewablePull,
-  pullKey,
-  usePullRequest,
-} from "@/features/pr/model";
-import { Labels, Reviewers } from "@/features/pr/pickers";
-import {
-  type Composing,
-  type PrView,
-  ReadPane,
-  fileAnchor,
-} from "@/features/pr/read-pane";
-import {
-  getReview,
-  reviewStore,
-  updateReview,
-  useLastEvent,
-  useReview,
-} from "@/features/pr/review-state";
-import { StackLine, useStack } from "@/features/pr/stack";
-import type { CommentOps, Draft } from "@/features/pr/thread";
-import { UserCard } from "@/features/pr/user-card";
-import { useWorkspace } from "@/features/pr/workspace";
-import type { AiAction } from "@/lib/ai-actions";
-import { readingMinutes } from "@/lib/estimate";
-import type { GuidedPlan, GuidedStep } from "@/lib/guided";
-import { boundaryCrossings, dependentsOf, ownerOf } from "@/lib/monorepo";
-import { previewLinks } from "@/lib/pr-links";
-import { PR_ORIGINS, type PrOrigin } from "@/lib/pr-navigation";
-import { reviewInstructions, selectReviewSkills } from "@/lib/review-skills";
-import type { PullFile } from "@/lib/tauri";
-import { safeOpenUrl } from "@/lib/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Effect } from "effect";
@@ -81,6 +13,68 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { useRegisterCommands } from "@/app/commands";
+import { useKeyScope } from "@/app/keys";
+import { settingsCategoryStore } from "@/app/settings-navigation";
+import { useTitleSlot } from "@/app/title-slot";
+import { toast } from "@/app/toast";
+import { usePullRequestInbox, workspaceStore } from "@/app/workspace";
+import { IconButton } from "@/components/icon-button";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
+import { run, useEffectQuery } from "@/effect/runtime";
+import { useAuth } from "@/effect/services/Auth";
+import { Git } from "@/effect/services/Git";
+import { GitHub, type PrRef, type ReviewEvent } from "@/effect/services/GitHub";
+import { prId } from "@/effect/services/Inbox";
+import { prefsStore, tomorrowMorning, usePrefs } from "@/effect/services/Prefs";
+import { rememberSelection } from "@/features/list/list";
+import { age } from "@/features/list/row";
+import { MoreMenu } from "@/features/pr/actions";
+import { prContext } from "@/features/pr/ai";
+import { AskDrawer } from "@/features/pr/ask";
+import { AutoFixButton } from "@/features/pr/autofix";
+import { useLocalClone } from "@/features/pr/clone";
+import { SubmitDialog, SubmitReviewButton } from "@/features/pr/decide";
+import { lineId } from "@/features/pr/diff";
+import { EditableTitle } from "@/features/pr/editable";
+import { FilesColumn, type FilesOrder } from "@/features/pr/files-column";
+import { liftOf, type StepActions, useGuided } from "@/features/pr/guided";
+import { LayerHeading, orderByLayers, useLayers } from "@/features/pr/layers";
+import { isReviewablePull, pullKey, type Thread, usePullRequest } from "@/features/pr/model";
+import { Labels, Reviewers } from "@/features/pr/pickers";
+import {
+  type Composing,
+  fileAnchor,
+  type PrView,
+  type ReadNavigation,
+  ReadPane,
+} from "@/features/pr/read-pane";
+import {
+  getReview,
+  reviewStore,
+  updateReview,
+  useLastEvent,
+  useReview,
+} from "@/features/pr/review-state";
+import { StackLine, useStack } from "@/features/pr/stack";
+import type { CommentOps, Draft } from "@/features/pr/thread";
+import { UserCard } from "@/features/pr/user-card";
+import { hunkStarts } from "@/features/pr/virtual-diff";
+import { useWorkspace } from "@/features/pr/workspace";
+import type { AiAction } from "@/lib/ai-actions";
+import { copyNamedLink } from "@/lib/clipboard";
+import { readingMinutes } from "@/lib/estimate";
+import type { GuidedPlan, GuidedStep } from "@/lib/guided";
+import { boundaryCrossings, dependentsOf, ownerOf } from "@/lib/monorepo";
+import { previewLinks } from "@/lib/pr-links";
+import { PR_ORIGINS, type PrOrigin } from "@/lib/pr-navigation";
+import { reviewInstructions, selectReviewSkills } from "@/lib/review-skills";
+import type { PullFile } from "@/lib/tauri";
+import { safeOpenUrl } from "@/lib/ui";
 
 /**
  * Entering a PR is entering a page. The title bar carries the way back, the
@@ -192,6 +186,7 @@ export function PrScreen() {
   const [approvedPr, setApprovedPr] = useState<string | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const readNavigation = useRef<ReadNavigation | null>(null);
 
   const pull = pr.pull.data;
   const files = pr.files.data ?? [];
@@ -209,8 +204,7 @@ export function PrScreen() {
     handledHead.current = sha;
     const r = getReview(prKey);
     if (r.headSha === sha) {
-      if (r.previousHead)
-        updateReview(prKey, (x) => ({ ...x, previousHead: null }));
+      if (r.previousHead) updateReview(prKey, (x) => ({ ...x, previousHead: null }));
       return;
     }
     updateReview(prKey, (x) => ({
@@ -221,16 +215,13 @@ export function PrScreen() {
     }));
   }, [pull?.head.sha, prKey]);
   useEffect(
-    () => () =>
-      updateReview(prKey, (x) => ({ ...x, seenAt: new Date().toISOString() })),
+    () => () => updateReview(prKey, (x) => ({ ...x, seenAt: new Date().toISOString() })),
     [prKey],
   );
   const commits = pr.commits.data ?? [];
   // What moved since the review you sent: the files between that head and this one.
   const reviewedSha =
-    review.reviewedSha && pull && review.reviewedSha !== pull.head.sha
-      ? review.reviewedSha
-      : null;
+    review.reviewedSha && pull && review.reviewedSha !== pull.head.sha ? review.reviewedSha : null;
   const [onlyChanged, setOnlyChanged] = useState(true);
   const compare = useEffectQuery(
     ["compare", ref.owner, ref.repo, reviewedSha ?? "", pull?.head.sha ?? ""],
@@ -249,8 +240,7 @@ export function PrScreen() {
     };
   }, [reviewedSha, commits, compare.data]);
   const since = useMemo(() => {
-    if (!review.previousHead || !pull || review.previousHead === pull.head.sha)
-      return null;
+    if (!review.previousHead || !pull || review.previousHead === pull.head.sha) return null;
     const i = commits.findIndex((c) => c.sha === review.previousHead);
     return {
       commits: i >= 0 ? commits.slice(i + 1) : commits,
@@ -262,16 +252,10 @@ export function PrScreen() {
     () => countBy(pr.threads.filter((t) => !t.resolved).map((t) => t.path)),
     [pr.threads],
   );
-  const draftsByPath = useMemo(
-    () => countBy(drafts.map((d) => d.path)),
-    [drafts],
-  );
+  const draftsByPath = useMemo(() => countBy(drafts.map((d) => d.path)), [drafts]);
 
   // the model: the same diff you see, built once per PR
-  const context = useMemo(
-    () => (pull ? prContext(pull, files, ref) : ""),
-    [pull, files, ref],
-  );
+  const context = useMemo(() => (pull ? prContext(pull, files, ref) : ""), [pull, files, ref]);
   const activeReviewSkills = useMemo(
     () =>
       selectReviewSkills(
@@ -299,15 +283,11 @@ export function PrScreen() {
   });
   // In layer order the read and j/k follow the plan; the column shows the slices.
   const orderedFiles = useMemo(
-    () =>
-      order === "layer" && layers.plan
-        ? orderByLayers(layers.plan, files)
-        : files,
+    () => (order === "layer" && layers.plan ? orderByLayers(layers.plan, files) : files),
     [order, layers.plan, files],
   );
   const shownFiles = useMemo(
-    () =>
-      onlyChanged && sinceReview?.files ? sinceReview.files : orderedFiles,
+    () => (onlyChanged && sinceReview?.files ? sinceReview.files : orderedFiles),
     [onlyChanged, sinceReview, orderedFiles],
   );
   const headingFor = useCallback(
@@ -317,9 +297,7 @@ export function PrScreen() {
       const i = plan.layers.findIndex((l) => l.files[0] === path);
       if (i < 0) return null;
       const layer = plan.layers[i];
-      const inPr = layer.files.filter((f) =>
-        files.some((x) => x.filename === f),
-      );
+      const inPr = layer.files.filter((f) => files.some((x) => x.filename === f));
       return (
         <LayerHeading
           layer={layer}
@@ -337,13 +315,8 @@ export function PrScreen() {
             const next = plan.layers[i + 1]?.files[0];
             if (next) {
               setCurrent(next);
-              document
-                .getElementById(fileAnchor(next))
-                ?.scrollIntoView({ block: "start" });
-              toast.say(
-                `${layer.title} read`,
-                `Next: ${plan.layers[i + 1].title}`,
-              );
+              readNavigation.current?.jumpToFile(next);
+              toast.say(`${layer.title} read`, `Next: ${plan.layers[i + 1].title}`);
             } else {
               setSubmit((s) => ({ ...s, open: true }));
               toast.say("Every layer read");
@@ -381,9 +354,7 @@ export function PrScreen() {
       if (!el) return;
       prScroll.set(prKey, el.scrollTop);
       const top = Math.round(el.scrollTop);
-      updateReview(prKey, (r) =>
-        r.scrollTop === top ? r : { ...r, scrollTop: top },
-      );
+      updateReview(prKey, (r) => (r.scrollTop === top ? r : { ...r, scrollTop: top }));
     };
   }, [prKey, view]);
   const loaded = !!pull && files.length > 0;
@@ -402,10 +373,7 @@ export function PrScreen() {
       if (o) touched.add(o);
     }
     const dependents = dependentsOf(touched, workspace);
-    const crossings = boundaryCrossings(
-      [...files] as unknown as PullFile[],
-      workspace,
-    );
+    const crossings = boundaryCrossings([...files] as unknown as PullFile[], workspace);
     return { touched, dependents, crossings, total: workspace.packages.length };
   }, [workspace, files]);
   const previews = useMemo(() => previewLinks(pull?.body), [pull?.body]);
@@ -414,25 +382,17 @@ export function PrScreen() {
     const mine = (pr.reviews.data ?? []).filter(
       (r) =>
         r.user.login === auth.viewer?.login &&
-        (r.state === "APPROVED" ||
-          r.state === "CHANGES_REQUESTED" ||
-          r.state === "COMMENTED"),
+        (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "COMMENTED"),
     );
     return (
-      mine.sort((a, b) =>
-        (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""),
-      )[0] ?? null
+      mine.sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""))[0] ?? null
     );
   }, [pr.reviews.data, auth.viewer?.login]);
 
   const jumpTo = useCallback((path: string) => {
     setView("files");
     setCurrent(path);
-    requestAnimationFrame(() =>
-      document
-        .getElementById(fileAnchor(path))
-        ?.scrollIntoView({ block: "start" }),
-    );
+    requestAnimationFrame(() => readNavigation.current?.jumpToFile(path));
   }, []);
   const jumpToStep = useCallback(
     (i: number) => {
@@ -441,22 +401,15 @@ export function PrScreen() {
       setView("guided");
       guided.setStep(i);
       const s = steps[i];
-      const el =
-        document.getElementById(lineId(fileAnchor(s.path), "R", s.line)) ??
-        document.getElementById(fileAnchor(s.path));
-      if (!el) {
-        toast.fail(
-          `${s.path} isn’t a file in this diff`,
-          "The model may have pointed outside it.",
-        );
+      if (!files.some((file) => file.filename === s.path)) {
+        toast.fail(`${s.path} isn’t a file in this diff`, "The model may have pointed outside it.");
         return;
       }
       requestAnimationFrame(() => {
-        el.scrollIntoView({ block: "center" });
-        markStop(s);
+        readNavigation.current?.jumpToLine(s.path, "R", s.line, () => markStop(s));
       });
     },
-    [guided.plan, guided.setStep],
+    [files, guided.plan, guided.setStep],
   );
   const openAiReview = useCallback(() => {
     const needsRun = !guided.plan || guided.stale || !!guided.error;
@@ -473,8 +426,7 @@ export function PrScreen() {
       guided.start();
       return;
     }
-    const firstVisible =
-      guided.plan?.steps.findIndex((_, i) => guided.visible(i)) ?? -1;
+    const firstVisible = guided.plan?.steps.findIndex((_, i) => guided.visible(i)) ?? -1;
     const target = guided.visible(guided.step) ? guided.step : firstVisible;
     if (target >= 0) jumpToStep(target);
   }, [
@@ -522,28 +474,20 @@ export function PrScreen() {
     [pr.threads, me],
   );
   const replies = useMemo(
-    () =>
-      needsYou.filter(
-        (t) => me != null && t.comments.some((c) => c.user.login === me),
-      ),
+    () => needsYou.filter((t) => me != null && t.comments.some((c) => c.user.login === me)),
     [needsYou, me],
   );
   const collectTargets = useCallback((): Target[] => {
-    const root = scrollRef.current;
-    if (!root) return [];
-    const rr = root.getBoundingClientRect();
-    const topOf = (el: Element) =>
-      el.getBoundingClientRect().top - rr.top + root.scrollTop;
+    const navigation = readNavigation.current;
+    if (!navigation) return [];
     const out: Target[] = [];
     for (const t of needsYou) {
       const side: "L" | "R" = t.side?.[0] === "L" ? "L" : "R";
-      const el = document.getElementById(
-        lineId(fileAnchor(t.path), side, t.line as number),
-      );
-      if (el)
+      const top = navigation.positionOf(t.path, side, t.line as number);
+      if (top != null)
         out.push({
           kind: "thread",
-          top: topOf(el),
+          top,
           path: t.path,
           side,
           line: t.line as number,
@@ -551,13 +495,11 @@ export function PrScreen() {
     }
     (guided.plan?.steps ?? []).forEach((st, i) => {
       if (!guided.visible(i)) return;
-      const el = document.getElementById(
-        lineId(fileAnchor(st.path), "R", st.line),
-      );
-      if (el)
+      const top = navigation.positionOf(st.path, "R", st.line);
+      if (top != null)
         out.push({
           kind: "stop",
-          top: topOf(el),
+          top,
           path: st.path,
           side: "R",
           line: st.line,
@@ -565,20 +507,19 @@ export function PrScreen() {
           index: i,
         });
     });
-    for (const sec of root.querySelectorAll<HTMLElement>("[data-file]")) {
-      const path = sec.dataset.file ?? "";
-      if (viewed.has(path)) continue;
-      for (const h of sec.querySelectorAll<HTMLElement>("[data-hunk]"))
-        out.push({ kind: "hunk", top: topOf(h), path, side: "R", line: 0 });
+    for (const file of shownFiles) {
+      if (viewed.has(file.filename)) continue;
+      for (const hunk of hunkStarts(file)) {
+        const top = navigation.positionOf(hunk.path, hunk.side, hunk.line);
+        if (top != null)
+          out.push({ kind: "hunk", top, path: hunk.path, side: "R", line: hunk.line });
+      }
     }
     out.sort((a, b) => a.top - b.top);
-    return out.filter(
-      (t, i) => i === 0 || Math.abs(t.top - out[i - 1].top) > 1,
-    );
-  }, [needsYou, guided.plan, guided.visible, viewed]);
+    return out.filter((t, i) => i === 0 || Math.abs(t.top - out[i - 1].top) > 1);
+  }, [needsYou, guided.plan, guided.visible, shownFiles, viewed]);
   if (import.meta.env.DEV)
-    (window as unknown as { __flowTargets?: () => Target[] }).__flowTargets =
-      collectTargets;
+    (window as unknown as { __flowTargets?: () => Target[] }).__flowTargets = collectTargets;
   const flow = useCallback(
     (d: 1 | -1) => {
       if (view !== "files" && view !== "guided") {
@@ -600,19 +541,21 @@ export function PrScreen() {
           markStop(null);
           setSubmit((s) => ({ ...s, open: true }));
           toast.say(
-            targets.length
-              ? "That was the last thing to look at"
-              : "Nothing here needs a look",
+            targets.length ? "That was the last thing to look at" : "Nothing here needs a look",
           );
         }
         return;
       }
-      root.scrollTo({ top: Math.max(0, next.top - LAND) });
-      if (next.kind === "stop" && next.index != null)
-        guided.setStep(next.index);
-      if (next.kind === "hunk") markStop(null);
-      else
-        markLines(next.path, next.side, next.line, next.endLine ?? next.line);
+      if (next.kind === "stop" && next.index != null) guided.setStep(next.index);
+      if (next.kind === "hunk") {
+        markStop(null);
+        readNavigation.current?.jumpToFile(next.path);
+        requestAnimationFrame(() => root.scrollTo({ top: Math.max(0, next.top - LAND) }));
+      } else {
+        readNavigation.current?.jumpToLine(next.path, next.side, next.line, () =>
+          markLines(next.path, next.side, next.line, next.endLine ?? next.line),
+        );
+      }
     },
     [collectTargets, guided.setStep, view],
   );
@@ -642,22 +585,7 @@ export function PrScreen() {
   // n / p walk the changed blocks across files; u goes to the next file you haven't read.
   const stepHunk = useCallback((d: number) => {
     setView("files");
-    const root = scrollRef.current;
-    if (!root) return;
-    const rr = root.getBoundingClientRect();
-    const hunks = [...root.querySelectorAll<HTMLElement>("[data-hunk]")];
-    const tops = hunks.map((h) => h.getBoundingClientRect().top - rr.top - 44);
-    let i = -1;
-    if (d > 0) i = tops.findIndex((t) => t > 4);
-    else
-      for (let j = tops.length - 1; j >= 0; j--)
-        if (tops[j] < -4) {
-          i = j;
-          break;
-        }
-    const el = hunks[i];
-    if (!el) return;
-    root.scrollTo({ top: root.scrollTop + tops[i] });
+    requestAnimationFrame(() => readNavigation.current?.stepHunk(d));
   }, []);
   const nextUnread = useCallback(() => {
     const i = shownFiles.findIndex((f) => f.filename === current);
@@ -678,49 +606,17 @@ export function PrScreen() {
         0,
         shownFiles.findIndex((f) => f.filename === current),
       );
-      const next =
-        shownFiles[Math.min(shownFiles.length - 1, Math.max(0, i + d))];
+      const next = shownFiles[Math.min(shownFiles.length - 1, Math.max(0, i + d))];
       if (next) jumpTo(next.filename);
     },
-    [
-      shownFiles,
-      current,
-      jumpTo,
-      order,
-      guided.plan,
-      guided.step,
-      guided.nextIndex,
-      jumpToStep,
-    ],
+    [shownFiles, current, jumpTo, order, guided.plan, guided.step, guided.nextIndex, jumpToStep],
   );
-
-  // the file in view, for the column's highlight
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-observe when the file set changes, not on every scroll state
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (!root) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        const top = entries
-          .filter((e) => e.isIntersecting)
-          .sort(
-            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-          )[0];
-        if (top) setCurrent((top.target as HTMLElement).dataset.file ?? null);
-      },
-      { root, rootMargin: "-40px 0px -70% 0px" },
-    );
-    for (const el of root.querySelectorAll("[data-file]")) io.observe(el);
-    return () => io.disconnect();
-  }, [files.length, view]);
 
   const markRead = useCallback(
     (path: string) =>
       updateReview(prKey, (r) => ({
         ...r,
-        viewed: r.viewed.includes(path)
-          ? r.viewed.filter((x) => x !== path)
-          : [...r.viewed, path],
+        viewed: r.viewed.includes(path) ? r.viewed.filter((x) => x !== path) : [...r.viewed, path],
       })),
     [prKey],
   );
@@ -735,10 +631,7 @@ export function PrScreen() {
     (d: Omit<Draft, "key">) =>
       updateReview(prKey, (r) => ({
         ...r,
-        drafts: [
-          ...r.drafts,
-          { ...d, key: `${d.path}:${d.side}${d.line}:${Date.now()}` },
-        ],
+        drafts: [...r.drafts, { ...d, key: `${d.path}:${d.side}${d.line}:${Date.now()}` }],
       })),
     [prKey],
   );
@@ -802,8 +695,7 @@ export function PrScreen() {
     let n = 0;
     steps.forEach((step, i) => {
       if (guided.isDismissed(i)) return;
-      const body =
-        guided.checks[`${step.path}:${step.line}`]?.finding ?? liftOf(step);
+      const body = guided.checks[`${step.path}:${step.line}`]?.finding ?? liftOf(step);
       if (!body) return;
       const range = step.endLine != null && step.endLine > step.line;
       addDraft({
@@ -824,11 +716,7 @@ export function PrScreen() {
           : "COMMENT";
     updateReview(prKey, (r) => ({ ...r, event }));
     setSubmit({ open: true, event });
-    toast.say(
-      n
-        ? `${n} comment${n === 1 ? "" : "s"} added to your review`
-        : "Nothing to lift",
-    );
+    toast.say(n ? `${n} comment${n === 1 ? "" : "s"} added to your review` : "Nothing to lift");
   }, [guided.plan, guided.isDismissed, guided.checks, addDraft, prKey]);
 
   const reply = useCallback(
@@ -848,9 +736,7 @@ export function PrScreen() {
     async (t: Thread, r: boolean) => {
       if (!t.nodeId) return;
       try {
-        await run(
-          Effect.flatMap(GitHub, (g) => g.resolveThread(t.nodeId as string, r)),
-        );
+        await run(Effect.flatMap(GitHub, (g) => g.resolveThread(t.nodeId as string, r)));
         await pr.refresh();
       } catch (e) {
         toast.fail(r ? "Couldn’t resolve it" : "Couldn’t reopen it", e);
@@ -885,9 +771,7 @@ export function PrScreen() {
             await pr.refresh();
             void qc.invalidateQueries({ queryKey: ["inbox"] });
           })
-          .catch((error) =>
-            toast.fail("Couldn’t reopen the pull request", error),
-          );
+          .catch((error) => toast.fail("Couldn’t reopen the pull request", error));
       });
     } catch (error) {
       toast.fail("Couldn’t close the pull request", error);
@@ -925,9 +809,7 @@ export function PrScreen() {
       onEdit: async (kind, id, body) => {
         try {
           await run(
-            Effect.flatMap(GitHub, (g) =>
-              g.editComment(kind, ref.owner, ref.repo, id, body),
-            ),
+            Effect.flatMap(GitHub, (g) => g.editComment(kind, ref.owner, ref.repo, id, body)),
           );
           await pr.refresh();
         } catch (e) {
@@ -937,11 +819,7 @@ export function PrScreen() {
       },
       onDelete: async (kind, id) => {
         try {
-          await run(
-            Effect.flatMap(GitHub, (g) =>
-              g.deleteComment(kind, ref.owner, ref.repo, id),
-            ),
-          );
+          await run(Effect.flatMap(GitHub, (g) => g.deleteComment(kind, ref.owner, ref.repo, id)));
           await pr.refresh();
           toast.say("Comment deleted");
         } catch (e) {
@@ -957,9 +835,7 @@ export function PrScreen() {
       if (!reviewable) {
         setSubmit((current) => ({ ...current, open: false }));
         toast.say(
-          pull?.merged
-            ? "This pull request is already merged"
-            : "This pull request is closed",
+          pull?.merged ? "This pull request is already merged" : "This pull request is closed",
         );
         return;
       }
@@ -976,12 +852,7 @@ export function PrScreen() {
                 line: d.line,
                 side: d.side === "L" ? "LEFT" : "RIGHT",
                 start_line: d.startLine ?? null,
-                start_side:
-                  d.startLine != null
-                    ? d.side === "L"
-                      ? "LEFT"
-                      : "RIGHT"
-                    : null,
+                start_side: d.startLine != null ? (d.side === "L" ? "LEFT" : "RIGHT") : null,
               })),
               commitId: pr.pull.data?.head.sha,
             }),
@@ -1006,9 +877,7 @@ export function PrScreen() {
         // Settings: a review on a draft takes it out of draft, with a way back.
         if (pr.pull.data?.draft && prefs.autoReadyOnReview) {
           try {
-            const nodeId = await run(
-              Effect.flatMap(GitHub, (g) => g.nodeId(ref)),
-            );
+            const nodeId = await run(Effect.flatMap(GitHub, (g) => g.nodeId(ref)));
             await run(Effect.flatMap(GitHub, (g) => g.setDraft(nodeId, false)));
             toast.act("Marked ready for review", "Keep it a draft", () => {
               run(Effect.flatMap(GitHub, (g) => g.setDraft(nodeId, true)))
@@ -1100,9 +969,7 @@ export function PrScreen() {
           for (const n of a.add) names.add(n);
           for (const n of a.remove) names.delete(n);
           try {
-            await run(
-              Effect.flatMap(GitHub, (g) => g.setLabels(ref, [...names])),
-            );
+            await run(Effect.flatMap(GitHub, (g) => g.setLabels(ref, [...names])));
             await pr.refresh();
             toast.say("Labels updated");
           } catch (e) {
@@ -1175,9 +1042,7 @@ export function PrScreen() {
             return true;
           case "x":
             if (order === "guided" && guided.plan) {
-              const next =
-                guided.nextIndex(guided.step, 1) ??
-                guided.nextIndex(guided.step, -1);
+              const next = guided.nextIndex(guided.step, 1) ?? guided.nextIndex(guided.step, -1);
               guided.dismiss(guided.step);
               if (next != null) jumpToStep(next);
               else markStop(null);
@@ -1277,9 +1142,7 @@ export function PrScreen() {
         },
         {
           id: "files",
-          label: filesHidden
-            ? "Show the files column"
-            : "Hide the files column",
+          label: filesHidden ? "Show the files column" : "Hide the files column",
           key: "f",
           run: () => {
             setView("files");
@@ -1342,11 +1205,7 @@ export function PrScreen() {
       {position >= 0 ? (
         <span className="tnum flex items-center gap-1 text-[12.5px] text-ink-3">
           {position + 1} of {list.length}
-          <IconButton
-            label="Previous (shift [)"
-            onClick={() => goTo(-1)}
-            disabled={position <= 0}
-          >
+          <IconButton label="Previous (shift [)" onClick={() => goTo(-1)} disabled={position <= 0}>
             <ChevronUp className="size-4" strokeWidth={2} />
           </IconButton>
           <IconButton
@@ -1370,11 +1229,7 @@ export function PrScreen() {
       <IconButton label="Snooze until tomorrow (s)" onClick={snooze}>
         <Moon className="size-4" strokeWidth={1.75} />
       </IconButton>
-      <IconButton
-        label="Ask about this PR (a)"
-        onClick={() => setAsk((o) => !o)}
-        pressed={ask}
-      >
+      <IconButton label="Ask about this PR (a)" onClick={() => setAsk((o) => !o)} pressed={ask}>
         <Sparkles className="ai-spark size-4" strokeWidth={1.75} />
       </IconButton>
       {view === "files" || view === "guided" ? (
@@ -1396,10 +1251,7 @@ export function PrScreen() {
         </>
       ) : null}
       {pull ? (
-        <IconButton
-          label="Open on GitHub"
-          onClick={() => safeOpenUrl(pull.html_url)}
-        >
+        <IconButton label="Open on GitHub" onClick={() => safeOpenUrl(pull.html_url)}>
           <ExternalLink className="size-4" strokeWidth={1.75} />
         </IconButton>
       ) : null}
@@ -1424,9 +1276,7 @@ export function PrScreen() {
                   }
                 : current,
             );
-            prefsStore.update((p) =>
-              p.done.includes(id) ? p : { ...p, done: [...p.done, id] },
-            );
+            prefsStore.update((p) => (p.done.includes(id) ? p : { ...p, done: [...p.done, id] }));
             void qc.invalidateQueries({ queryKey: ["inbox"] });
           }}
         />
@@ -1456,12 +1306,8 @@ export function PrScreen() {
     return (
       <div className="flex h-full items-center justify-center bg-page">
         <div className="max-w-md text-center">
-          <p className="text-[13px] text-ink">
-            GitHub didn’t answer for #{ref.number}.
-          </p>
-          <p className="mt-1 text-[12.5px] text-ink-3">
-            {String((pr.error as Error).message)}
-          </p>
+          <p className="text-[13px] text-ink">GitHub didn’t answer for #{ref.number}.</p>
+          <p className="mt-1 text-[12.5px] text-ink-3">{String((pr.error as Error).message)}</p>
           <Button
             variant="ghost"
             size="sm"
@@ -1498,11 +1344,7 @@ export function PrScreen() {
     >
       <header className="shrink-0 border-b border-hair px-8 pt-5 pb-3">
         {pull ? (
-          <EditableTitle
-            title={pull.title}
-            canEdit={canEdit}
-            onSave={saveTitle}
-          />
+          <EditableTitle title={pull.title} canEdit={canEdit} onSave={saveTitle} />
         ) : (
           <h1 className="selectable text-[20px] font-semibold tracking-[-0.02em] text-ink">
             {title}
@@ -1522,34 +1364,25 @@ export function PrScreen() {
           {author ? (
             <UserCard login={author}>
               <span className="flex items-center gap-1.5">
-                {avatar ? (
-                  <img src={avatar} alt="" className="size-4 rounded-full" />
-                ) : null}
+                {avatar ? <img src={avatar} alt="" className="size-4 rounded-full" /> : null}
                 {author}
               </span>
             </UserCard>
           ) : null}
-          <span className="pr-review-progress">
-            {files.filter((f) => viewed.has(f.filename)).length}/{files.length}{" "}
-            files reviewed
+          <span className="pr-review-progress pr-header-stat">
+            {files.filter((f) => viewed.has(f.filename)).length}/{files.length} files reviewed
           </span>
-          {pull?.mergeable === false ? (
-            <span className="text-del">Merge conflicts</span>
-          ) : null}
+          {pull?.mergeable === false ? <span className="text-del">Merge conflicts</span> : null}
           {pr.checks.data ? (
             <Button
               variant="ghost"
               size="sm"
               type="button"
               onClick={() => setView("checks")}
-              className="hover:text-ink"
+              className="pr-header-stat pr-checks-progress"
             >
-              {
-                pr.checks.data.check_runs.filter(
-                  (c) => c.conclusion === "success",
-                ).length
-              }
-              /{pr.checks.data.check_runs.length} checks passed
+              {pr.checks.data.check_runs.filter((c) => c.conclusion === "success").length}/
+              {pr.checks.data.check_runs.length} checks passed
             </Button>
           ) : null}
           {activeReviewSkills.length ? (
@@ -1569,81 +1402,70 @@ export function PrScreen() {
                 : `${activeReviewSkills.length} review skills`}
             </Button>
           ) : null}
-          {pull && reviewable ? (
-            <AutoFixButton
-              prRef={ref}
-              pull={pull}
-              clone={clone}
-              threads={pr.threads}
-              reviews={pr.reviews.data ?? []}
-              checks={pr.checks.data}
-              instructions={promptInstructions}
-            />
-          ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            className="pr-ai-review"
-            data-running={guided.running ? "" : undefined}
-            disabled={
-              !pull ||
-              !context ||
-              (guided.available === null && !guided.plan && !guided.running)
-            }
-            onClick={openAiReview}
-            title={
-              guided.running
-                ? "The review is running. Open its progress."
-                : guided.plan && !guided.stale
-                  ? "Continue your guided review without generating it again"
-                  : "Walk through this pull request with your AI provider"
-            }
-          >
-            <span className="pr-ai-review-icon" aria-hidden>
-              <Sparkles className="size-4 shrink-0" />
-            </span>
-            <span className="pr-ai-review-label">
-              {guided.running
-                ? "Reviewing with AI…"
-                : (!guided.plan || guided.stale || guided.error) &&
-                    guided.available === false
-                  ? "Set up AI review"
-                  : guided.error
-                    ? "Retry AI review"
-                    : guided.stale
-                      ? "Update AI review"
-                      : guided.plan?.steps.length
-                        ? `Continue review · ${Math.min(guided.step + 1, guided.plan.steps.length)} of ${guided.plan.steps.length}`
-                        : guided.plan
-                          ? "View AI review"
-                          : "Review with AI"}
-            </span>
-            {guided.running ? (
-              <span
-                className="pr-ai-review-dot size-1.5 rounded-full"
-                aria-hidden
+          <div className="pr-header-actions">
+            {pull && reviewable ? (
+              <AutoFixButton
+                prRef={ref}
+                pull={pull}
+                clone={clone}
+                threads={pr.threads}
+                reviews={pr.reviews.data ?? []}
+                checks={pr.checks.data}
+                instructions={promptInstructions}
               />
             ) : null}
-          </Button>
-          {reviewable ? (
-            <SubmitReviewButton
-              drafts={drafts.length}
-              onOpen={() =>
-                setSubmit((current) => ({ ...current, open: true }))
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              className="pr-header-action pr-ai-review"
+              aria-busy={guided.running}
+              data-running={guided.running ? "" : undefined}
+              disabled={
+                !pull || !context || (guided.available === null && !guided.plan && !guided.running)
               }
-            />
-          ) : null}
+              onClick={openAiReview}
+              title={
+                guided.running
+                  ? "The review is running. Open its progress."
+                  : guided.plan && !guided.stale
+                    ? "Continue your guided review without generating it again"
+                    : "Walk through this pull request with your AI provider"
+              }
+            >
+              <span className="pr-ai-review-icon" aria-hidden>
+                <Sparkles className="size-4 shrink-0" />
+              </span>
+              <span className="pr-ai-review-label">
+                {guided.running
+                  ? "Reviewing with AI…"
+                  : (!guided.plan || guided.stale || guided.error) && guided.available === false
+                    ? "Set up AI review"
+                    : guided.error
+                      ? "Retry AI review"
+                      : guided.stale
+                        ? "Update AI review"
+                        : guided.plan?.steps.length
+                          ? `Continue review · ${Math.min(guided.step + 1, guided.plan.steps.length)} of ${guided.plan.steps.length}`
+                          : guided.plan
+                            ? "View AI review"
+                            : "Review with AI"}
+              </span>
+              {guided.running ? (
+                <span className="pr-ai-review-dot size-1.5 rounded-full" aria-hidden />
+              ) : null}
+            </Button>
+            {reviewable ? (
+              <SubmitReviewButton
+                drafts={drafts.length}
+                onOpen={() => setSubmit((current) => ({ ...current, open: true }))}
+              />
+            ) : null}
+          </div>
         </div>
         <Collapsible className="pr-metadata">
           <CollapsibleTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="sm"
-                className="pr-metadata-trigger"
-              />
-            }
+            render={<Button variant="ghost" size="sm" className="pr-metadata-trigger" />}
           >
             <ChevronDown className="pr-metadata-chevron size-3.5" aria-hidden />
             Details
@@ -1664,11 +1486,7 @@ export function PrScreen() {
                       <UserCard login={author}>
                         <span className="flex items-center gap-1.5">
                           {avatar ? (
-                            <img
-                              src={avatar}
-                              alt=""
-                              className="size-4 rounded-full bg-raise"
-                            />
+                            <img src={avatar} alt="" className="size-4 rounded-full bg-raise" />
                           ) : null}
                           <span>{author}</span>
                         </span>
@@ -1682,9 +1500,7 @@ export function PrScreen() {
                     <dd>
                       Opened {age(createdAt)} ago
                       {updatedAt ? (
-                        <span className="pr-meta-secondary">
-                          Updated {age(updatedAt)} ago
-                        </span>
+                        <span className="pr-meta-secondary">Updated {age(updatedAt)} ago</span>
                       ) : null}
                     </dd>
                   </div>
@@ -1696,10 +1512,7 @@ export function PrScreen() {
                       {pull.changed_files ?? files.length} files
                       <span className="text-add">+{pull.additions ?? 0}</span>
                       <span className="text-del">−{pull.deletions ?? 0}</span>
-                      <span
-                        className="pr-meta-secondary"
-                        title="A careful read, from size alone"
-                      >
+                      <span className="pr-meta-secondary" title="A careful read, from size alone">
                         ~
                         {readingMinutes(
                           pull.additions ?? 0,
@@ -1728,11 +1541,7 @@ export function PrScreen() {
                 <div className="pr-metadata-controls">
                   <div className="pr-meta-control">
                     <span className="pr-meta-label">Labels</span>
-                    <Labels
-                      prRef={ref}
-                      current={pull.labels}
-                      onChanged={pr.refresh}
-                    />
+                    <Labels prRef={ref} current={pull.labels} onChanged={pr.refresh} />
                   </div>
                   <div className="pr-meta-control">
                     <span className="pr-meta-label">Reviewers</span>
@@ -1752,9 +1561,7 @@ export function PrScreen() {
                   {pull.state !== "open" ? (
                     <div className="pr-meta-control">
                       <span className="pr-meta-label">State</span>
-                      <span className="text-ink-2">
-                        {pull.merged ? "merged" : "closed"}
-                      </span>
+                      <span className="text-ink-2">{pull.merged ? "merged" : "closed"}</span>
                     </div>
                   ) : null}
                   {myReview ? (
@@ -1766,9 +1573,7 @@ export function PrScreen() {
                           : myReview.state === "CHANGES_REQUESTED"
                             ? "Changes requested"
                             : "Commented"}
-                        {myReview.submitted_at
-                          ? ` ${age(myReview.submitted_at)} ago`
-                          : ""}
+                        {myReview.submitted_at ? ` ${age(myReview.submitted_at)} ago` : ""}
                       </span>
                     </div>
                   ) : null}
@@ -1786,11 +1591,7 @@ export function PrScreen() {
                             title={l.url}
                             className="flex h-5 items-center gap-1 rounded-[4px] bg-raise px-1.5 text-[11.5px] text-ink-2 hover:text-ink"
                           >
-                            <ExternalLink
-                              className="size-3"
-                              strokeWidth={2}
-                              aria-hidden
-                            />
+                            <ExternalLink className="size-3" strokeWidth={2} aria-hidden />
                             {l.host}
                           </Button>
                         ))}
@@ -1840,11 +1641,7 @@ export function PrScreen() {
                         setView("files");
                         setCurrent(c.file);
                         requestAnimationFrame(() =>
-                          document
-                            .getElementById(
-                              lineId(fileAnchor(c.file), "R", c.line),
-                            )
-                            ?.scrollIntoView({ block: "center" }),
+                          readNavigation.current?.jumpToLine(c.file, "R", c.line),
                         );
                       }}
                       className="mono h-6 rounded-md px-1.5 text-[11.5px] text-ink-2 hover:bg-raise hover:text-ink"
@@ -1874,29 +1671,22 @@ export function PrScreen() {
           <Sparkles className="pr-tab-icon size-3.5" aria-hidden />
           Guided review
           {guided.plan ? (
-            <span className="pr-tab-count tnum">
-              {guided.plan.steps.length}
-            </span>
+            <span className="pr-tab-count tnum">{guided.plan.steps.length}</span>
           ) : null}
         </TabsTab>
         <TabsTab value="discussion" id="pr-tab-discussion">
           Discussion
           <span className="pr-tab-count tnum">
-            {(pr.issueComments.data?.length ?? 0) +
-              (pr.reviews.data?.length ?? 0)}
+            {(pr.issueComments.data?.length ?? 0) + (pr.reviews.data?.length ?? 0)}
           </span>
         </TabsTab>
         <TabsTab value="commits" id="pr-tab-commits">
           Commits
-          <span className="pr-tab-count tnum">
-            {pr.commits.data?.length ?? 0}
-          </span>
+          <span className="pr-tab-count tnum">{pr.commits.data?.length ?? 0}</span>
         </TabsTab>
         <TabsTab value="checks" id="pr-tab-checks">
           Checks
-          <span className="pr-tab-count tnum">
-            {pr.checks.data?.check_runs.length ?? 0}
-          </span>
+          <span className="pr-tab-count tnum">{pr.checks.data?.check_runs.length ?? 0}</span>
         </TabsTab>
       </TabsList>
       {!pull ? (
@@ -1954,9 +1744,7 @@ export function PrScreen() {
               run(
                 Effect.flatMap(Git, (g) =>
                   Effect.flatMap(g.editorTargets, (ts) =>
-                    ts[0]
-                      ? g.openEditor(`${clone}/${file}`, ts[0].id)
-                      : Effect.void,
+                    ts[0] ? g.openEditor(`${clone}/${file}`, ts[0].id) : Effect.void,
                   ),
                 ),
               ).catch((e) => toast.fail("Couldn’t open the editor", e));
@@ -1982,10 +1770,11 @@ export function PrScreen() {
             onJumpFile={jumpTo}
             onFinishReview={
               reviewable
-                ? () =>
-                    setSubmit({ open: true, event: review.event ?? "COMMENT" })
+                ? () => setSubmit({ open: true, event: review.event ?? "COMMENT" })
                 : undefined
             }
+            navigationRef={readNavigation}
+            onCurrentFile={setCurrent}
             headingFor={headingFor}
             issueComments={pr.issueComments.data ?? []}
             reviews={pr.reviews.data ?? []}
@@ -2059,10 +1848,7 @@ export function PrScreen() {
           }}
           onSubmit={(body) => {
             if (submit.event === "REQUEST_CHANGES" && !body.trim())
-              toast.say(
-                "Requesting changes without a word",
-                "Reviewers usually expect one.",
-              );
+              toast.say("Requesting changes without a word", "Reviewers usually expect one.");
             void sendReview(body);
           }}
           onDiscardDraft={discardDraft}
@@ -2071,10 +1857,9 @@ export function PrScreen() {
             setSubmit((s) => ({ ...s, open: false }));
             setCurrent(d.path);
             setTimeout(() => {
-              document
-                .getElementById(lineId(fileAnchor(d.path), d.side, d.line))
-                ?.scrollIntoView({ block: "center" });
-              markLines(d.path, d.side, d.startLine ?? d.line, d.line);
+              readNavigation.current?.jumpToLine(d.path, d.side, d.line, () =>
+                markLines(d.path, d.side, d.startLine ?? d.line, d.line),
+              );
             }, 50);
           }}
           confirm={prefs.confirmBeforeSubmit}
@@ -2085,14 +1870,8 @@ export function PrScreen() {
 }
 
 /** The lines you were brought to, lit: cleared first, then every row of the range. */
-function markLines(
-  path: string | null,
-  side: "L" | "R",
-  start: number,
-  end: number,
-) {
-  for (const el of document.querySelectorAll("[data-stop]"))
-    el.removeAttribute("data-stop");
+function markLines(path: string | null, side: "L" | "R", start: number, end: number) {
+  for (const el of document.querySelectorAll("[data-stop]")) el.removeAttribute("data-stop");
   if (!path) return;
   const prefix = fileAnchor(path);
   for (let n = start; n <= end; n++)
@@ -2102,9 +1881,7 @@ function markLines(
       ?.setAttribute("data-stop", "");
 }
 const markStop = (s: GuidedStep | null) =>
-  s
-    ? markLines(s.path, "R", s.line, s.endLine ?? s.line)
-    : markLines(null, "R", 0, 0);
+  s ? markLines(s.path, "R", s.line, s.endLine ?? s.line) : markLines(null, "R", 0, 0);
 
 /** One thing on the page that needs a look, in reading order. */
 interface Target {
@@ -2124,18 +1901,10 @@ const LAND = 120;
 /** The shape of the page while GitHub answers: a column of files, a read, nothing to click yet. */
 function Loading() {
   return (
-    <div
-      className="flex min-h-0 flex-1"
-      aria-busy="true"
-      aria-label="Loading the pull request"
-    >
+    <div className="flex min-h-0 flex-1" aria-busy="true" aria-label="Loading the pull request">
       <aside className="w-64 shrink-0 border-r border-hair bg-desk px-4 pt-4">
         {[180, 120, 150, 90, 160, 130].map((w, i) => (
-          <Skeleton
-            key={w + i}
-            className="mb-3 h-3 rounded-sm bg-raise"
-            style={{ width: w }}
-          />
+          <Skeleton key={w + i} className="mb-3 h-3 rounded-sm bg-raise" style={{ width: w }} />
         ))}
       </aside>
       <div className="flex-1 px-8 pt-6">

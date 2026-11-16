@@ -1,8 +1,12 @@
+import { useEffect, useRef, useState } from "react";
+
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
 
 export interface MapMark {
   readonly id: string;
+  readonly path: string;
+  readonly side: "L" | "R";
+  readonly line: number;
   readonly kind: "thread" | "draft";
 }
 
@@ -23,12 +27,19 @@ export function Minimap({
   paths,
   viewed,
   marks,
+  blocks: virtualBlocks,
+  positionOf,
 }: {
   scrollRef: React.RefObject<HTMLDivElement>;
   paths: ReadonlyArray<string>;
   viewed: ReadonlySet<string>;
   marks: ReadonlyArray<MapMark>;
+  blocks?: ReadonlyArray<Pick<Block, "path" | "top" | "height">>;
+  positionOf?: (path: string, side: "L" | "R", line: number) => number | null;
 }) {
+  const latest = useRef({ viewed, marks, virtualBlocks, positionOf });
+  latest.current = { viewed, marks, virtualBlocks, positionOf };
+  const pathKey = paths.join("|");
   const [geo, setGeo] = useState<{
     total: number;
     view: { top: number; height: number };
@@ -46,14 +57,17 @@ export function Minimap({
       const rr = root.getBoundingClientRect();
       const total = root.scrollHeight;
       const rel = (el: Element) => el.getBoundingClientRect().top - rr.top + root.scrollTop;
-      const blocks: Block[] = [];
-      for (const el of root.querySelectorAll<HTMLElement>("[data-file]")) {
-        const path = el.dataset.file ?? "";
-        blocks.push({ path, top: rel(el), height: el.offsetHeight, read: viewed.has(path) });
-      }
-      const dots = marks.flatMap((m) => {
+      const current = latest.current;
+      const blocks: Block[] = current.virtualBlocks
+        ? current.virtualBlocks.map((block) => ({ ...block, read: current.viewed.has(block.path) }))
+        : [...root.querySelectorAll<HTMLElement>("[data-file]")].map((el) => {
+            const path = el.dataset.file ?? "";
+            return { path, top: rel(el), height: el.offsetHeight, read: current.viewed.has(path) };
+          });
+      const dots = current.marks.flatMap((m) => {
         const el = document.getElementById(m.id);
-        return el ? [{ id: m.id, top: rel(el), kind: m.kind }] : [];
+        const top = el ? rel(el) : current.positionOf?.(m.path, m.side, m.line);
+        return top != null ? [{ id: m.id, top, kind: m.kind }] : [];
       });
       setGeo({ total, view: { top: root.scrollTop, height: root.clientHeight }, blocks, dots });
     };
@@ -74,7 +88,7 @@ export function Minimap({
       clearTimeout(late);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [scrollRef, paths.join("|"), viewed, marks]);
+  }, [scrollRef, pathKey, viewed, marks]);
 
   if (!geo || geo.total <= geo.view.height * 1.5) return null;
   const pct = (y: number) => `${(y / geo.total) * 100}%`;

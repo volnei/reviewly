@@ -17,6 +17,32 @@ export interface WhatsNewEntry {
  */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    version: "1.1.8",
+    date: "2026-11-16",
+    items: [
+      {
+        title: "Large pull requests stay responsive",
+        detail:
+          "Reviewly now virtualizes the file diff, lazily parses and highlights visible changes, caches repeated highlighting, and folds exceptionally large files before they can monopolize the interface.",
+      },
+      {
+        title: "Search and navigation cover the whole diff",
+        detail:
+          "Find, guided review, keyboard navigation, comments, and the minimap can jump to files and lines even when their diff is not currently mounted on screen.",
+      },
+      {
+        title: "Diff colors that fit your eyes",
+        detail:
+          "Choose the theme-aware default, a vivid preset, or custom added and removed colors from Appearance settings without changing semantic status colors elsewhere in the app.",
+      },
+      {
+        title: "A quieter reviewed state",
+        detail:
+          "Files use explicit Viewed labels and controls without turning every completed row into a green card, while pull request header actions share a calmer, consistent treatment.",
+      },
+    ],
+  },
+  {
     version: "1.1.7",
     date: "2026-11-12",
     items: [

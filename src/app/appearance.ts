@@ -1,9 +1,11 @@
-import { isNative } from "@/effect/Tauri";
+import { Effect } from "effect";
+import { useEffect } from "react";
+
 import { run } from "@/effect/runtime";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { prefsStore, usePrefs } from "@/effect/services/Prefs";
-import { Effect } from "effect";
-import { useEffect } from "react";
+import { isNative } from "@/effect/Tauri";
+import { diffAppearanceTokens } from "@/lib/diff-appearance";
 
 /**
  * Settings → Appearance, applied: the theme on <html> (`data-theme` for our
@@ -15,6 +17,12 @@ export function useAppearance() {
   const zoom = usePrefs((p) => p.zoom);
   const reduceMotion = usePrefs((p) => p.reduceMotion);
   const appIcon = usePrefs((p) => p.appIcon);
+  const diffAppearance = usePrefs((p) => p.diffAppearance);
+  useEffect(() => {
+    for (const [key, value] of Object.entries(diffAppearanceTokens(diffAppearance))) {
+      document.documentElement.style.setProperty(key, value);
+    }
+  }, [diffAppearance]);
   useEffect(() => {
     document.documentElement.toggleAttribute("data-reduce-motion", reduceMotion);
   }, [reduceMotion]);

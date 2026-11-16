@@ -1,13 +1,15 @@
+import { ChevronRight, Search } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+
 import { ResizeHandle } from "@/components/resize-handle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import type * as S from "@/effect/schema";
-import { type HideReason, classify } from "@/lib/focus";
+import { classify, type HideReason } from "@/lib/focus";
 import type { PullFile } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import { ChevronRight, Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+
 import { FileRow } from "./file-row";
 import { type Guided, StepsList } from "./guided";
 import { type Layers, LayersColumn } from "./layers";
@@ -231,7 +233,7 @@ export function FilesColumn({
       <div className="min-h-0 flex-1 overflow-y-auto pb-6 scrollbar-thin">
         {showSteps ? (
           guided.plan ? (
-            <StepsList g={guided} current={stepIndex} onPick={onStep} />
+            <StepsList g={guided} current={stepIndex} onPick={onStep} viewed={viewed} />
           ) : (
             <p className="px-4 pt-3 text-[12px] text-ink-3">
               {busyHint ?? "The stops appear once the model has read the diff."}

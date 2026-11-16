@@ -1,16 +1,17 @@
+import { UnfoldVertical } from "lucide-react";
+import { Fragment, memo, type ReactNode, useEffect, useMemo, useState } from "react";
+
 import {
   type DiffLine,
-  type Hunk,
   gapsOf,
   hideWhitespaceOnly,
+  type Hunk,
   parsePatch,
   toSplit,
 } from "@/lib/diff";
-import { type Range, intraPairs, markRanges } from "@/lib/intra";
+import { intraPairs, markRanges, type Range } from "@/lib/intra";
 import { detectLanguage, highlightLine } from "@/lib/lang";
 import { cn } from "@/lib/utils";
-import { UnfoldVertical } from "lucide-react";
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 
 /**
  * One file's patch: unified or split, numbered, highlighted, with a slot under
@@ -297,23 +298,27 @@ export function Diff({
   );
 }
 
-function Code({
+const Code = memo(function Code({
   text,
   lang,
   ranges,
-}: { text: string; lang: string; ranges?: ReadonlyArray<Range> }) {
+}: {
+  text: string;
+  lang: string;
+  ranges?: ReadonlyArray<Range>;
+}) {
   const html = ranges?.length
     ? markRanges(highlightLine(text, lang), ranges)
     : highlightLine(text, lang);
   // biome-ignore lint/security/noDangerouslySetInnerHtml: Prism output of our own escaping, marks inserted between tags only
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
-}
+});
 
 const rowCls = (kind: DiffLine["kind"]) =>
   kind === "add"
-    ? "bg-add/10"
+    ? "diff-line-added"
     : kind === "del"
-      ? "bg-del/10"
+      ? "diff-line-removed"
       : kind === "hunk"
         ? "bg-sink text-ink-3"
         : "";
@@ -327,7 +332,13 @@ function GutterLabel({
   n,
   pick,
   enabled = true,
-}: { label: number | null; side: Side; n: number | null; pick: Pick; enabled?: boolean }) {
+}: {
+  label: number | null;
+  side: Side;
+  n: number | null;
+  pick: Pick;
+  enabled?: boolean;
+}) {
   return (
     <td
       className={cn(gutterCls, enabled && n != null && "cursor-row-resize hover:text-ink")}
@@ -346,7 +357,13 @@ function Gutter({
   pick,
   enabled,
   selected,
-}: { side: Side; n: number | null; pick: Pick; enabled: boolean; selected?: boolean }) {
+}: {
+  side: Side;
+  n: number | null;
+  pick: Pick;
+  enabled: boolean;
+  selected?: boolean;
+}) {
   return (
     <td
       className={cn(gutterCls, enabled && n != null && "cursor-row-resize hover:text-ink")}
@@ -382,7 +399,11 @@ function GapRow({
   cols,
   size,
   onExpand,
-}: { cols: number; size: number | null; onExpand: () => void }) {
+}: {
+  cols: number;
+  size: number | null;
+  onExpand: () => void;
+}) {
   return (
     <tr className="bg-sink">
       <td colSpan={cols} className="px-3 py-0 font-sans text-[11.5px]">
@@ -407,7 +428,12 @@ function Plus({
   n,
   pick,
   enabled,
-}: { side: Side; n: number | null; pick: Pick; enabled: boolean }) {
+}: {
+  side: Side;
+  n: number | null;
+  pick: Pick;
+  enabled: boolean;
+}) {
   if (!enabled || n == null) return null;
   return (
     <button
@@ -554,8 +580,8 @@ function UnifiedHunk({
                 <span
                   className={cn(
                     "mr-2 inline-block w-2 text-ink-3",
-                    l.kind === "add" && "text-add",
-                    l.kind === "del" && "text-del",
+                    l.kind === "add" && "diff-sign-added",
+                    l.kind === "del" && "diff-sign-removed",
                   )}
                 >
                   {l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "}
@@ -649,7 +675,11 @@ function RowGroup({
   children,
   below,
   cols,
-}: { children: ReactNode; below: ReactNode; cols: number }) {
+}: {
+  children: ReactNode;
+  below: ReactNode;
+  cols: number;
+}) {
   if (!below) return <>{children}</>;
   return (
     <>

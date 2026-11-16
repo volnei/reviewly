@@ -57,6 +57,9 @@ const FILENAME_TO_LANG: Record<string, string> = {
   makefile: "bash",
 };
 
+const HIGHLIGHT_CACHE_LIMIT = 5_000;
+const highlightCache = new Map<string, string>();
+
 export function detectLanguage(filename: string): string {
   const base = filename.split("/").pop()?.toLowerCase() ?? filename;
   if (FILENAME_TO_LANG[base]) return FILENAME_TO_LANG[base];
@@ -71,13 +74,26 @@ export function detectLanguage(filename: string): string {
  */
 export function highlightLine(code: string, lang: string): string {
   if (!code) return "";
+  const key = `${lang}\0${code}`;
+  const cached = highlightCache.get(key);
+  if (cached != null) return cached;
   const grammar = Prism.languages[lang];
-  if (!grammar) return escapeHtml(code);
-  try {
-    return Prism.highlight(code, grammar, lang);
-  } catch {
-    return escapeHtml(code);
+  let highlighted: string;
+  if (!grammar) {
+    highlighted = escapeHtml(code);
+  } else {
+    try {
+      highlighted = Prism.highlight(code, grammar, lang);
+    } catch {
+      highlighted = escapeHtml(code);
+    }
   }
+  highlightCache.set(key, highlighted);
+  if (highlightCache.size > HIGHLIGHT_CACHE_LIMIT) {
+    const oldest = highlightCache.keys().next().value;
+    if (oldest != null) highlightCache.delete(oldest);
+  }
+  return highlighted;
 }
 
 function escapeHtml(s: string): string {

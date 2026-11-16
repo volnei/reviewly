@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+import { ChevronDown, ChevronUp, MoreHorizontal, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "@/components/ui/menu";
@@ -13,22 +17,20 @@ import { providerName } from "@/effect/services/Ai";
 import { AppSettings } from "@/effect/services/AppSettings";
 import { age } from "@/features/list/row";
 import {
+  checkPrompt,
   type CheckResult,
   type GuidedStep,
-  type StepKind,
-  checkPrompt,
   parseCheckResult,
   parseGuided,
   stepKey,
+  type StepKind,
 } from "@/lib/guided";
 import { cn } from "@/lib/utils";
-import { Effect } from "effect";
-import { ChevronDown, ChevronUp, MoreHorizontal, Sparkles, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import {
-  type PromptOpts,
   cancelBackground,
   guidedPrompt,
+  type PromptOpts,
   startBackground,
   useBackgroundRun,
 } from "./ai";
@@ -390,7 +392,11 @@ function CheckBlock({
   result,
   onKeep,
   onDismiss,
-}: { result: CheckResult; onKeep: () => void; onDismiss: () => void }) {
+}: {
+  result: CheckResult;
+  onKeep: () => void;
+  onDismiss: () => void;
+}) {
   if (result.verdict === "resolved")
     return (
       <div className="mt-2 rounded-md bg-sink px-3 py-2 text-[12.5px]">
@@ -565,10 +571,12 @@ export function StepsList({
   g,
   current,
   onPick,
+  viewed,
 }: {
   g: Guided;
   current: number;
   onPick: (i: number) => void;
+  viewed?: ReadonlySet<string>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const steps = g.plan?.steps ?? [];
@@ -639,12 +647,13 @@ export function StepsList({
             key={`${group.path}:${group.start}`}
             aria-label={group.path}
           >
-            <div className="guided-outline-file">
+            <div className="guided-outline-file" data-viewed={viewed?.has(group.path) || undefined}>
               <div>
                 <span>{filename}</span>
                 {parts.length ? <small>{parts.join("/")}</small> : null}
               </div>
               <span className="guided-outline-count tnum">
+                {viewed?.has(group.path) ? <span className="viewed-label">Viewed · </span> : null}
                 {group.items.length} {group.items.length === 1 ? "step" : "steps"}
               </span>
             </div>

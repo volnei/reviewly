@@ -1,3 +1,15 @@
+import { useNavigate } from "@tanstack/react-router";
+import { Effect } from "effect";
+import {
+  CircleX,
+  FolderGit2,
+  GitMerge,
+  LoaderCircle,
+  MessageSquareWarning,
+  WandSparkles,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+
 import { toast } from "@/app/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,19 +28,9 @@ import { Git } from "@/effect/services/Git";
 import { GitHub, type PrRef } from "@/effect/services/GitHub";
 import { usePrefs } from "@/effect/services/Prefs";
 import { checkState } from "@/features/pr/checks-model";
-import { toLocalId } from "@/lib/local-id";
 import { APP_STORE } from "@/lib/edition";
-import { Effect } from "effect";
-import {
-  CircleX,
-  FolderGit2,
-  GitMerge,
-  LoaderCircle,
-  MessageSquareWarning,
-  WandSparkles,
-} from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { toLocalId } from "@/lib/local-id";
+
 import { Markdown } from "./markdown";
 import type { Thread } from "./model";
 
@@ -57,7 +59,9 @@ export function autoFixPrompt(input: {
       const location = `${thread.path}${thread.line ? `:${thread.line}` : ""}`;
       return [
         `### ${location}`,
-        ...thread.comments.map((comment) => `- @${comment.user.login}: ${clip(comment.body, 2_000)}`),
+        ...thread.comments.map(
+          (comment) => `- @${comment.user.login}: ${clip(comment.body, 2_000)}`,
+        ),
       ].join("\n");
     });
   const reviewBodies = input.reviews
@@ -190,7 +194,9 @@ export function AutoFixButton({
           );
         }),
       );
-      setPhase(hasConflicts ? `Preparing the merge with ${pull.base.ref}…` : "Checking out the PR…");
+      setPhase(
+        hasConflicts ? `Preparing the merge with ${pull.base.ref}…` : "Checking out the PR…",
+      );
       await run(
         Effect.flatMap(Git, (git) =>
           git.preparePrAutofix(clone, prRef.number, pull.base.ref, hasConflicts),
@@ -220,7 +226,9 @@ export function AutoFixButton({
           const unmerged = yield* git.unmergedFiles(clone);
           if (unmerged.length)
             return yield* Effect.fail(
-              new Error(`Auto-fix left ${unmerged.length} unresolved conflict${unmerged.length === 1 ? "" : "s"}.`),
+              new Error(
+                `Auto-fix left ${unmerged.length} unresolved conflict${unmerged.length === 1 ? "" : "s"}.`,
+              ),
             );
           const tree = yield* git.status(clone);
           return new Set([...tree.staged, ...tree.unstaged].map((file) => file.path)).size;
@@ -228,7 +236,9 @@ export function AutoFixButton({
       );
       setResult({ summary, changed: validation });
       toast.done(
-        validation ? `Auto-fix changed ${validation} file${validation === 1 ? "" : "s"}` : "Auto-fix found no safe change",
+        validation
+          ? `Auto-fix changed ${validation} file${validation === 1 ? "" : "s"}`
+          : "Auto-fix found no safe change",
       );
     } catch (cause) {
       if (prepared && hasConflicts)
@@ -251,11 +261,15 @@ export function AutoFixButton({
         variant="ghost"
         size="sm"
         type="button"
-        className="pr-autofix"
+        className="pr-header-action pr-autofix"
         data-actionable={signals ? "" : undefined}
         disabled={!signals}
         onClick={() => setOpen(true)}
-        title={signals ? `Inspect and fix ${signals} PR signal${signals === 1 ? "" : "s"}` : "No review feedback, CI failures, or conflicts to fix"}
+        title={
+          signals
+            ? `Inspect and fix ${signals} PR signal${signals === 1 ? "" : "s"}`
+            : "No review feedback, CI failures, or conflicts to fix"
+        }
       >
         <WandSparkles className="size-3.5" aria-hidden />
         Auto-fix
@@ -269,7 +283,9 @@ export function AutoFixButton({
                 <WandSparkles className="size-4" />
               </span>
               <div>
-                <DialogTitle className="text-[17px] text-ink">Auto-fix this pull request</DialogTitle>
+                <DialogTitle className="text-[17px] text-ink">
+                  Auto-fix this pull request
+                </DialogTitle>
                 <DialogDescription className="mt-1 text-[12.5px] text-ink-3">
                   One local pass across feedback, failing CI, and merge conflicts.
                 </DialogDescription>
@@ -292,13 +308,21 @@ export function AutoFixButton({
               <div className="autofix-notice">
                 <FolderGit2 className="size-4" aria-hidden />
                 <p>
-                  Add a local clone of <span className="mono">{prRef.owner}/{prRef.repo}</span> before running Auto-fix.
+                  Add a local clone of{" "}
+                  <span className="mono">
+                    {prRef.owner}/{prRef.repo}
+                  </span>{" "}
+                  before running Auto-fix.
                 </p>
               </div>
             ) : APP_STORE ? (
-              <div className="autofix-notice">Auto-fix needs the direct edition because it runs a local coding agent.</div>
+              <div className="autofix-notice">
+                Auto-fix needs the direct edition because it runs a local coding agent.
+              </div>
             ) : provider === "openai" ? (
-              <div className="autofix-notice">Choose Claude, Codex, Cursor, Antigravity, or Gemini in AI settings to edit locally.</div>
+              <div className="autofix-notice">
+                Choose Claude, Codex, Cursor, Antigravity, or Gemini in AI settings to edit locally.
+              </div>
             ) : null}
             {running ? (
               <div className="autofix-running" role="status">
@@ -310,19 +334,30 @@ export function AutoFixButton({
             {result ? (
               <div className="autofix-result">
                 <div className="autofix-result-heading">
-                  <strong>{result.changed ? `${result.changed} local file${result.changed === 1 ? "" : "s"} changed` : "No local changes needed"}</strong>
+                  <strong>
+                    {result.changed
+                      ? `${result.changed} local file${result.changed === 1 ? "" : "s"} changed`
+                      : "No local changes needed"}
+                  </strong>
                   <span>Nothing was committed or pushed.</span>
                 </div>
                 <Markdown className="text-ink-2">{result.summary}</Markdown>
               </div>
             ) : (
               <p className="text-[11.5px] leading-relaxed text-ink-3">
-                Reviewly requires a clean clone, checks out #{pull.number}, and leaves every edit local. It never commits or pushes from this flow.
+                Reviewly requires a clean clone, checks out #{pull.number}, and leaves every edit
+                local. It never commits or pushes from this flow.
               </p>
             )}
           </DialogPanel>
           <DialogFooter variant="bare" className="px-6">
-            <Button variant="ghost" size="sm" type="button" disabled={running} onClick={() => setOpen(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              disabled={running}
+              onClick={() => setOpen(false)}
+            >
               {result ? "Done" : "Cancel"}
             </Button>
             {result && clone ? (
@@ -351,8 +386,18 @@ export function AutoFixButton({
                 Add local clone
               </Button>
             ) : !result ? (
-              <Button variant="default" size="sm" type="button" disabled={!available || running} onClick={() => void start()}>
-                {running ? <LoaderCircle className="size-3.5 animate-spin" /> : <WandSparkles className="size-3.5" />}
+              <Button
+                variant="default"
+                size="sm"
+                type="button"
+                disabled={!available || running}
+                onClick={() => void start()}
+              >
+                {running ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : (
+                  <WandSparkles className="size-3.5" />
+                )}
                 Fix locally
               </Button>
             ) : null}

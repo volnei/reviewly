@@ -1,6 +1,13 @@
-import { IconButton } from "@/components/icon-button";
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
+import { IconButton } from "@/components/icon-button";
+import type * as S from "@/effect/schema";
+
+import { lineId } from "./diff";
+import { type DiffHit, findDiffHits } from "./virtual-diff";
+
+const fileAnchor = (path: string) => `f-${path.replace(/[^a-z0-9]+/gi, "-")}`;
 
 /**
  * ⌘F on a pull request: find in every diff on the page, including what you
@@ -9,10 +16,17 @@ import { useEffect, useRef, useState } from "react";
  */
 export function FindBar({
   scrollRef,
+  files,
+  onJump,
   onClose,
-}: { scrollRef: React.RefObject<HTMLDivElement>; onClose: () => void }) {
+}: {
+  scrollRef: React.RefObject<HTMLDivElement>;
+  files: ReadonlyArray<S.PullFile>;
+  onJump: (hit: DiffHit) => void;
+  onClose: () => void;
+}) {
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<HTMLElement[]>([]);
+  const [hits, setHits] = useState<DiffHit[]>([]);
   const [i, setI] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
@@ -21,36 +35,59 @@ export function FindBar({
   }, []);
 
   useEffect(() => {
-    const root = scrollRef.current;
-    if (!root) return;
+    let cancelled = false;
     const t = setTimeout(() => {
-      for (const el of root.querySelectorAll("[data-hit]")) {
-        el.removeAttribute("data-hit");
-        el.removeAttribute("data-current");
-      }
       const needle = q.trim().toLowerCase();
       if (!needle) {
         setHits([]);
         return;
       }
-      const rows = [...root.querySelectorAll<HTMLElement>("tr")].filter(
-        (r) => (r.id || r.querySelector("td[id]")) && r.textContent?.toLowerCase().includes(needle),
-      );
-      for (const r of rows) r.setAttribute("data-hit", "");
-      setHits(rows);
-      setI(0);
+      const found: DiffHit[] = [];
+      let index = 0;
+      const searchChunk = () => {
+        const end = Math.min(files.length, index + 12);
+        for (; index < end; index++) found.push(...findDiffHits(files[index], needle));
+        if (cancelled) return;
+        if (index < files.length) setTimeout(searchChunk, 0);
+        else {
+          setHits(found);
+          setI(0);
+        }
+      };
+      searchChunk();
     }, 80);
-    return () => clearTimeout(t);
-  }, [q, scrollRef]);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, files]);
 
   useEffect(() => {
-    for (const h of hits) h.removeAttribute("data-current");
     const cur = hits[i];
-    if (cur) {
-      cur.setAttribute("data-current", "");
-      cur.scrollIntoView({ block: "center" });
-    }
-  }, [hits, i]);
+    if (cur) onJump(cur);
+  }, [hits, i, onJump]);
+
+  // Only visible virtual rows exist in the DOM. Decorate those and repeat as the range changes.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const decorate = () => {
+      for (const el of root.querySelectorAll("[data-hit]")) {
+        el.removeAttribute("data-hit");
+        el.removeAttribute("data-current");
+      }
+      hits.forEach((hit, hitIndex) => {
+        const el = document.getElementById(lineId(fileAnchor(hit.path), hit.side, hit.line));
+        const row = el?.closest("tr");
+        row?.setAttribute("data-hit", "");
+        if (hitIndex === i) row?.setAttribute("data-current", "");
+      });
+    };
+    decorate();
+    const observer = new MutationObserver(decorate);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [hits, i, scrollRef]);
 
   useEffect(
     () => () => {

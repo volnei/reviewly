@@ -1,6 +1,7 @@
+import { Context, Effect, Layer, Schema } from "effect";
+
 import { persistedStore, useStore } from "@/effect/store";
 import { APP_STORE } from "@/lib/edition";
-import { Context, Effect, Layer, Schema } from "effect";
 
 /**
  * Everything the user has decided, in one typed record, persisted on the
@@ -98,6 +99,11 @@ export const Prefs = Schema.Struct({
     "teams",
   ]),
   /** Webview zoom factor; 1 is the design size. */
+  diffAppearance: Schema.Struct({
+    mode: Schema.Literals(["default", "vivid", "custom"]),
+    added: Schema.String,
+    removed: Schema.String,
+  }),
   zoom: Schema.Number,
   /** The version whose release notes you have seen. */
   lastSeenVersion: Schema.String,
@@ -145,6 +151,7 @@ const defaultPrefs: Prefs = {
   localRepos: [],
   mergeMethod: "squash",
   appearance: "dark",
+  diffAppearance: { mode: "default", added: "#4ade80", removed: "#fb7185" },
   zoom: 1,
   lastSeenVersion: "",
   filesWidth: 256,
